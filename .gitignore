@@ -1,0 +1,7 @@
+# CMake build output
+/build/
+# Editor/OS cruft
+*.o
+*.a
+compile_commands.json
+.cache/
