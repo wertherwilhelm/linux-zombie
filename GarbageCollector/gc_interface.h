@@ -281,7 +281,12 @@ public:
         // type directly instead of through the interface.
         T* obj = gc_box::allocate<T>(*m_allocator, std::forward<Args>(args)...);
 
-        // Register with GC (implementation-specific tracking)
+        // Register with GC (implementation-specific tracking).
+        // NOTE: on_allocate() may trigger a threshold collection; it is responsible
+        // for keeping the just-allocated (not-yet-rooted) object alive across that
+        // collection — see the P1 fix in each on_allocate() override. (allocate<T>()
+        // can't root here because the concrete managers shadow this template with
+        // their own allocate<T>.)
         on_allocate(static_cast<gc_object*>(obj));
 
         return obj;

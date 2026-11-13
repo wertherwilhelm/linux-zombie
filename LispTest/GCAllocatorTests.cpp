@@ -2,6 +2,7 @@
 #include "gtest/gtest.h"
 #include "gc_manager_template.h"
 #include "mark_sweep_strategy.h"
+#include "generational_gc_strategy.h"
 #include "gc_allocator.h"
 #include "gc_ptr.h"
 #include "Object.h"
@@ -404,4 +405,76 @@ TEST_F(GCAllocatorTest, RuntimeVsTemplateConsistency) {
     // but it should at least collect the 50 we just allocated
     EXPECT_GE(runtime_collected, 40) << "Runtime GC should collect at least 40 of the 50 allocated objects";
     EXPECT_NEAR(static_cast<double>(template_collected), 50.0, 10.0) << "Template GC should collect ~50 objects";
+}
+
+/**
+ * Regression test (P1): an allocation that triggers a collection must not have the
+ * freshly-allocated object reclaimed by that very collection.
+ *
+ * With gc_threshold == 0, on_allocate() runs a collection on every allocation.
+ * The new object is already tracked but not yet reachable from any root (the caller
+ * hasn't received it), so an unguarded collect would sweep it and allocate<T>() would
+ * return a dangling pointer (heap-use-after-free under ASan). allocate<T>() now
+ * temporarily roots the in-flight object across on_allocate() to prevent this.
+ */
+TEST_F(GCAllocatorTest, AllocationTriggeringCollectionIsNotReclaimed) {
+    gc_manager_t<MarkSweepStrategy, MallocAllocator> gc;
+    gc.set_gc_threshold(0);  // every allocation triggers a collection inside on_allocate
+
+    size_t before = gc.object_count();
+    auto* obj = gc.allocate<a_integer>(0xC0FFEE);
+
+    // The object must survive the collection its own allocation triggered.
+    ASSERT_NE(obj, nullptr);
+    EXPECT_EQ(obj->value(), 0xC0FFEE);              // safe to read (UAF under ASan otherwise)
+    EXPECT_EQ(gc.object_count() - before, 1u);      // still tracked, not swept
+
+    // Once genuinely unreachable, a later collection reclaims it as normal.
+    gc.collect();
+    EXPECT_EQ(gc.object_count() - before, 0u);
+}
+
+/**
+ * Regression test (P1): a promoted object's children must be scanned and forwarded
+ * during the same minor collection.
+ *
+ * When a young object survives enough collections it is promoted to the old
+ * generation and leaves the young to-space. The Cheney scan loop only walks
+ * to-space, so a promoted object was never scanned for children — any child it had
+ * acquired while young stayed in the discarded from-space and became dangling after
+ * the space swap. minor_collect() now drains the list of objects promoted during the
+ * cycle, forwarding their children too.
+ *
+ * Repro: a parent survives two collections (reaching the default promotion age of 3),
+ * then gets a brand-new child, and the third collection promotes the parent. The
+ * child is reachable only through the parent, so it is copied iff promoted objects
+ * are scanned. The forwarding necessarily moves it to a different (young-gen) address,
+ * which is the deterministic discriminator: before the fix the parent's car pointer
+ * was left pointing at the child's original, now-dead from-space slot.
+ */
+TEST_F(GCAllocatorTest, PromotedObjectChildrenAreForwarded) {
+    gc_manager_t<GenerationalGCStrategy> gc;
+    gc.set_gc_threshold(static_cast<size_t>(-1));  // drive minor GCs manually
+
+    ConsCell* parent = gc.allocate<ConsCell>(nil, nil);
+    gc.add_root(reinterpret_cast<void**>(&parent));  // persistent root (updated on move)
+
+    // Age the parent across two collections (promotion threshold defaults to 3).
+    gc.collect();  // survival 1
+    gc.collect();  // survival 2
+
+    // Attach a fresh young child reachable ONLY through the parent.
+    a_integer* child = gc.allocate<a_integer>(123456789LL);
+    parent->car(child);
+    a_integer* child_before = child;  // original from-space address
+
+    gc.collect();  // survival 3 -> parent promoted to old gen
+
+    // The parent is now in old gen; its car must have been forwarded to the child's
+    // new young-gen location (different address, intact value). Before the fix the
+    // child was never copied and car still pointed at its dead from-space slot.
+    Object* car = parent->car();
+    ASSERT_NE(car, nullptr);
+    EXPECT_NE(car, child_before) << "promoted parent's child was not forwarded (P1 bug)";
+    EXPECT_EQ(static_cast<a_integer*>(car)->value(), 123456789LL);
 }

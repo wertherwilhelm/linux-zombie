@@ -101,7 +101,13 @@ void gc_manager::on_allocate(gc_object* obj) {
 
     // Trigger GC if we've exceeded the threshold
     if (m_strategy->bytes_allocated() > m_gc_threshold) {
+        // P1: `obj` has just been allocated but is not yet reachable from any root
+        // (the caller hasn't received it). Root its slot across the collection so it
+        // isn't swept and returned as a dangling pointer. &obj is a stable stack slot
+        // for the duration of this call. Only paid when a collection actually fires.
+        add_root(reinterpret_cast<void**>(&obj));
         collect();
+        remove_root(reinterpret_cast<void**>(&obj));
     }
 }
 

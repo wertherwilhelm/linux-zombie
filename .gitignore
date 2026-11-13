@@ -1,5 +1,6 @@
 # CMake build output
 /build/
+/build-asan/
 # Editor/OS cruft
 *.o
 *.a

@@ -261,26 +261,42 @@ void GenerationalGCStrategy::minor_collect() {
     // Each Object's children are copied, advancing free pointer
     // Continue until scan catches up to free (all objects processed)
 
-    while (scan < free) {
-        // scan points to gc_header, need to get Object pointer
-        gc_header* header = reinterpret_cast<gc_header*>(scan);
+    // The collection reaches a fixpoint when BOTH the to-space scan is drained
+    // (scan == free) AND every promoted object has had its children forwarded.
+    // Scanning a promoted object can copy fresh survivors into to-space (advancing
+    // free) and can itself promote more objects (growing m_promoted_this_cycle),
+    // so the outer loop re-checks both conditions after each inner drain.
+    size_t promoted_scan_idx = 0;
+    while (scan < free || promoted_scan_idx < m_promoted_this_cycle.size()) {
+        while (scan < free) {
+            // scan points to gc_header, need to get Object pointer
+            gc_header* header = reinterpret_cast<gc_header*>(scan);
 
-        // Calculate Object pointer from header
-        // Layout: [gc_header] [padding bytes] [Object]
-        //         ^header                      ^Object
-        //         <--sizeof(gc_header)--> <--padding-->
-        gc_object* obj = reinterpret_cast<gc_object*>(scan + sizeof(gc_header) + header->padding);
+            // Calculate Object pointer from header
+            // Layout: [gc_header] [padding bytes] [Object]
+            //         ^header                      ^Object
+            //         <--sizeof(gc_header)--> <--padding-->
+            gc_object* obj = reinterpret_cast<gc_object*>(scan + sizeof(gc_header) + header->padding);
 
-        // Scan children and copy/forward them
-        scan_and_forward_children(obj, free);
+            // Scan children and copy/forward them
+            scan_and_forward_children(obj, free);
 
-        // Advance scan to the next block, applying the same max-align rounding
-        // that copy_object_cheney used when advancing the free pointer, so scan
-        // and free stay in lockstep across the inter-block alignment padding.
-        size_t obj_size = header->size;
-        size_t total_block_size = sizeof(gc_header) + header->padding + obj_size;
-        constexpr size_t kBlockAlign = alignof(std::max_align_t);
-        scan += (total_block_size + kBlockAlign - 1) & ~(kBlockAlign - 1);
+            // Advance scan to the next block, applying the same max-align rounding
+            // that copy_object_cheney used when advancing the free pointer, so scan
+            // and free stay in lockstep across the inter-block alignment padding.
+            size_t obj_size = header->size;
+            size_t total_block_size = sizeof(gc_header) + header->padding + obj_size;
+            constexpr size_t kBlockAlign = alignof(std::max_align_t);
+            scan += (total_block_size + kBlockAlign - 1) & ~(kBlockAlign - 1);
+        }
+
+        // Drain promoted objects. They live in old gen (stable memory), so their
+        // child slots are forwarded in place; the forwarding updates persist.
+        // (Index-based because the vector may grow as we scan.)
+        while (promoted_scan_idx < m_promoted_this_cycle.size()) {
+            gc_object* promoted = m_promoted_this_cycle[promoted_scan_idx++];
+            scan_and_forward_children(promoted, free);
+        }
     }
 
     // ========================================================================
@@ -349,10 +365,24 @@ void GenerationalGCStrategy::rebuild_age_map() {
  * 3. Keep it if yes, remove if no
  */
 void GenerationalGCStrategy::rebuild_remembered_set() {
-    // Filter remembered set to keep only objects with old→young pointers
+    // Candidate old-gen objects to re-check for old→young pointers: the existing
+    // remembered set, plus every object promoted during this collection. A freshly
+    // promoted object whose children stayed in young gen is a new old→young edge and
+    // must be remembered, or the next minor GC would collect those young survivors.
+    std::vector<gc_object*> candidates;
+    candidates.reserve(m_remembered_set.size() + m_promoted_this_cycle.size());
+    candidates.insert(candidates.end(), m_remembered_set.begin(), m_remembered_set.end());
+    for (gc_object* promoted : m_promoted_this_cycle) {
+        if (std::find(candidates.begin(), candidates.end(), promoted) == candidates.end()) {
+            candidates.push_back(promoted);
+        }
+    }
+    m_promoted_this_cycle.clear();
+
+    // Filter candidates to keep only objects with old→young pointers
     std::vector<gc_object*> new_remembered_set;
 
-    for (gc_object* old_obj : m_remembered_set) {
+    for (gc_object* old_obj : candidates) {
         // Check if this old Object still has any young children
         bool has_young_child = false;
 
@@ -530,6 +560,16 @@ gc_object* GenerationalGCStrategy::copy_object_cheney(gc_object* obj, char*& fre
 
         // Store promoted address as forwarding pointer in header
         header->forwarding_addr = promoted;
+
+        // The promoted object lives in old gen, not in young to-space, so the
+        // Cheney scan loop (which only walks [scan, free) in to-space) will never
+        // visit it. Record it so minor_collect() scans and forwards its children
+        // before from-space is discarded; otherwise any child still in from-space
+        // would dangle (the P1 bug). Only record genuine promotions — promote_object
+        // returns the original young object unchanged on old-gen OOM.
+        if (promoted != new_obj) {
+            m_promoted_this_cycle.push_back(promoted);
+        }
 
         // Don't advance free pointer since we're not keeping it in young gen
         return promoted;

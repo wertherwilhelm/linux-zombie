@@ -89,25 +89,39 @@ embedding stubs.
 
 ---
 
-## 0. TODO — revisit: two P1 GC bugs (allocation can return freed objects)
+## 0. Two P1 GC bugs (allocation can return freed objects) — ✅ FIXED (2026-11-13)
 
-Flagged for evaluation (not yet verified/fixed in this tree):
+Both verified empirically: each regression test was confirmed to FAIL with the fix
+reverted and PASS with it, and both are clean under ASan.
 
-### 0.1 [P1] Allocation can return a freed object (collect-before-root)
-`gc_manager_template.h:232` triggers a collection **before** the newly allocated
-object is rooted or returned. With the GC threshold set to zero, the object's
-destructor runs *inside* `allocate()`, which then hands back a dangling pointer.
-The production collector has the same pattern at `gc_manager.cpp:103`.
-Fix direction: protect the in-flight allocation across the collection (temporary
-root / defer registration), **or** collect *before* constructing the new object.
+### 0.1 [P1] Allocation can return a freed object (collect-before-root)  ✅ FIXED
+`gc_manager_template.h` on_allocate triggers a collection when the threshold is
+exceeded, but the just-allocated object is tracked yet **not reachable from any
+root** (the caller hasn't received it), so the collection swept it and `allocate()`
+returned a dangling pointer. Reproduces with `gc_threshold == 0`.
+NOTE: the real fix site was **on_allocate**, not the shared `allocate<T>` template —
+the concrete managers (`gc_manager_t<>` primary and generational) each define their
+own `allocate<T>` that shadows `IGarbageCollector::allocate<T>`, so a fix there was
+dead code. Fix: in each on_allocate, root the `obj` parameter's slot across
+`collect()` (`add_root(&obj); collect(); remove_root(&obj);`). Done in both
+`gc_manager_template.h` (primary `gc_manager_t`) and `gc_manager.cpp` (production
+`gc_manager`); the base `allocate<T>` just documents that on_allocate owns this.
+Only paid when a collection actually fires. (Generational `allocate_young` is a
+separate *moving* path not cited here and left alone — a local-slot root can't
+update the caller's pointer across a move.)
+Test: `GCAllocatorTest.AllocationTriggeringCollectionIsNotReclaimed`.
 
-### 0.2 [P1] Promoted objects' children skipped during minor collection
-`generational_gc_strategy.cpp:527` returns a promoted object without scanning its
-children or adding it to the scan queue. Repro: a parent survives two collections,
-then gets a new child; on the third collection the parent is promoted while its
-child pointer still lives in discarded from-space (dangling).
-Fix direction: scan promoted objects and forward their children before completing
-the collection (don't short-circuit the promotion path out of the Cheney scan).
+### 0.2 [P1] Promoted objects' children skipped during minor collection  ✅ FIXED
+`generational_gc_strategy.cpp` `copy_object_cheney` promoted an object to old gen
+and returned without advancing `free`, so the promoted object never entered the
+to-space `[scan, free)` range the Cheney loop walks — its children stayed in
+from-space and dangled after the space swap. Fix: record promotions in a new
+`m_promoted_this_cycle`; `minor_collect()` now drains it (scanning each promoted
+object's children) interleaved with the to-space scan until a joint fixpoint, and
+`rebuild_remembered_set()` additionally considers promoted objects so any that still
+point to a young survivor become old→young remembered-set entries.
+Test: `GCAllocatorTest.PromotedObjectChildrenAreForwarded` (discriminator: the
+promoted parent's child pointer must be forwarded to a new young-gen address).
 
 ---
 
@@ -231,6 +245,23 @@ under ASan — no errors and no leaks — at both `-O0` and ASan builds (re-veri
 > — but this exercises the §0 P1 collection paths, so do it *after* those are fixed;
 > (b) run with `ASAN_OPTIONS=detect_leaks=0`; or (c) add an LSan suppression. Left
 > for the user to decide.
+
+> **Full-binary leak baseline (measured 2026-11-13):** the complete `LispTest` binary
+> under ASan is **1291/1291 pass, zero memory errors, but 303 leaks / ~69 KB**. The
+> leaks are spread across *production* paths, not just tests — notably `atom.h`
+> `cast_atom` (`return new atom<T>(...)` — **raw `new`**, used by `is_equal` and the
+> numeric tower), plus unrooted GC allocations surfacing through `bytecode_vm.cpp`,
+> `lisp.cpp`, `closure.cpp`, `primitive_control.cpp`, and a handful in tests. None are
+> caused by the GC fixes (confirmed: GC suite is leak-clean). A single teardown
+> `gc->collect()` would NOT fix these: the `cast_atom` ones are raw-`new` (never
+> GC-tracked), and the GC-tracked ones are already reachable from the global `gc`'s
+> object list (so LSan wouldn't flag them anyway — meaning the flagged GC-shaped ones
+> escaped tracking via some non-`gc_new` path). Making the binary truly leak-free means
+> auditing/rewriting production clone + allocation paths (e.g. `cast_atom` → `gc_new`,
+> and rooting/clearing VM temporaries) — a separate, larger, behavior-sensitive effort.
+> **Recommendation for routine ASan use:** run with `ASAN_OPTIONS=detect_leaks=0` (ASan
+> still catches the error classes it reliably finds here) or add a scoped LSan
+> suppression for these known sites; defer the production leak cleanup as its own task.
 
 Older suppressions, now partly resolved:
 - `and`/`or` tests commented out (§1.1).  ✅ re-enabled

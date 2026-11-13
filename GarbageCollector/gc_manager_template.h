@@ -234,7 +234,13 @@ protected:
 
         // Trigger GC if we've exceeded the threshold
         if (m_strategy.bytes_allocated() > m_gc_threshold) {
+            // P1: `obj` is freshly allocated and not yet reachable from any root
+            // (the caller hasn't received it). Root its slot across the collection
+            // so it isn't swept and returned dangling. &obj is a stable stack slot
+            // for this call; cost is paid only when a collection actually fires.
+            add_root(reinterpret_cast<void**>(&obj));
             collect();
+            remove_root(reinterpret_cast<void**>(&obj));
         }
     }
 

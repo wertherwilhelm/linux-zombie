@@ -430,6 +430,18 @@ private:
      */
     std::vector<gc_object*> m_remembered_set;
 
+    /**
+     * @brief Objects promoted to old gen during the current minor collection.
+     *
+     * Promoted objects leave the young to-space, so the Cheney scan loop never
+     * visits them — yet their children may still live in young from-space and
+     * must be copied/forwarded before the space swap discards it. minor_collect()
+     * drains this list (scanning each promoted object's children) as part of the
+     * collection fixpoint, then clears it. Any promoted object still pointing to a
+     * surviving young object is an old→young edge and is added to the remembered set.
+     */
+    std::vector<gc_object*> m_promoted_this_cycle;
+
     // ========================================================================
     // Statistics
     // ========================================================================
