@@ -40,9 +40,7 @@
 #include "primitives/primitive_system.h"
 #include "primitives/primitive_value_ledger.h"
 #include "primitives/primitive_necromancy.h"
-// Legacy Primitive groups (still needed for scenegraph, etc.)
 #include "primitives/primitives_value_ledger.h"  // For implementation functions
-#include "primitives/primitives_scenegraph.h"
 #include "primitives/primitives_export_registry.h"
 #include <cmath>
 #include <cctype>

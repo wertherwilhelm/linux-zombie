@@ -58,9 +58,7 @@ function(zombie_glob out_var dir)
 endfunction()
 
 # --- GarbageCollector -------------------------------------------------------
-# Exclude the standalone demo (defines its own main()).
-zombie_glob(GC_SRCS "${CMAKE_CURRENT_SOURCE_DIR}/GarbageCollector"
-  "gc_ergonomics_demo_v2\\.cpp$")
+zombie_glob(GC_SRCS "${CMAKE_CURRENT_SOURCE_DIR}/GarbageCollector")
 add_library(GarbageCollector STATIC ${GC_SRCS})
 target_include_directories(GarbageCollector PUBLIC ${ZOMBIE_INCLUDE_DIRS})
 

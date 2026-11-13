@@ -79,10 +79,19 @@ this as a working Scheme.
       collateral: `LispTest/GCPolicyTests.cpp`, `GarbageCollector/gc_concepts.h`,
       `GarbageCollector/gc_traceable.h`. Builds clean at `-O0` and ASan; **1288/1288
       pass, 0 leaks, 0 errors** (down from 1291: the 3 `GCPolicyIntegration` tests went
-      with GCPolicy; the 2 P1 regression tests remain). Still-dead prune candidates left
-      for a follow-up (not part of MemoryManagement): `primitives_scenegraph.cpp`
-      (`#ifdef ENABLE_SCENEGRAPH`, off; uses the absent external `scenegraph::` headers)
-      and `GarbageCollector/gc_ergonomics_demo_v2.cpp` (already build-excluded demo).
+      with GCPolicy; the 2 P1 regression tests remain).
+
+- [x] **Dead-code prune, round 2 (2026-11-13)** — removed abandoned/uncalled files
+      surfaced while finishing the MemoryManagement prune:
+      · `ZombieRuntime/primitives/primitives_scenegraph.{cpp,h}` — scenegraph Scheme
+        bindings for the abandoned external engine; body was `#ifdef ENABLE_SCENEGRAPH`
+        (off) over absent `scenegraph::` headers, `install_scenegraph_group` had no
+        caller. Removed, and dropped its now-vestigial `#include` from `primitive.cpp`.
+      · `GarbageCollector/gc_ergonomics_demo_v2.cpp` — standalone demo (own `main()`),
+        already glob-excluded; removed the file and the CMake exclude line.
+      · `ZombieRuntime/value_demo.cpp` — compiled-but-never-called demo of the (live)
+        value-ledger system; no external refs. Removed.
+      Builds clean at `-O0` (all targets incl. `repl`); 1288/1288 pass (no tests removed).
 
 Remaining items below are unaddressed. Not done (your call): pool-allocator
 alignment, `release()` semantics, dual mark bits; §2 toy-VM / CoreIR; §4
