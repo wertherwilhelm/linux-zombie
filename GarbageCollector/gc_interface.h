@@ -4,12 +4,6 @@
 #include <utility>  // for std::forward
 #include "gc_box.h"  // for gc_box::allocate
 
-// Memory management abstraction interfaces
-#include "../MemoryManagement/IMemoryManager.h"
-#include "../MemoryManagement/ITracer.h"
-#include "../MemoryManagement/IWriteBarrier.h"
-#include "../MemoryManagement/IRootManager.h"
-
 // Forward declarations
 class gc_object;
 
@@ -17,28 +11,17 @@ class gc_object;
  * @file gc_interface.h
  * @brief Abstract interface for garbage collectors
  *
- * This interface now inherits from the core memory management abstractions:
- * - memory::IMemoryManager - Allocation/deallocation (REQUIRED)
- * - memory::ITracer - GC tracing (OPTIONAL)
- * - memory::IWriteBarrier - Generational barriers (OPTIONAL)
- * - memory::IRootManager - Root management (OPTIONAL)
- *
- * Benefits:
- * - Implements standard memory:: interface (library-independent)
- * - Can be used with policy-based designs (GCPolicy, etc.)
- * - Testing with mock GCs
- * - No global GC coupling in headers
- *
  * Design Philosophy:
  * - Minimal interface (only what objects need to interact with GC)
  * - Type-safe allocation via templates
  * - Virtual dispatch only where necessary
  * - No implementation details exposed
  *
- * Migration Notes:
- * - Old methods (add_root, remove_root, mark_object) kept for compatibility
- * - New code should use memory:: interface methods
- * - See INTEGRATION_PLAN.md for full migration guide
+ * This is a self-contained interface. (It formerly inherited a set of
+ * `memory::` abstraction interfaces meant to be shared with an external
+ * scene-graph engine; that engine was abandoned and the abstraction layer
+ * removed, so the allocate/deallocate/tracing/root/barrier methods are now
+ * declared directly here.)
  */
 
 // Forward declaration for allocator
@@ -47,30 +30,15 @@ struct IAllocator;
 /**
  * @brief Abstract garbage collector interface
  *
- * Now inherits from standard memory management interfaces:
- * - memory::IMemoryManager - Core allocate/deallocate
- * - memory::ITracer - GC Object graph traversal
- * - memory::IWriteBarrier - Generational GC barriers (default no-op)
- * - memory::IRootManager - GC root management
- *
- * This allows GC to be used through the generic memory:: interface,
- * enabling policy-based designs and library independence.
+ * Provides allocate/deallocate, object-graph tracing (visit/visit_field),
+ * root management (add_root/remove_root), and a generational write barrier.
  *
  * Thread Safety:
  * - Implementations may be thread-local or thread-safe
  * - Caller must ensure proper synchronization
  * - See gc_context for thread-local GC management
- *
- * Implementation Strategy:
- * - Old methods delegate to new memory:: methods
- * - Both old and new interfaces work (backward compatible)
- * - Libraries can migrate incrementally
  */
 class IGarbageCollector
-    : public memory::IMemoryManager
-    , public memory::ITracer
-    , public memory::IWriteBarrier
-    , public memory::IRootManager
 {
 public:
     /**
@@ -98,7 +66,7 @@ public:
      *
      * Thread Safety: Must be called from the thread that owns this GC instance.
      */
-    void add_root(void** root_slot) override = 0;
+    virtual void add_root(void** root_slot) = 0;
 
     /**
      * @brief Unregister a root (implements memory::IRootManager)
@@ -106,7 +74,7 @@ public:
      *
      * Must match a previous add_root call.
      */
-    void remove_root(void** root_slot) override = 0;
+    virtual void remove_root(void** root_slot) = 0;
 
     /**
      * @brief Register a persistent root (heap-allocated, long-lived root)
@@ -167,7 +135,7 @@ public:
      *       tracer.visit(child_);  // Mark child as reachable
      *   }
      */
-    void visit(void* ptr) override {
+    virtual void visit(void* ptr) {
         mark_object(static_cast<gc_object*>(ptr));
     }
 
@@ -184,7 +152,7 @@ public:
      *       tracer.visit_field(reinterpret_cast<void**>(&child_));
      *   }
      */
-    void visit_field(void** slot) override {
+    virtual void visit_field(void** slot) {
         if (slot && *slot) {
             mark_object(static_cast<gc_object*>(*slot));
         }
@@ -220,7 +188,7 @@ public:
      * This is the NEW low-level API from memory::IMemoryManager.
      * Delegates to allocate_impl() for actual allocation.
      */
-    void* allocate(size_t size, size_t alignment) override {
+    virtual void* allocate(size_t size, size_t alignment) {
         return allocate_impl(size, alignment);
     }
 
@@ -234,7 +202,7 @@ public:
      *
      * Explicit deallocation only needed for early cleanup before GC runs.
      */
-    void deallocate(void* ptr, size_t size) override {
+    virtual void deallocate(void* ptr, size_t size) {
         (void)ptr;
         (void)size;
         // Intentionally a no-op for a tracing GC.
@@ -299,7 +267,7 @@ public:
      * Default implementation returns "IGarbageCollector".
      * Derived classes should override with specific GC strategy name.
      */
-    const char* name() const override {
+    virtual const char* name() const {
         return "IGarbageCollector";
     }
 
@@ -307,7 +275,7 @@ public:
      * @brief Get total bytes allocated (implements memory::IMemoryManager)
      * @return Approximate bytes currently allocated
      */
-    size_t bytes_allocated() const override = 0;
+    virtual size_t bytes_allocated() const = 0;
 
     /**
      * @brief Get count of live objects (for debugging/profiling)
@@ -371,7 +339,7 @@ public:
      * - Centralized barrier logic
      * - Easy to instrument/profile
      */
-    void write_barrier(void* owner, void* old_value, void* new_value) override {
+    virtual void write_barrier(void* owner, void* old_value, void* new_value) {
         // Default: no-op for non-generational collectors
         // Derived classes override this for generational GC
         (void)owner;

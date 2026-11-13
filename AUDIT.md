@@ -36,14 +36,12 @@ this as a working Scheme.
       (Objects over-aligned beyond `max_align_t` remain unsupported by the moving
       young gen — none exist in the runtime.)
 
-- [x] **§3.2 CRITICAL GCPolicy allocates outside GC tracking** — decided to
-      support it. `GCPolicy::allocate<T>` now delegates to
-      `get_current_gc()->allocate<T>()` (installs the gc_header + registers via
-      `on_allocate`), `deallocate` is a no-op, and the dead `gc::current()`
-      forward-decl (wrong namespace + return type, couldn't link) was replaced with
-      the real `gc_context`/`get_current_gc()` API. `allocate` now static_asserts
-      `T : gc_object`. Added `GCPolicyIntegration` tests (tracked allocation,
-      collection of unreachable objects, no-op deallocate).
+- [~] **§3.2 CRITICAL GCPolicy allocates outside GC tracking** — ~~fixed by making
+      `GCPolicy::allocate<T>` delegate to `get_current_gc()->allocate<T>()`~~
+      **SUPERSEDED / REMOVED (2026-11-13):** the whole `MemoryManagement/` abstraction
+      (a shared GC-interface layer for an abandoned external scene-graph engine) was
+      deleted, taking `GCPolicy.h` and its `GCPolicyIntegration` tests with it. See the
+      "MemoryManagement prune" entry below. No action remains here.
 
 - [x] **§3.1 template-GC "pure virtual method called" crash** — *misdiagnosed in
       the original audit* (it is **not** a dangling vtable in the mark worklist).
@@ -69,6 +67,22 @@ this as a working Scheme.
       the "flaky under full suite" the author noted). Fixed to register the stable
       vector-element slot (`&guards.back()`, with `reserve`). ASan is now clean
       across all 1289 tests.
+
+- [x] **MemoryManagement prune (2026-11-13)** — `MemoryManagement/` was a shared
+      GC-interface layer (`memory::IMemoryManager`/`ITracer`/`IWriteBarrier`/
+      `IRootManager` + a policy system) intended for an external scene-graph engine
+      that has been abandoned. With no second consumer it was pure indirection, so it
+      was **deleted in full**. `IGarbageCollector` (gc_interface.h) was decoupled first:
+      the 4 `memory::` base classes were dropped and its allocate/deallocate/visit/
+      visit_field/add_root/remove_root/name/bytes_allocated/write_barrier methods are
+      now declared directly (`override` → explicit `virtual`). Also deleted as dead
+      collateral: `LispTest/GCPolicyTests.cpp`, `GarbageCollector/gc_concepts.h`,
+      `GarbageCollector/gc_traceable.h`. Builds clean at `-O0` and ASan; **1288/1288
+      pass, 0 leaks, 0 errors** (down from 1291: the 3 `GCPolicyIntegration` tests went
+      with GCPolicy; the 2 P1 regression tests remain). Still-dead prune candidates left
+      for a follow-up (not part of MemoryManagement): `primitives_scenegraph.cpp`
+      (`#ifdef ENABLE_SCENEGRAPH`, off; uses the absent external `scenegraph::` headers)
+      and `GarbageCollector/gc_ergonomics_demo_v2.cpp` (already build-excluded demo).
 
 Remaining items below are unaddressed. Not done (your call): pool-allocator
 alignment, `release()` semantics, dual mark bits; §2 toy-VM / CoreIR; §4
@@ -197,7 +211,8 @@ under ASan and are re-enabled in ctest.
 
 ### 3.2 Documented GC issues (from `docs/GARBAGECOLLECTOR_ISSUES.md`, still present)
 - **CRITICAL** `MemoryManagement/policies/GCPolicy.h` allocates outside
-  `gc_box` tracking → objects invisible to GC / double-free risk.  ✅ FIXED
+  `gc_box` tracking → objects invisible to GC / double-free risk.  🗑️ MOOT — file
+  deleted in the MemoryManagement prune (see fix log). No longer in the tree.
 - **HIGH** `IGarbageCollector::deallocate` calls `reclaim()` without removing the
   object from `all_objects_` → re-reclaimed on next sweep.  ✅ FIXED
 - **HIGH** generational minor-GC copy advances `free` by `total_size` without
@@ -227,10 +242,10 @@ under ASan and are re-enabled in ctest.
 ---
 
 ## 5. Test-suite coverage gaps
-Current: **1289/1289 pass under ctest; no memory *errors* under
-`-fsanitize=address`.** The GC suite (`*GC*` filter, 91 tests) is fully clean
-under ASan — no errors and no leaks — at both `-O0` and ASan builds (re-verified
-2026-11-13 after rebuilding the stale ASan `LispTest`).
+Current: **the `LispTest` binary is 1288/1288, zero memory errors, zero leaks under
+`-fsanitize=address`** (2026-11-13, after the MemoryManagement prune: was 1291 — the 3
+`GCPolicyIntegration` tests were deleted with GCPolicy; the 2 P1 regression tests remain).
+The GC suite (`*GC*` filter) is fully clean under ASan at both `-O0` and ASan builds.
 
 > **LSan caveat (2026-11-13):** "clean under ASan" refers to memory *errors*
 > (UAF / overflow / the use-after-scope bug fixed above), which remain clean. The
