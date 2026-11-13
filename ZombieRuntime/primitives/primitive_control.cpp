@@ -754,7 +754,7 @@ void PrimitiveControl::install(Environment* env) {
 
     // Continuations
     DEF("call/cc",                        CALLCC, 1, 1);
-    DEF("call-with-current-Continuation", CALLCC, 1, 1);
+    DEF("call-with-current-continuation", CALLCC, 1, 1);
 
     #undef DEF
 }

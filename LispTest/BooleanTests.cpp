@@ -107,38 +107,45 @@ TEST_F(ZombieSchemeTest, IfWithEmptyListIsTrue) {
 // And/Or with Booleans
 // ----------------------------------------------------------------------------
 
-// NOTE: and/or are special forms that need to be implemented in Lisp.cpp
-// They require short-circuit evaluation and are not primitives
-// TODO: Implement and/or special forms in Lisp.cpp
-/*
+// and/or are short-circuiting special forms implemented in lisp.cpp
+// (eval_list + eval_step_list). Per R5RS 4.2.1 the false value is #f (false_obj).
 TEST_F(ZombieSchemeTest, AndWithBooleans) {
-    // (and #t #t) returns #t
-    Object* result = eval("(and #t #t)");
-    EXPECT_EQ(result, t);
-
-    // (and #t #f) returns #f
-    result = eval("(and #t #f)");
-    EXPECT_EQ(result, nil);
-
-    // (and #f #t) returns #f (and is short-circuiting)
-    result = eval("(and #f #t)");
-    EXPECT_EQ(result, nil);
+    EXPECT_EQ(eval("(and #t #t)"), t);
+    EXPECT_EQ(eval("(and #t #f)"), false_obj);
+    EXPECT_EQ(eval("(and #f #t)"), false_obj);
 }
 
 TEST_F(ZombieSchemeTest, OrWithBooleans) {
-    // (or #f #f) returns #f
-    Object* result = eval("(or #f #f)");
-    EXPECT_EQ(result, nil);
-
-    // (or #f #t) returns #t
-    result = eval("(or #f #t)");
-    EXPECT_EQ(result, t);
-
-    // (or #t #f) returns #t (or is short-circuiting)
-    result = eval("(or #t #f)");
-    EXPECT_EQ(result, t);
+    EXPECT_EQ(eval("(or #f #f)"), false_obj);
+    EXPECT_EQ(eval("(or #f #t)"), t);
+    EXPECT_EQ(eval("(or #t #f)"), t);
 }
-*/
+
+TEST_F(ZombieSchemeTest, AndOrIdentities) {
+    // (and) => #t, (or) => #f  (R5RS 4.2.1)
+    EXPECT_EQ(eval("(and)"), t);
+    EXPECT_EQ(eval("(or)"), false_obj);
+}
+
+TEST_F(ZombieSchemeTest, AndReturnsLastValue) {
+    // (and e1 ... en) returns the value of en when all are true
+    expectInt("(and 1 2 3)", 3);
+}
+
+TEST_F(ZombieSchemeTest, OrReturnsFirstTrueValue) {
+    // (or e1 ... en) returns the first true value
+    expectInt("(or #f #f 7)", 7);
+}
+
+TEST_F(ZombieSchemeTest, AndShortCircuits) {
+    // The error-raising tail must never be evaluated once a false is seen.
+    EXPECT_EQ(eval("(and #f (error \"should not run\"))"), false_obj);
+}
+
+TEST_F(ZombieSchemeTest, OrShortCircuits) {
+    // The error-raising tail must never be evaluated once a true is seen.
+    expectInt("(or 5 (error \"should not run\"))", 5);
+}
 
 // ----------------------------------------------------------------------------
 // Comparison with Booleans

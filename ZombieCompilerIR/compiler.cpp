@@ -215,7 +215,7 @@ void Compiler::compile_list(Object* list) {
             compile_or(rest(list));
             return;
         }
-        if (name == "call/cc" || name == "call-with-current-Continuation") {
+        if (name == "call/cc" || name == "call-with-current-continuation") {
             compile_callcc(rest(list));
             return;
         }
@@ -535,7 +535,7 @@ void Compiler::compile_or(Object* args) {
 
 void Compiler::compile_callcc(Object* args) {
     // (call/cc proc)
-    // (call-with-current-Continuation proc)
+    // (call-with-current-continuation proc)
 
     if (is_nil(args)) {
         throw std::runtime_error("call/cc: missing Procedure argument");

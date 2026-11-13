@@ -46,8 +46,8 @@ class gc_manager_t : public IGarbageCollector {
 public:
     gc_manager_t()
         : IGarbageCollector(nullptr)  // Will be set after m_alloc is initialized
-        , m_gc_threshold(1024 * 1024)
-        , m_alloc() {
+        , m_alloc()
+        , m_gc_threshold(1024 * 1024) {
         // Now update Base class allocator pointer to our allocator
         // (can't pass &m_allocator to Base constructor - not initialized yet!)
         m_allocator = &m_alloc;
@@ -60,8 +60,8 @@ public:
 
     explicit gc_manager_t(Allocator alloc, size_t gc_threshold = 1024 * 1024)
         : IGarbageCollector(nullptr)  // Will be set after m_alloc is initialized
-        , m_gc_threshold(gc_threshold)
-        , m_alloc(std::move(alloc)) {
+        , m_alloc(std::move(alloc))
+        , m_gc_threshold(gc_threshold) {
         // Now update Base class allocator pointer to our moved allocator
         m_allocator = &m_alloc;
 
@@ -239,9 +239,17 @@ protected:
     }
 
 private:
-    Strategy m_strategy;         // Strategy embedded directly (zero-cost abstraction)
+    // Declaration order matters: the allocator must outlive the strategy.
+    // ~Strategy (e.g. MarkSweepStrategy::shutdown) reclaims surviving objects via
+    // reclaim() -> gc_box::deallocate(m_alloc, ...), so m_alloc must still be alive
+    // when m_strategy is destroyed. Since members destruct in reverse declaration
+    // order, m_alloc is declared FIRST so it is destroyed LAST. (Destroying it first
+    // left a dangling allocator whose virtual deallocate() faulted as a pure-virtual
+    // call during shutdown — see the GenerationalGCStrategy specialization below,
+    // which already orders m_alloc first for the same reason.)
+    Allocator m_alloc;          // Pluggable memory allocator (must be first)
     size_t m_gc_threshold;      // Trigger GC when this is exceeded
-    Allocator m_alloc;          // Pluggable memory allocator
+    Strategy m_strategy;         // Strategy embedded directly (zero-cost abstraction)
 };
 
 // ============================================================================

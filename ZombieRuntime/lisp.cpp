@@ -485,6 +485,22 @@ Object* Lisp::eval_list(Object* x, Environment*env)
         } else {
             return nil;  // unless returns unspecified (nil) when test is true
         }
+    } else if (fn_val == "and") {
+        // R5RS 4.2.1: (and) => #t. Evaluate left to right; on the first false
+        // value, short-circuit and return it; otherwise return the last value.
+        Object* result = (Object*)t;
+        for (Object* a = args; !a->is_nil(); a = rest(a)) {
+            result = new_eval(first(a), env);
+            if (!truth(result)) return result;
+        }
+        return result;
+    } else if (fn_val == "or") {
+        // R5RS 4.2.1: (or) => #f. Return the first true value; else #f.
+        for (Object* a = args; !a->is_nil(); a = rest(a)) {
+            Object* result = new_eval(first(a), env);
+            if (truth(result)) return result;
+        }
+        return (Object*)false_obj;
     } else if (fn_val == "cond") {
         x = reduce_cond(args, env);
         return new_eval(x, env);  // Evaluate and return the chosen branch
@@ -1285,6 +1301,37 @@ eval_result Lisp::eval_step_list(Object* x, Environment* env) {
         } else {
             return eval_result::make_value(nil);  // unless returns unspecified (nil) when test is true
         }
+    }
+    else if (fn_val == "and") {
+        // R5RS 4.2.1: (and) => #t. Short-circuit on the first false value; the
+        // last subexpression is evaluated in tail position for TCO.
+        if (args->is_nil()) return eval_result::make_value((Object*)t);
+        while (!args->is_nil()) {
+            Object* expr = first(args);
+            Object* remaining = rest(args);
+            if (remaining->is_nil()) {
+                return eval_result::make_tailcall(expr, env);  // value is the result
+            }
+            Object* v = new_eval(expr, env);
+            if (!truth(v)) return eval_result::make_value(v);  // short-circuit false
+            args = remaining;
+        }
+        return eval_result::make_value((Object*)t);  // unreachable
+    }
+    else if (fn_val == "or") {
+        // R5RS 4.2.1: (or) => #f. Short-circuit on the first true value; the
+        // last subexpression is evaluated in tail position for TCO.
+        while (!args->is_nil()) {
+            Object* expr = first(args);
+            Object* remaining = rest(args);
+            if (remaining->is_nil()) {
+                return eval_result::make_tailcall(expr, env);  // value is the result
+            }
+            Object* v = new_eval(expr, env);
+            if (truth(v)) return eval_result::make_value(v);  // short-circuit true
+            args = remaining;
+        }
+        return eval_result::make_value((Object*)false_obj);  // (or) => #f
     }
     else if (fn_val == "cond") {
         // reduce_cond returns the expression to evaluate

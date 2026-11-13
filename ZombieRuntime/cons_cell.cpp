@@ -70,7 +70,20 @@ Object * ConsCell::clone() const {
 }
 
 void ConsCell::print(std::ostream &os) const {
-    os << "(" << m_car << " . " << m_cdr << ")";
+    // Print in Scheme list notation: proper lists as (a b c), improper lists
+    // as (a b . c). Walk the spine iteratively so long/nested lists print
+    // without deep recursion and without the old fully-dotted form.
+    os << "(" << m_car;
+    const Object* tail = m_cdr;
+    while (tail && tail->pair()) {
+        const ConsCell* p = static_cast<const ConsCell*>(tail);
+        os << " " << p->m_car;
+        tail = p->m_cdr;
+    }
+    if (tail && !tail->is_nil()) {
+        os << " . " << tail;
+    }
+    os << ")";
 }
 
 int ConsCell::is_atom() const {

@@ -21,6 +21,13 @@
 #include "gc_ptr.h"
 #include <algorithm>
 
+// Absolute path to the test-libs fixtures, normally injected by CMake so the
+// file-loading tests are independent of the process working directory. Fallback
+// to a repo-root-relative path if built outside the CMake target.
+#ifndef ZOMBIE_TEST_LIBS_DIR
+#define ZOMBIE_TEST_LIBS_DIR "test-libs"
+#endif
+
 // ============================================================================
 // Phase 1: Basic Library Infrastructure Tests
 // ============================================================================
@@ -1642,10 +1649,10 @@ TEST_F(R7RSLibraryTest, LoadLibraryFromFile) {
     // Load a library from a .scm file
     // Try multiple possible paths (depends on where test is run from)
     std::vector<std::string> possible_paths = {
+        std::string(ZOMBIE_TEST_LIBS_DIR) + "/my/math.scm",  // CWD-independent (CMake-provided)
         "test-libs/my/math.scm",           // Running from repo root
         "../../test-libs/my/math.scm",     // Running from x64/Debug
-        "../../../test-libs/my/math.scm",  // Running from deeper directory
-        "C:/work/ConsoleApplication2-master/test-libs/my/math.scm"  // Absolute path
+        "../../../test-libs/my/math.scm"   // Running from deeper directory
     };
 
     bool loaded = false;
@@ -1689,10 +1696,10 @@ TEST_F(R7RSLibraryTest, AutoLoadLibraryFromFile) {
     r7rs::bootstrap_standard_libraries(eng->get_environment());
 
     // Add all possible search paths (depends on where test is run from)
+    eng->add_library_search_path(ZOMBIE_TEST_LIBS_DIR);  // CWD-independent (CMake-provided)
     eng->add_library_search_path("test-libs");
     eng->add_library_search_path("../../test-libs");
     eng->add_library_search_path("../../../test-libs");
-    eng->add_library_search_path("C:/work/ConsoleApplication2-master/test-libs");
     eng->set_auto_load_libraries(true);
 
     // Import should automatically load the library from file
@@ -1721,10 +1728,10 @@ TEST_F(R7RSLibraryTest, NestedLibraryDependenciesFromFiles) {
     r7rs::bootstrap_standard_libraries(eng->get_environment());
 
     // Add all possible search paths (depends on where test is run from)
+    eng->add_library_search_path(ZOMBIE_TEST_LIBS_DIR);  // CWD-independent (CMake-provided)
     eng->add_library_search_path("test-libs");
     eng->add_library_search_path("../../test-libs");
     eng->add_library_search_path("../../../test-libs");
-    eng->add_library_search_path("C:/work/ConsoleApplication2-master/test-libs");
     eng->set_auto_load_libraries(true);
 
     // First import the Base library so it's available for the advanced library

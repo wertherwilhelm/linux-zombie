@@ -274,10 +274,13 @@ void GenerationalGCStrategy::minor_collect() {
         // Scan children and copy/forward them
         scan_and_forward_children(obj, free);
 
-        // Advance scan pointer to next block (header + padding + Object)
+        // Advance scan to the next block, applying the same max-align rounding
+        // that copy_object_cheney used when advancing the free pointer, so scan
+        // and free stay in lockstep across the inter-block alignment padding.
         size_t obj_size = header->size;
         size_t total_block_size = sizeof(gc_header) + header->padding + obj_size;
-        scan += total_block_size;
+        constexpr size_t kBlockAlign = alignof(std::max_align_t);
+        scan += (total_block_size + kBlockAlign - 1) & ~(kBlockAlign - 1);
     }
 
     // ========================================================================
@@ -535,8 +538,15 @@ gc_object* GenerationalGCStrategy::copy_object_cheney(gc_object* obj, char*& fre
     // Not promoted - set new age and keep in young gen
     m_young_gen.set_age(new_obj, new_age);
 
-    // Advance free pointer
-    free += total_size;
+    // Advance the free pointer, rounding up to the max-align granule so the
+    // NEXT block's gc_header (and the object inside it) start on an aligned
+    // address. Without this, free drifts to an arbitrary alignment and the next
+    // reinterpret_cast<gc_header*>(free) / object access is misaligned (UB).
+    // The Cheney scan loop advances by the identical rounding to stay in sync.
+    // (Objects over-aligned beyond max_align_t are not supported by the moving
+    // young generation; none exist in the Scheme runtime.)
+    constexpr size_t kBlockAlign = alignof(std::max_align_t);
+    free += (total_size + kBlockAlign - 1) & ~(kBlockAlign - 1);
 
     return new_obj;
 }

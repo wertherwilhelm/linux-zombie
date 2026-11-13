@@ -164,7 +164,7 @@ void bootstrap_scheme_base(Environment* base_env) {
     lib->add_export("dynamic-wind");
 
     // Continuations
-    lib->add_export("call-with-current-Continuation");
+    lib->add_export("call-with-current-continuation");
     lib->add_export("call/cc");
 
     // Error handling

@@ -458,3 +458,28 @@ TEST_F(ZombieSchemeTest, GCStatisticsTracking) {
     
     EXPECT_GE(after.collections_run, before.collections_run);
 }
+
+// ============================================================================
+// IGarbageCollector::deallocate() safety
+// ============================================================================
+// Regression: deallocate() used to call reclaim(), which freed the object's
+// memory but left a dangling entry in MarkSweepStrategy::m_all_objects. The next
+// collect() would then set_marked()/reclaim() the freed pointer again
+// (use-after-free + double free). deallocate() is now a no-op for the tracing GC.
+// Uses a local, isolated gc_manager so the shared global GC is untouched.
+TEST(GCDeallocateSafety, DeallocateThenCollectDoesNotDoubleFree) {
+    gc_manager local;
+
+    size_t base = local.object_count();
+    auto* a = local.allocate<atom<long long>>(7LL);
+    auto* b = local.allocate<atom<long long>>(8LL);
+    (void)b;
+    EXPECT_EQ(local.object_count(), base + 2);
+
+    // Previously a double-free / use-after-free time bomb; must be safe now.
+    local.deallocate(a, sizeof(atom<long long>));
+
+    // Neither object is rooted, so a full collection reclaims both exactly once.
+    local.collect();
+    EXPECT_EQ(local.object_count(), base);
+}

@@ -625,7 +625,7 @@ bool VM::dispatch_special_form(Frame& frame, Object* fn_expr, Object* args) {
 
     // Continuation support (optional)
     if (cont_support) {
-        if (name == "call/cc" || name == "call-with-current-Continuation") {
+        if (name == "call/cc" || name == "call-with-current-continuation") {
             cont_support->handle_callcc(frame, args);
             return true;
         }

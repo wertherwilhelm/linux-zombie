@@ -7,12 +7,15 @@
 #include "../IRootManager.h"
 #include "../concepts.h"
 #include <type_traits>
+#include <stdexcept>
 
-// Forward declarations (to avoid circular dependency)
-namespace gc {
-    class gc_context;
-    IMemoryManager* current();
-}
+// GCPolicy is an adapter over the real tracing collector. It allocates through
+// the current GC context so every object receives a gc_header (type-specific
+// tracer + destructor) and is registered for mark/sweep tracking. Previously it
+// used raw IMemoryManager::allocate(), producing header-less, untracked objects
+// that were invisible to the GC (reclaimed incorrectly / double-freed).
+#include "../../GarbageCollector/gc_object.h"
+#include "../../GarbageCollector/gc_context.h"
 
 namespace memory {
 namespace policies {
@@ -90,24 +93,20 @@ struct GCPolicy {
      */
     template<typename T, typename... Args>
     static T* allocate(Args&&... args) {
-        IMemoryManager* mgr = gc::current();
-        if (!mgr) {
+        static_assert(std::is_base_of_v<gc_object, T>,
+            "GCPolicy manages tracing-GC objects: T must derive from gc_object so "
+            "the collector can install a gc_header and trace/reclaim it correctly.");
+
+        IGarbageCollector* gc = get_current_gc();
+        if (!gc) {
             throw std::runtime_error("No active GC context");
         }
 
-        // Allocate raw memory
-        void* memory = mgr->allocate(sizeof(T), alignof(T));
-        if (!memory) {
-            throw std::bad_alloc();
-        }
-
-        // Construct object
-        try {
-            return new (memory) T(std::forward<Args>(args)...);
-        } catch (...) {
-            mgr->deallocate(memory, sizeof(T));
-            throw;
-        }
+        // Typed, tracked allocation. IGarbageCollector::allocate<T>() routes
+        // through gc_box::allocate (installing the gc_header with the
+        // type-specific tracer + destructor) and then registers the object with
+        // the collector via on_allocate(), so it participates in mark/sweep.
+        return gc->allocate<T>(std::forward<Args>(args)...);
     }
 
     /**
@@ -124,16 +123,12 @@ struct GCPolicy {
      */
     template<typename T>
     static void deallocate(T* ptr) {
-        if (!ptr) return;
-
-        IMemoryManager* mgr = gc::current();
-        if (!mgr) return;
-
-        // Destruct object
-        ptr->~T();
-
-        // Free memory (GC may ignore this)
-        mgr->deallocate(ptr, sizeof(T));
+        // No-op: under a tracing collector the object is reclaimed (and its
+        // destructor run via the gc_header destructor fn) during collection once
+        // it becomes unreachable. Destructing/freeing here would run the dtor
+        // twice and desync GC tracking (double free). Drop references and let the
+        // collector reclaim it instead.
+        (void)ptr;
     }
 
     // ========================================================================
@@ -213,7 +208,7 @@ struct GCPolicy {
      */
     template<typename Owner, typename T>
     static void write_barrier(Owner* owner, T* old_value, T* new_value) {
-        IMemoryManager* mgr = gc::current();
+        IMemoryManager* mgr = get_current_gc();
         if (!mgr) return;
 
         // Check if GC supports write barriers
@@ -249,13 +244,13 @@ struct GCPolicy {
      * Use this when capability depends on runtime GC type.
      */
     static bool has_write_barriers() {
-        IMemoryManager* mgr = gc::current();
+        IMemoryManager* mgr = get_current_gc();
         if (!mgr) return false;
         return dynamic_cast<IWriteBarrier*>(mgr) != nullptr;
     }
 
     static bool has_tracing() {
-        IMemoryManager* mgr = gc::current();
+        IMemoryManager* mgr = get_current_gc();
         if (!mgr) return false;
         return dynamic_cast<ITracer*>(mgr) != nullptr;
     }

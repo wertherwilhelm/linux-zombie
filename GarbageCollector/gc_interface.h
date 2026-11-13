@@ -235,11 +235,20 @@ public:
      * Explicit deallocation only needed for early cleanup before GC runs.
      */
     void deallocate(void* ptr, size_t size) override {
-        // For GC, delegate to reclaim
-        // Non-GC allocators would free immediately
-        if (ptr) {
-            reclaim(static_cast<gc_object*>(ptr));
-        }
+        (void)ptr;
+        (void)size;
+        // Intentionally a no-op for a tracing GC.
+        //
+        // Previously this called reclaim(ptr), which freed the object's memory
+        // but left a dangling entry in the strategy's tracking set
+        // (e.g. MarkSweepStrategy::m_all_objects). The next collection would then
+        // either reclaim the same pointer again (double free) or dereference the
+        // freed vtable during the mark phase (use-after-free).
+        //
+        // Under a tracing collector, manual deallocation is unnecessary and
+        // unsafe: an unreachable object is reclaimed at the next collect(), and a
+        // still-reachable object must NOT be freed here. Callers that need prompt
+        // reclamation should drop their references and run a collection.
     }
 
     /**

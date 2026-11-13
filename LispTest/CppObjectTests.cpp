@@ -10,7 +10,7 @@
 
 TEST_F(ZombieSchemeTest, ObjectBaseVirtualFunctions) {
     // Test that all Object virtual functions work correctly
-    a_double* num = new a_double(42.0);
+    a_double* num = gc_new<a_double>(42.0);
     
     // Virtual function dispatch
     ASSERT_NE(num->clone(), nullptr);
@@ -25,9 +25,9 @@ TEST_F(ZombieSchemeTest, ObjectBaseVirtualFunctions) {
 }
 
 TEST_F(ZombieSchemeTest, ObjectEqualityComparison) {
-    a_double* num1 = new a_double(42.0);
-    a_double* num2 = new a_double(42.0);
-    a_double* num3 = new a_double(99.0);
+    a_double* num1 = gc_new<a_double>(42.0);
+    a_double* num2 = gc_new<a_double>(42.0);
+    a_double* num3 = gc_new<a_double>(99.0);
     
     // Same value objects should be equal
     EXPECT_TRUE(num1->is_equal(num2));
@@ -39,9 +39,9 @@ TEST_F(ZombieSchemeTest, ObjectEqualityComparison) {
 }
 
 TEST_F(ZombieSchemeTest, ObjectIdentityWithEq) {
-    a_double* num1 = new a_double(42.0);
+    a_double* num1 = gc_new<a_double>(42.0);
     a_double* num2 = num1;
-    a_double* num3 = new a_double(42.0);
+    a_double* num3 = gc_new<a_double>(42.0);
     
     // Same pointer = identity
     EXPECT_TRUE(eq(num1, num2));
@@ -51,7 +51,7 @@ TEST_F(ZombieSchemeTest, ObjectIdentityWithEq) {
 }
 
 TEST_F(ZombieSchemeTest, ObjectGCMarkingBasics) {
-    a_double* num = new a_double(42.0);
+    a_double* num = gc_new<a_double>(42.0);
     
     // Initially unmarked
     EXPECT_FALSE(num->is_marked());
@@ -93,7 +93,7 @@ TEST_F(ZombieSchemeTest, ObjectNilAndTSingletons) {
 // ============================================================================
 
 TEST_F(ZombieSchemeTest, AtomDoubleBasics) {
-    a_double* num = new a_double(3.14159);
+    a_double* num = gc_new<a_double>(3.14159);
     
     EXPECT_EQ(num->value(), 3.14159);
     EXPECT_EQ(num->get_type(), static_cast<int>(Type::DOUBLE));
@@ -102,7 +102,7 @@ TEST_F(ZombieSchemeTest, AtomDoubleBasics) {
 }
 
 TEST_F(ZombieSchemeTest, AtomLongBasics) {
-    atom<long long>* num = new atom<long long>(123456789L);
+    atom<long long>* num = gc_new<atom<long long>>(123456789L);
 
     EXPECT_EQ(num->value(), 123456789L);
     EXPECT_EQ(num->get_type(), static_cast<int>(Type::LONG));  // atom<long long> now correctly uses static_cast<int>(Type::LONG) type
@@ -110,7 +110,7 @@ TEST_F(ZombieSchemeTest, AtomLongBasics) {
 }
 
 TEST_F(ZombieSchemeTest, AtomStringBasics) {
-    a_string* str = new a_string("Hello, World!");
+    a_string* str = gc_new<a_string>("Hello, World!");
     
     EXPECT_EQ(str->value(), "Hello, World!");
     EXPECT_EQ(str->get_type(), static_cast<int>(Type::STRING));
@@ -119,7 +119,7 @@ TEST_F(ZombieSchemeTest, AtomStringBasics) {
 }
 
 TEST_F(ZombieSchemeTest, AtomSymbolBasics) {
-    a_symbol* sym = new a_symbol("test-symbol");
+    a_symbol* sym = gc_new<a_symbol>("test-symbol");
     
     EXPECT_EQ(sym->value(), "test-symbol");
     EXPECT_EQ(sym->get_type(), static_cast<int>(Type::SYMBOL));
@@ -127,8 +127,8 @@ TEST_F(ZombieSchemeTest, AtomSymbolBasics) {
 }
 
 TEST_F(ZombieSchemeTest, AtomBoolBasics) {
-    atom<bool>* true_val = new atom<bool>(true);
-    atom<bool>* false_val = new atom<bool>(false);
+    atom<bool>* true_val = gc_new<atom<bool>>(true);
+    atom<bool>* false_val = gc_new<atom<bool>>(false);
     
     EXPECT_TRUE(true_val->value());
     EXPECT_FALSE(false_val->value());
@@ -136,7 +136,7 @@ TEST_F(ZombieSchemeTest, AtomBoolBasics) {
 }
 
 TEST_F(ZombieSchemeTest, AtomCharBasics) {
-    atom<char>* ch = new atom<char>('X');
+    atom<char>* ch = gc_new<atom<char>>('X');
     
     EXPECT_EQ(ch->value(), 'X');
     EXPECT_EQ(ch->get_type(), static_cast<int>(Type::CHAR));
@@ -144,7 +144,7 @@ TEST_F(ZombieSchemeTest, AtomCharBasics) {
 }
 
 TEST_F(ZombieSchemeTest, AtomCloning) {
-    a_double* original = new a_double(42.0);
+    a_double* original = gc_new<a_double>(42.0);
     a_double* cloned = dynamic_cast<a_double*>(original->clone());
     
     ASSERT_NE(cloned, nullptr);
@@ -154,25 +154,25 @@ TEST_F(ZombieSchemeTest, AtomCloning) {
 }
 
 TEST_F(ZombieSchemeTest, AtomEquality) {
-    a_double* d1 = new a_double(3.14);
-    a_double* d2 = new a_double(3.14);
-    a_double* d3 = new a_double(2.71);
+    a_double* d1 = gc_new<a_double>(3.14);
+    a_double* d2 = gc_new<a_double>(3.14);
+    a_double* d3 = gc_new<a_double>(2.71);
     
     EXPECT_TRUE(d1->is_equal(d2));
     EXPECT_FALSE(d1->is_equal(d3));
     
-    a_string* s1 = new a_string("test");
-    a_string* s2 = new a_string("test");
-    a_string* s3 = new a_string("other");
+    a_string* s1 = gc_new<a_string>("test");
+    a_string* s2 = gc_new<a_string>("test");
+    a_string* s3 = gc_new<a_string>("other");
     
     EXPECT_TRUE(s1->is_equal(s2));
     EXPECT_FALSE(s1->is_equal(s3));
 }
 
 TEST_F(ZombieSchemeTest, AtomTypeChecking) {
-    a_double* d = new a_double(1.0);
-    a_string* s = new a_string("test");
-    atom<long long>* l = new atom<long long>(100);
+    a_double* d = gc_new<a_double>(1.0);
+    a_string* s = gc_new<a_string>("test");
+    atom<long long>* l = gc_new<atom<long long>>(100);
 
     EXPECT_EQ(d->get_type(), static_cast<int>(Type::DOUBLE));
     EXPECT_EQ(s->get_type(), static_cast<int>(Type::STRING));
@@ -190,8 +190,8 @@ TEST_F(ZombieSchemeTest, AtomTypeChecking) {
 }
 
 TEST_F(ZombieSchemeTest, AtomStringSymbolDistinction) {
-    a_string* str = new a_string("name");
-    a_symbol* sym = new a_symbol("name");
+    a_string* str = gc_new<a_string>("name");
+    a_symbol* sym = gc_new<a_symbol>("name");
     
     // Same value but different types
     EXPECT_EQ(str->value(), sym->value());
@@ -204,10 +204,10 @@ TEST_F(ZombieSchemeTest, AtomStringSymbolDistinction) {
 // ============================================================================
 
 TEST_F(ZombieSchemeTest, ConsBasicConstruction) {
-    a_double* car_val = new a_double(1.0);
-    a_double* cdr_val = new a_double(2.0);
+    a_double* car_val = gc_new<a_double>(1.0);
+    a_double* cdr_val = gc_new<a_double>(2.0);
     
-    ConsCell* cell = new ConsCell(car_val, cdr_val);
+    ConsCell* cell = gc_new<ConsCell>(car_val, cdr_val);
     
     EXPECT_NE(cell->car(), nullptr);
     EXPECT_NE(cell->cdr(), nullptr);
@@ -216,8 +216,8 @@ TEST_F(ZombieSchemeTest, ConsBasicConstruction) {
 }
 
 TEST_F(ZombieSchemeTest, ConsCarCdrAccess) {
-    a_double* num1 = new a_double(42.0);
-    a_double* num2 = new a_double(99.0);
+    a_double* num1 = gc_new<a_double>(42.0);
+    a_double* num2 = gc_new<a_double>(99.0);
     
     ConsCell* cell = cons(num1, num2);
     
@@ -231,7 +231,7 @@ TEST_F(ZombieSchemeTest, ConsCarCdrAccess) {
 }
 
 TEST_F(ZombieSchemeTest, ConsWithNil) {
-    a_double* num = new a_double(42.0);
+    a_double* num = gc_new<a_double>(42.0);
     ConsCell* cell = cons(num, nil);
     
     EXPECT_EQ(cell->cdr(), nil);
@@ -240,8 +240,8 @@ TEST_F(ZombieSchemeTest, ConsWithNil) {
 
 TEST_F(ZombieSchemeTest, ConsNestedStructure) {
     // Create ((1 . 2) . (3 . 4))
-    ConsCell* inner1 = cons(new a_double(1.0), new a_double(2.0));
-    ConsCell* inner2 = cons(new a_double(3.0), new a_double(4.0));
+    ConsCell* inner1 = cons(gc_new<a_double>(1.0), gc_new<a_double>(2.0));
+    ConsCell* inner2 = cons(gc_new<a_double>(3.0), gc_new<a_double>(4.0));
     ConsCell* outer = cons(inner1, inner2);
     
     EXPECT_TRUE(is_pair(outer->car()));
@@ -250,9 +250,9 @@ TEST_F(ZombieSchemeTest, ConsNestedStructure) {
 
 TEST_F(ZombieSchemeTest, ConsListConstruction) {
     // Build (1 2 3) as (1 . (2 . (3 . nil)))
-    ConsCell* cell3 = cons(new a_double(3.0), nil);
-    ConsCell* cell2 = cons(new a_double(2.0), cell3);
-    ConsCell* cell1 = cons(new a_double(1.0), cell2);
+    ConsCell* cell3 = cons(gc_new<a_double>(3.0), nil);
+    ConsCell* cell2 = cons(gc_new<a_double>(2.0), cell3);
+    ConsCell* cell1 = cons(gc_new<a_double>(1.0), cell2);
     
     // Verify structure
     EXPECT_FALSE(is_nil(cell1));
@@ -262,7 +262,7 @@ TEST_F(ZombieSchemeTest, ConsListConstruction) {
 }
 
 TEST_F(ZombieSchemeTest, ConsCloning) {
-    ConsCell* original = cons(new a_double(1.0), new a_double(2.0));
+    ConsCell* original = cons(gc_new<a_double>(1.0), gc_new<a_double>(2.0));
     ConsCell* cloned = dynamic_cast<ConsCell*>(original->clone());
     
     ASSERT_NE(cloned, nullptr);
@@ -274,12 +274,12 @@ TEST_F(ZombieSchemeTest, ConsCloning) {
 
 TEST_F(ZombieSchemeTest, ConsEquality) {
     // Note: ConsCell::is_equal performs structural equality (like Scheme's equal?)
-    a_double* num1 = new a_double(1.0);
-    a_double* num2 = new a_double(2.0);
+    a_double* num1 = gc_new<a_double>(1.0);
+    a_double* num2 = gc_new<a_double>(2.0);
 
     ConsCell* cell1 = cons(num1, num2);
     ConsCell* cell2 = cons(num1, num2);  // Shares same objects
-    ConsCell* cell3 = cons(new a_double(1.0), new a_double(2.0));  // Different objects, same values
+    ConsCell* cell3 = cons(gc_new<a_double>(1.0), gc_new<a_double>(2.0));  // Different objects, same values
 
     // cell1 and cell2 share the same car and cdr pointers - structurally equal
     EXPECT_TRUE(cell1->is_equal(cell2));
@@ -288,20 +288,20 @@ TEST_F(ZombieSchemeTest, ConsEquality) {
     EXPECT_TRUE(cell1->is_equal(cell3));
 
     // Different values should not be equal
-    ConsCell* cell4 = cons(new a_double(3.0), new a_double(4.0));
+    ConsCell* cell4 = cons(gc_new<a_double>(3.0), gc_new<a_double>(4.0));
     EXPECT_FALSE(cell1->is_equal(cell4));
 }
 
 TEST_F(ZombieSchemeTest, ConsModification) {
-    ConsCell* cell = cons(new a_double(1.0), new a_double(2.0));
+    ConsCell* cell = cons(gc_new<a_double>(1.0), gc_new<a_double>(2.0));
     
     // Modify car
-    cell->car(new a_double(99.0));
+    cell->car(gc_new<a_double>(99.0));
     a_double* new_car = dynamic_cast<a_double*>(cell->car());
     EXPECT_EQ(new_car->value(), 99.0);
     
     // Modify cdr
-    cell->cdr(new a_double(88.0));
+    cell->cdr(gc_new<a_double>(88.0));
     a_double* new_cdr = dynamic_cast<a_double*>(cell->cdr());
     EXPECT_EQ(new_cdr->value(), 88.0);
 }
@@ -320,9 +320,9 @@ TEST_F(ZombieSchemeTest, TypeEnumValues) {
 }
 
 TEST_F(ZombieSchemeTest, TypeCheckerFunctions) {
-    a_double* d = new a_double(1.0);
-    a_string* s = new a_string("test");
-    a_symbol* sym = new a_symbol("sym");
+    a_double* d = gc_new<a_double>(1.0);
+    a_string* s = gc_new<a_string>("test");
+    a_symbol* sym = gc_new<a_symbol>("sym");
     
     EXPECT_TRUE(is_double(d));
     EXPECT_FALSE(is_double(s));
@@ -335,8 +335,8 @@ TEST_F(ZombieSchemeTest, TypeCheckerFunctions) {
 }
 
 TEST_F(ZombieSchemeTest, TypeAtomVsPairDistinction) {
-    a_double* atom_obj = new a_double(1.0);
-    ConsCell* pair_obj = cons(new a_double(1.0), nil);
+    a_double* atom_obj = gc_new<a_double>(1.0);
+    ConsCell* pair_obj = cons(gc_new<a_double>(1.0), nil);
     
     EXPECT_TRUE(is_atom(atom_obj));
     EXPECT_FALSE(is_pair(atom_obj));
@@ -358,7 +358,7 @@ TEST_F(ZombieSchemeTest, TypeNilSpecialCase) {
 
 TEST_F(ZombieSchemeTest, MixedTypeConsCells) {
     // Car is string, cdr is number
-    ConsCell* cell = cons(new a_string("hello"), new a_double(42.0));
+    ConsCell* cell = cons(gc_new<a_string>("hello"), gc_new<a_double>(42.0));
     
     a_string* str = dynamic_cast<a_string*>(cell->car());
     a_double* num = dynamic_cast<a_double*>(cell->cdr());
@@ -372,11 +372,11 @@ TEST_F(ZombieSchemeTest, MixedTypeConsCells) {
 TEST_F(ZombieSchemeTest, MixedTypeList) {
     // Build (42 "hello" 'symbol)
     ConsCell* list = cons(
-        new a_double(42.0),
+        gc_new<a_double>(42.0),
         cons(
-            new a_string("hello"),
+            gc_new<a_string>("hello"),
             cons(
-                new a_symbol("symbol"),
+                gc_new<a_symbol>("symbol"),
                 nil
             )
         )
@@ -404,8 +404,8 @@ TEST_F(ZombieSchemeTest, MixedTypeList) {
 
 TEST_F(ZombieSchemeTest, NestedMixedTypes) {
     // Create (("string" . 1) . (symbol . 2))
-    ConsCell* inner1 = cons(new a_string("string"), new a_double(1.0));
-    ConsCell* inner2 = cons(new a_symbol("symbol"), new a_double(2.0));
+    ConsCell* inner1 = cons(gc_new<a_string>("string"), gc_new<a_double>(1.0));
+    ConsCell* inner2 = cons(gc_new<a_symbol>("symbol"), gc_new<a_double>(2.0));
     ConsCell* outer = cons(inner1, inner2);
     
     // Navigate and verify
@@ -438,7 +438,7 @@ TEST_F(ZombieSchemeTest, ObjectSizeReasonable) {
 
 TEST_F(ZombieSchemeTest, ObjectPointerSafety) {
     // Verify we can safely cast and use pointers
-    Object* obj = new a_double(42.0);
+    Object* obj = gc_new<a_double>(42.0);
     
     // Should be able to use as Object*
     EXPECT_EQ(obj->get_type(), static_cast<int>(Type::DOUBLE));
@@ -452,10 +452,10 @@ TEST_F(ZombieSchemeTest, ObjectPointerSafety) {
 TEST_F(ZombieSchemeTest, ObjectPolymorphism) {
     // Store different types as Object* and verify polymorphic behavior
     std::vector<gc_object*> objects;
-    objects.push_back(new a_double(1.0));
-    objects.push_back(new a_string("test"));
-    objects.push_back(new a_symbol("sym"));
-    objects.push_back(cons(new a_double(1.0), nil));
+    objects.push_back(gc_new<a_double>(1.0));
+    objects.push_back(gc_new<a_string>("test"));
+    objects.push_back(gc_new<a_symbol>("sym"));
+    objects.push_back(cons(gc_new<a_double>(1.0), nil));
 
     // Atoms should have specific types, cons cells have static_cast<int>(Type::NOTYPE) (0)
     EXPECT_EQ(static_cast<Object*>(objects[0])->get_type(), static_cast<int>(Type::DOUBLE));
@@ -477,9 +477,9 @@ TEST_F(ZombieSchemeTest, ObjectPolymorphism) {
 
 TEST_F(ZombieSchemeTest, NumericBoundaries) {
     // Test extreme numeric values
-    a_double* max_double = new a_double(std::numeric_limits<double>::max());
-    a_double* min_double = new a_double(std::numeric_limits<double>::min());
-    a_double* infinity = new a_double(std::numeric_limits<double>::infinity());
+    a_double* max_double = gc_new<a_double>(std::numeric_limits<double>::max());
+    a_double* min_double = gc_new<a_double>(std::numeric_limits<double>::min());
+    a_double* infinity = gc_new<a_double>(std::numeric_limits<double>::infinity());
     
     EXPECT_TRUE(std::isfinite(max_double->value()));
     EXPECT_TRUE(std::isfinite(min_double->value()));
@@ -491,7 +491,7 @@ TEST_F(ZombieSchemeTest, NumericBoundaries) {
 }
 
 TEST_F(ZombieSchemeTest, EmptyStringAtom) {
-    a_string* empty = new a_string("");
+    a_string* empty = gc_new<a_string>("");
     
     EXPECT_TRUE(empty->value().empty());
     EXPECT_EQ(empty->get_type(), static_cast<int>(Type::STRING));
@@ -507,7 +507,7 @@ TEST_F(ZombieSchemeTest, EmptyStringAtom) {
 
 TEST_F(ZombieSchemeTest, VeryLongString) {
     std::string long_str(10000, 'X');
-    a_string* long_atom = new a_string(long_str);
+    a_string* long_atom = gc_new<a_string>(long_str);
     
     EXPECT_EQ(long_atom->value().length(), 10000);
     
@@ -519,7 +519,7 @@ TEST_F(ZombieSchemeTest, VeryLongString) {
 
 TEST_F(ZombieSchemeTest, SpecialCharactersInString) {
     // Use std::string constructor with length to preserve embedded null
-    a_string* special = new a_string(std::string("Hello\nWorld\t\r\0Test", 17));
+    a_string* special = gc_new<a_string>(std::string("Hello\nWorld\t\r\0Test", 17));
 
     EXPECT_EQ(special->get_type(), static_cast<int>(Type::STRING));
     EXPECT_GE(special->value().length(), 15);
@@ -527,7 +527,7 @@ TEST_F(ZombieSchemeTest, SpecialCharactersInString) {
 
 TEST_F(ZombieSchemeTest, ConsWithSelfReference) {
     // Note: This creates a circular structure - only safe with GC
-    ConsCell* cell = cons(new a_double(1.0), nil);
+    ConsCell* cell = cons(gc_new<a_double>(1.0), nil);
     // Don't actually create the cycle in the test as it could cause issues
     // Just verify the mechanism exists
     
@@ -537,7 +537,7 @@ TEST_F(ZombieSchemeTest, ConsWithSelfReference) {
 
 TEST_F(ZombieSchemeTest, DeepNesting) {
     // Create a deeply nested structure: ((((42))))
-    Object* core = new a_double(42.0);
+    Object* core = gc_new<a_double>(42.0);
     
     for (int i = 0; i < 10; i++) {
         core = cons(core, nil);
@@ -561,7 +561,7 @@ TEST_F(ZombieSchemeTest, DeepNesting) {
 // ============================================================================
 
 TEST_F(ZombieSchemeTest, ObjectGCTracing) {
-    ConsCell* cell = cons(new a_double(1.0), new a_double(2.0));
+    ConsCell* cell = cons(gc_new<a_double>(1.0), gc_new<a_double>(2.0));
 
     // Should be able to trace references without crashing
     std::vector<gc_object*> worklist;
@@ -575,11 +575,11 @@ TEST_F(ZombieSchemeTest, ObjectGCTracing) {
 TEST_F(ZombieSchemeTest, MultipleObjectsGCMarking) {
     // Create a structure and verify marking propagates
     ConsCell* list = cons(
-        new a_double(1.0),
+        gc_new<a_double>(1.0),
         cons(
-            new a_double(2.0),
+            gc_new<a_double>(2.0),
             cons(
-                new a_double(3.0),
+                gc_new<a_double>(3.0),
                 nil
             )
         )

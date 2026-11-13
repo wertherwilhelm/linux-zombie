@@ -120,6 +120,11 @@ if(ZOMBIE_BUILD_TESTS)
     "GCBoxTests\\.cpp$")
   add_executable(LispTest ${TEST_SRCS})
   target_link_libraries(LispTest PRIVATE ZombieLib)
+  # Absolute path to the test fixtures so file-loading tests work regardless of the
+  # process CWD (e.g. running ./LispTest from the build dir, not just via ctest's
+  # WORKING_DIRECTORY). Replaces the old hardcoded Windows paths in the tests.
+  target_compile_definitions(LispTest PRIVATE
+    "ZOMBIE_TEST_LIBS_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/test-libs\"")
   if(TARGET gtest)
     target_link_libraries(LispTest PRIVATE gtest gtest_main)
   else()
@@ -129,13 +134,15 @@ if(ZOMBIE_BUILD_TESTS)
   enable_testing()
   include(GoogleTest)
   # Register every gtest case as its own CTest entry so `ctest` lists and
-  # reports all ~1269 tests individually (not one bundled entry).
+  # reports all tests individually (not one bundled entry).
   #
-  # The experimental templated-GC tests (gc_manager_t) crash on Linux/glibc with
-  # "pure virtual method called": mark_sweep_strategy.cpp calls trace_references()
-  # on a dangling object (a pre-existing bug the author documented as DISABLED).
-  # They are filtered out of discovery so they are neither listed nor run here.
-  # Run them explicitly with: ./LispTest --gtest_filter=GCAllocatorTest.*
+  # The experimental templated-GC tests (gc_manager_t, GCAllocatorTest.*) used to
+  # crash on Linux/glibc with "pure virtual method called". Root cause was a
+  # member-destruction-order bug in gc_manager_template.h: the allocator was
+  # destroyed before the strategy, so MarkSweepStrategy::shutdown() reclaimed
+  # surviving objects through an already-destroyed allocator (virtual deallocate()
+  # faulted as a pure-virtual call). Fixed by declaring m_alloc before m_strategy.
+  # The tests now pass under both -O0 and -fsanitize=address, so they run in CI.
   #
   # WORKING_DIRECTORY is the repo root so the R7RSLibraryTest cases find test-libs/.
   # The file-IO suites share fixed scratch files (e.g. test_io_read.txt,
@@ -147,9 +154,9 @@ if(ZOMBIE_BUILD_TESTS)
   set(ZOMBIE_FILEIO_FILTER
       "R7RSIOTest.*:R7RSBytevectorIOTest.*:R7RSBytevectorBlockIOTest.*:LoadTest.*")
 
-  # Parallel-safe cases: everything except the experimental GC and file-IO suites.
+  # Parallel-safe cases: everything except the file-IO suites.
   gtest_discover_tests(LispTest
-    TEST_FILTER "-GCAllocatorTest.*:${ZOMBIE_FILEIO_FILTER}"
+    TEST_FILTER "-${ZOMBIE_FILEIO_FILTER}"
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
     DISCOVERY_TIMEOUT 60)
 

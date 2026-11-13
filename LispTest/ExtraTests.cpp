@@ -59,11 +59,17 @@ TEST_F(ZombieSchemeTest, GCRootsDoNotLeakAfterRemoval) {
     // Note: interpreter and env are already protected by the test fixture
     // Create some permanent guard objects to ensure heap isn't empty
     // (prevents potential edge cases in GC)
+    // IMPORTANT: a persistent root must point at a slot that outlives the
+    // registration. Register the address of the *vector element* (stable because
+    // we reserve() up front), NOT the address of a loop-local — the latter dangles
+    // the moment the iteration ends, so mark() would dereference dead stack (an
+    // ASan stack-use-after-scope), and the root could never be removed since the
+    // cleanup loop below sees a different address.
     std::vector<a_double*> guards;
+    guards.reserve(5);
     for (int i = 0; i < 5; i++) {
-        auto* guard = gc->allocate<a_double>(i * 100.0);
-        gc->add_root(reinterpret_cast<void**>(&guard));
-        guards.push_back(guard);
+        guards.push_back(gc->allocate<a_double>(i * 100.0));
+        gc->add_root(reinterpret_cast<void**>(&guards.back()));
     }
     // Create the test Object and add it as a root
     a_double* rooted = gc->allocate<a_double>(5678.0);
