@@ -2,6 +2,7 @@
 
 #include "Base.h"
 #include "../GarbageCollector/gc_tracer.h"
+#include "../GarbageCollector/gc_ptr.h"  // For gc_new
 
 namespace zombie { namespace runtime {
 
@@ -57,7 +58,7 @@ public:
     /**
      * @brief Clone this values Object.
      */
-    Object* clone() const override { return new ValuesObject(m_values); }
+    Object* clone() const override { return gc_new<ValuesObject>(m_values); }
 
     /**
      * @brief Trace referenced objects for GC.

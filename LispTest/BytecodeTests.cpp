@@ -48,6 +48,10 @@ protected:
         // Cleanup is handled by GC
         delete reader;
 
+        // vm is a plain (non-GC) object new'd in SetUp; it (and its wind stack /
+        // internal buffers) leaked every test because it was never deleted here.
+        delete vm;
+
         // Unregister GC root
         delete guard_env;
     }
@@ -483,9 +487,12 @@ TEST_F(BytecodeVMTest, BytecodeDeeplyNestedExpressions) {
 // ============================================================================
 
 TEST_F(BytecodeVMTest, BytecodeMatchesASTInterpreter) {
-    // Create AST interpreter for comparison
-    Lisp* ast_interp = new Lisp();
-    Environment* ast_env = new Environment();
+    // Create AST interpreter for comparison. gc->allocate (not raw new): Lisp and
+    // Environment are GC objects — raw new leaked them. Root-guard them for the test.
+    Lisp* ast_interp = gc->allocate<Lisp>();
+    Environment* ast_env = gc->allocate<Environment>();
+    gc_root_guard guard_ast_interp((Object*)ast_interp);
+    gc_root_guard guard_ast_env((Object*)ast_env);
     zombie::runtime::Primitive::install_primitives(ast_env);
     ast_interp->set_environment(ast_env);
 

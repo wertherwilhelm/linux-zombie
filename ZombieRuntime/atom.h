@@ -336,7 +336,9 @@ int atom<T>::pair() const {
 
 template <class T>
 Object* atom<T>::clone() const {
-    atom<T> *t = new atom<T>(*this);
+    // gc_new (not raw new): the runtime never deletes clones — GC owns their
+    // lifetime — so a raw new here leaks. Matches a_symbol::clone().
+    atom<T> *t = gc_new<atom<T>>(*this);
     return (Object*)t;
 }
 
@@ -358,12 +360,12 @@ inline int atom<T>::get_type() const {
 
 template <class T, class U>
 atom<T>* cast_atom(Object* o) {
-    return new atom<T>(((atom<U>*)o)->value());
+    return gc_new<atom<T>>(((atom<U>*)o)->value());
 }
 
 template <class T>
 atom<T>* cast_atom(Object* o) {
-    return new atom<T>(((atom<T>*)o)->value());
+    return gc_new<atom<T>>(((atom<T>*)o)->value());
 }
 
 template <class T>

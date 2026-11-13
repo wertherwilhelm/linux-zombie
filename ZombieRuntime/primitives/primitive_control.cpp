@@ -591,8 +591,8 @@ Object* PrimitiveControl::apply(IEvaluator* evaluator, Object* args, Environment
                 // Single value - return it directly (R5RS requirement)
                 return first(args);
             } else {
-                // Multiple values - wrap in ValuesObject
-                return new ValuesObject(args);
+                // Multiple values - wrap in ValuesObject (gc_new: GC-owned, not leaked)
+                return gc_new<ValuesObject>(args);
             }
         }
 

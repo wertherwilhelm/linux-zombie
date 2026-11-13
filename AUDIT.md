@@ -246,22 +246,24 @@ under ASan — no errors and no leaks — at both `-O0` and ASan builds (re-veri
 > (b) run with `ASAN_OPTIONS=detect_leaks=0`; or (c) add an LSan suppression. Left
 > for the user to decide.
 
-> **Full-binary leak baseline (measured 2026-11-13):** the complete `LispTest` binary
-> under ASan is **1291/1291 pass, zero memory errors, but 303 leaks / ~69 KB**. The
-> leaks are spread across *production* paths, not just tests — notably `atom.h`
-> `cast_atom` (`return new atom<T>(...)` — **raw `new`**, used by `is_equal` and the
-> numeric tower), plus unrooted GC allocations surfacing through `bytecode_vm.cpp`,
-> `lisp.cpp`, `closure.cpp`, `primitive_control.cpp`, and a handful in tests. None are
-> caused by the GC fixes (confirmed: GC suite is leak-clean). A single teardown
-> `gc->collect()` would NOT fix these: the `cast_atom` ones are raw-`new` (never
-> GC-tracked), and the GC-tracked ones are already reachable from the global `gc`'s
-> object list (so LSan wouldn't flag them anyway — meaning the flagged GC-shaped ones
-> escaped tracking via some non-`gc_new` path). Making the binary truly leak-free means
-> auditing/rewriting production clone + allocation paths (e.g. `cast_atom` → `gc_new`,
-> and rooting/clearing VM temporaries) — a separate, larger, behavior-sensitive effort.
-> **Recommendation for routine ASan use:** run with `ASAN_OPTIONS=detect_leaks=0` (ASan
-> still catches the error classes it reliably finds here) or add a scoped LSan
-> suppression for these known sites; defer the production leak cleanup as its own task.
+> **Full-binary leak status (2026-11-13): ✅ LEAK-CLEAN.** The complete `LispTest`
+> binary under ASan is now **1291/1291 pass, zero memory errors, zero leaks** (down
+> from 303 leaks / ~69 KB at baseline). Fixes applied (see Fix log §5-leaks below):
+> - `atom.h` `atom<T>::clone()` and both `cast_atom<>` overloads: raw `new atom<T>`
+>   → `gc_new<atom<T>>` (the bulk — `clone()`, `is_equal`, numeric-tower comparisons).
+> - `values_object.h` `ValuesObject::clone()` and `primitive_control.cpp` `(values …)`:
+>   raw `new ValuesObject` → `gc_new<ValuesObject>` (the `call-with-values` leaks in
+>   `MissingR5RSTests`/`NumericTowerTests`).
+> - `LispTest/BytecodeTests.cpp`: `TearDown()` now `delete vm;` (the biggest leak — the
+>   non-GC `BytecodeVM` plus its wind stack / internal buffers leaked every test), and
+>   `BytecodeMatchesASTInterpreter` uses `gc->allocate` + `gc_root_guard` instead of
+>   raw `new Lisp()` / `new Environment()`.
+>
+> Why `gc_new` fixes the "leak": GC-tracked objects are held in the global `gc`'s
+> object list, which LSan reaches from the global `gc` pointer — so they count as
+> reachable, not leaked. The raw-`new` clones bypassed the GC entirely and were never
+> freed. Converting them is also the correct ownership model (GC owns clone lifetime).
+> Routine ASan runs no longer need `detect_leaks=0`.
 
 Older suppressions, now partly resolved:
 - `and`/`or` tests commented out (§1.1).  ✅ re-enabled
