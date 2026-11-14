@@ -248,7 +248,7 @@ Object* scheme_reader::read_quoted() {
     gc_root<Object> guard(expr);
 
     // Return (quote <expr>)
-    return cons(gc_new<a_string>("quote"), cons(expr, nil));
+    return cons(intern_symbol("quote"), cons(expr, nil));
 }
 
 Object* scheme_reader::read_quasiquote() {
@@ -269,7 +269,7 @@ Object* scheme_reader::read_quasiquote() {
     gc_root<Object> guard(expr);
 
     // Return (quasiquote <expr>)
-    return cons(gc_new<a_string>("quasiquote"), cons(expr, nil));
+    return cons(intern_symbol("quasiquote"), cons(expr, nil));
 }
 
 Object* scheme_reader::read_unquote() {
@@ -294,7 +294,7 @@ Object* scheme_reader::read_unquote() {
         gc_root<Object> guard(expr);
 
         // Return (unquote-splicing <expr>)
-        return cons(gc_new<a_string>("unquote-splicing"), cons(expr, nil));
+        return cons(intern_symbol("unquote-splicing"), cons(expr, nil));
     }
 
     // Just , (unquote)
@@ -313,7 +313,7 @@ Object* scheme_reader::read_unquote() {
     gc_root<Object> guard(expr);
 
     // Return (unquote <expr>)
-    return cons(gc_new<a_string>("unquote"), cons(expr, nil));
+    return cons(intern_symbol("unquote"), cons(expr, nil));
 }
 
 Object* scheme_reader::read_atom() {

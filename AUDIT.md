@@ -388,11 +388,17 @@ Bugs found + FIXED in this pass:
 - `cond` with an **atomic test** (`#t`, a symbol) produced an empty result var → use
   `atomic_to_atom`.
 - Pre-existing leak: `SchemeToCoreirLowering` never freed its `Expander` → `unique_ptr`.
-Remaining known gaps (documented, excluded from tests): the empty-list literal `'()` /
-`null?` (a nil-vs-`empty_list` issue, likely in the bytecode VM, not lowering); and the
-`'` reader shorthand inside a cond branch via CoreIR (explicit `(quote X)` works). The
-`inline_stmt_chain` clone-not-implemented (1449) and a JIT backend remain unstarted.
-Still tooling-only: the engine exposes no `--coreir` evaluator.
+- `'` reader shorthand was structurally different from `(quote X)`: the reader built the
+  quote/quasiquote/unquote keywords with `gc_new<a_string>` instead of `intern_symbol`,
+  so the keyword was a STRING not a SYMBOL (the tree-walk was lenient, CoreIR was not).
+  Fixed in `scheme_reader.cpp` → now interned symbols (consistent with how `quote` reads
+  elsewhere). This also fixed `'()`.
+- quote was not stripped for **primitive arguments** (five copies of inline atomic-arg
+  lowering, each doing `makeLit(arg)` on `(quote X)`): `(null? '())` saw a pair → `#f`,
+  `(car '(1 2))` returned the symbol `quote`. All five now route through `atomic_to_atom`.
+Now **30 CoreIR tests pass** (incl. differential vs tree-walk over quote/cond/null?/list
+ops). Remaining unstarted: `inline_stmt_chain` clone (1449) and a JIT backend; and the
+engine still exposes no `--coreir` evaluator (wiring is the next step).
 
 ---
 

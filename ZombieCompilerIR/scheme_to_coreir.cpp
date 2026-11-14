@@ -301,13 +301,11 @@ std::unique_ptr<Expr> SchemeToCoreirLowering::lower_primitive_call(const std::st
     while (current && current != nil && current != empty_list) {
         Object* arg = car(current);
 
-        // Convert argument to atom
+        // Convert argument to atom (atomic_to_atom strips quote: (quote X) -> datum X;
+        // previously this inlined makeLit(arg) and passed e.g. (quote ()) unstripped, so
+        // (null? '()) saw a pair and (car '(1 2)) returned the symbol `quote`).
         if (is_atomic(arg)) {
-            if (arg->get_type() == static_cast<int>(Type::SYMBOL)) {
-                atom_args.push_back(Atom::makeVar(get_symbol_name(arg)));
-            } else {
-                atom_args.push_back(Atom::makeLit(arg));
-            }
+            atom_args.push_back(atomic_to_atom(arg));
         } else {
             // Non-atomic argument: this will be handled by caller
             // For now in Expr context, we can't create Let bindings
@@ -336,12 +334,8 @@ std::unique_ptr<Stmt> SchemeToCoreirLowering::lower_primitive_call_stmt(const st
         Object* arg = car(current);
 
         if (is_atomic(arg)) {
-            // Atomic argument: use directly
-            if (arg->get_type() == static_cast<int>(Type::SYMBOL)) {
-                atom_args.push_back(Atom::makeVar(get_symbol_name(arg)));
-            } else {
-                atom_args.push_back(Atom::makeLit(arg));
-            }
+            // Atomic argument: use directly (atomic_to_atom strips quote consistently)
+            atom_args.push_back(atomic_to_atom(arg));
         } else {
             // Complex argument: lower to full Stmt chain
             auto arg_stmt = lower_expr(arg);
@@ -462,11 +456,7 @@ std::unique_ptr<Expr> SchemeToCoreirLowering::lower_call(Object* func, Object* a
         Object* arg = car(current);
 
         if (is_atomic(arg)) {
-            if (arg->get_type() == static_cast<int>(Type::SYMBOL)) {
-                atom_args.push_back(Atom::makeVar(get_symbol_name(arg)));
-            } else {
-                atom_args.push_back(Atom::makeLit(arg));
-            }
+            atom_args.push_back(atomic_to_atom(arg));  // strips quote consistently
         } else {
             throw std::runtime_error("Non-atomic call arguments must be normalized by caller");
         }
@@ -859,13 +849,8 @@ std::unique_ptr<Stmt> SchemeToCoreirLowering::lower_values(Object* args) {
         Object* arg = car(current);
 
         if (is_atomic(arg)) {
-            // Atomic argument: use directly
-            if (arg->get_type() == static_cast<int>(Type::SYMBOL)) {
-                atom_args.push_back(Atom::makeVar(get_symbol_name(arg)));
-            } else {
-                TypeHint hint = infer_type(arg);
-                atom_args.push_back(Atom::makeLit(arg, hint));
-            }
+            // Atomic argument: use directly (atomic_to_atom strips quote consistently)
+            atom_args.push_back(atomic_to_atom(arg));
         } else {
             // Complex argument: lower to full Stmt chain
             auto arg_stmt = lower_expr(arg);
@@ -1214,11 +1199,7 @@ std::unique_ptr<Stmt> SchemeToCoreirLowering::lower_expr(Object* scheme_expr) {
         Object* arg = car(current);
 
         if (is_atomic(arg)) {
-            if (arg->get_type() == static_cast<int>(Type::SYMBOL)) {
-                atom_args.push_back(Atom::makeVar(get_symbol_name(arg)));
-            } else {
-                atom_args.push_back(Atom::makeLit(arg));
-            }
+            atom_args.push_back(atomic_to_atom(arg));  // strips quote consistently
         } else {
             // Complex argument - normalize it
             auto arg_stmt = lower_expr(arg);

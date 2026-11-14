@@ -74,7 +74,7 @@ TEST_F(CoreIRPipelineTest, DifferentialVsTreeWalk) {
         "         (odd?  (lambda (n) (if (= n 0) #f (even? (- n 1)))))) (even? 10))",
         "(let loop ((i 0) (s 0)) (if (< i 100) (loop (+ i 1) (+ s i)) s))",
         "((lambda (a b c) (+ a (* b c))) 1 2 3)",
-        "(cond ((= 1 2) (quote a)) ((= 2 2) (quote b)) (else (quote c)))",
+        "(cond ((= 1 2) 'a) ((= 2 2) 'b) (else 'c))",
         "(and 1 2 3)",
         "(or #f #f 7)",
         "(begin (define z 5) (set! z (* z z)) z)",
@@ -82,10 +82,8 @@ TEST_F(CoreIRPipelineTest, DifferentialVsTreeWalk) {
         "(cdr (list 1 2 3))",
         "(length (list 1 2 3 4))",
         "(not #f)",
-        // KNOWN GAP (AUDIT §2.2): the empty-list literal '() lowers such that
-        // (null? '()) is wrong / "CALL: not a Procedure" (a nil-vs-empty_list issue,
-        // not CoreIR lowering). Excluded until addressed.
-        // "(if (null? '()) 'empty 'full)",
+        "(if (null? '()) 'empty 'full)",
+        "(car '(1 2 3))",
     };
     for (const char* p : progs) {
         Object* expected = interpreter->eval(reader->read_from_string(p), env);
@@ -99,10 +97,17 @@ TEST_F(CoreIRPipelineTest, DifferentialVsTreeWalk) {
 
 TEST_F(CoreIRPipelineTest, QuoteSymbol) { EXPECT_EQ(show(run_coreir(env, "(quote a)")), "a"); }
 TEST_F(CoreIRPipelineTest, QuoteList)   { EXPECT_EQ(show(run_coreir(env, "(quote (1 2 3))")), "(1 2 3)"); }
-// NOTE: (null? '()) is a known gap (empty-list literal; see AUDIT §2.2) — test omitted.
 
 TEST_F(CoreIRPipelineTest, IfQuoteBranches) { EXPECT_EQ(show(run_coreir(env, "(if #t (quote a) (quote b))")), "a"); }
 TEST_F(CoreIRPipelineTest, CondQuote)       { EXPECT_EQ(show(run_coreir(env, "(cond (#t (quote hi)))")), "hi"); }
 
 TEST_F(CoreIRPipelineTest, HandCondChain) { EXPECT_EQ(show(run_coreir(env, "(if (= 1 2) (quote a) (if (= 2 2) (quote b) (quote c)))")), "b"); }
 TEST_F(CoreIRPipelineTest, CondComplexTest) { EXPECT_EQ(show(run_coreir(env, "(cond ((= 1 2) (quote a)) ((= 2 2) (quote b)) (else (quote c)))")), "b"); }
+
+TEST_F(CoreIRPipelineTest, ApostropheQuote) { EXPECT_EQ(show(run_coreir(env, "(cond (#t 'hi))")), "hi"); }
+TEST_F(CoreIRPipelineTest, NullEmptyList)   { EXPECT_EQ(show(run_coreir(env, "(null? '())")), "#t"); }
+TEST_F(CoreIRPipelineTest, NullExplicit)    { EXPECT_EQ(show(run_coreir(env, "(null? (quote ()))")), "#t"); }
+
+TEST_F(CoreIRPipelineTest, NullOfNum)  { EXPECT_EQ(show(run_coreir(env, "(null? 5)")), "#f"); }
+TEST_F(CoreIRPipelineTest, CarQuoteL)  { EXPECT_EQ(show(run_coreir(env, "(car (quote (1 2)))")), "1"); }
+TEST_F(CoreIRPipelineTest, QuoteEmpty) { EXPECT_EQ(show(run_coreir(env, "(quote ())")), "()"); }
