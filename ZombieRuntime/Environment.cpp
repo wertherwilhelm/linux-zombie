@@ -148,7 +148,12 @@ Object* Environment::set(Object *var, Object* val)
     while (varList != NULL && varList != nil)
     {
         if (((a_string*)first(varList))->value() == ((a_string*)symbol)->value()) {
-            return set_first(valList, val);
+            // Mutate the binding, but return the assigned value — NOT set_first()'s
+            // result, which is the environment's internal value-list (it leaked out
+            // of set! and printed as "(99 (**BASE**) (**BASE**) ...)"). R5RS leaves
+            // set!'s result unspecified; returning the value is the least surprising.
+            set_first(valList, val);
+            return val;
         }
         varList = rest(varList);
         valList = rest(valList);

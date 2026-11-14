@@ -14,6 +14,14 @@ this as a working Scheme.
 
 ## Fix log (2026-11-13)
 
+- [x] **`set!` returned the environment's internal value-list** — `(set! x 99)` in the
+      REPL printed `(99 (**BASE**) (**BASE**) …)`. `Environment::set()` returned
+      `set_first(valList, val)`, i.e. the frame's *values* list, which leaked out as
+      `set!`'s result. Fixed at the source: `Environment::set` now mutates the binding
+      and returns the assigned `val`. Covers both tree-walk `set!` paths (`new_eval`
+      lisp.cpp:456 and the `eval_step` trampoline lisp.cpp:1245); the letrec and toy-VM
+      callers discard the return. REPL now shows `99`; 1288/1288 still pass.
+
 - [x] **§1.2 list printing** — `ConsCell::print` rewritten to walk the spine and
       emit `(a b c)` / `(a b . c)`. Verified in REPL; 1269 tests still pass.
 - [x] **§1.1 `and` / `or` in tree-walk** — added to both `eval_list` and the
@@ -299,6 +307,27 @@ Older suppressions, now partly resolved:
   because of the `RESOURCE_LOCK` added during the port (they'd race otherwise).
 
 ---
+
+## 5b. Orphaned-header prune (deep scan 2026-11-13, DONE)
+
+Dead-code sweep after the MemoryManagement prune found headers `#include`d by nothing.
+**Removed (5):**
+- `GarbageCollector/gc_new.h` — dead duplicate: `gc_new(args…)` is also defined in
+  `gc_ptr.h` (the definition used everywhere); file was included nowhere.
+- `GarbageCollector/gc_local.h` — scoped-root helper; sole consumer was the deleted
+  `POLICY_DEMONSTRATION.cpp`.
+- `GarbageCollector/gc_threshold_guard.h` — scoped-threshold helper; zero refs.
+- `GarbageCollector/gc_containers.h` — GC-aware containers; zero real includes (the
+  `gc_vector` mention in `auto_traceable.h` was a doc comment).
+- `ZombieRuntime/math_primitives.h` — overlapped the live `numeric_runtime`.
+
+**Kept — FALSE POSITIVE:** `ZombieRuntime/macro.h` is live — it is `#include`d as
+**`Macro.h`** (capital M) by closure/expander/lisp/macro/primitive. The sweep missed it
+because the grep was case-sensitive and `/mnt/c` is a case-insensitive FS (`macro.h` ==
+`Macro.h`). **Lesson: on this tree, verify includes with `grep -i` before deleting.**
+Deleted-then-restored from git; build confirms it's required.
+
+Result: all targets build, **1288/1288 pass**.
 
 ## 6. Minor / cleanup TODOs found in code
 - `generational_gc_strategy.cpp:196-197` — stats (`objects_collected`,
