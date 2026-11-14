@@ -73,10 +73,15 @@ TEST_F(ZombieSchemeTest, GCDeepListNesting) {
     // Verify structure integrity after GC
     expectInt("(length deep-list)", 50);
 }
-#if 0
+// Re-enabled: this was disabled with "gc->collect() Disabled: Conservative GC limitation"
+// — exactly the deep-construction-under-GC bug fixed by the runtime GC's conservative stack
+// scanning. We now lower the threshold so collections fire *during* the 1000-deep build
+// (when the partial list lives only in unrooted C++ locals), then collect again, and verify
+// the structure is intact.
 TEST_F(ZombieSchemeTest, GCDeepListNestingTCO) {
-    // Test tail-recursive version that can go MUCH deeper thanks to TCO
-    // This IS tail-recursive - the recursive call is the last operation
+    size_t saved = gc->gc_threshold();
+    gc->set_gc_threshold(64 * 1024);  // force collections mid-construction
+    // Tail-recursive builder (recursive call is the last operation).
     eval(R"(
         (define (make-deep-tco n)
           (define (iter i acc)
@@ -85,15 +90,12 @@ TEST_F(ZombieSchemeTest, GCDeepListNestingTCO) {
                 (iter (- i 1) (cons i acc))))
           (iter (- n 1) 42))
     )");
-    // Can safely handle 1000+ levels with proper TCO
     eval("(define deep-list-tco (make-deep-tco 1000))");
-    // gc->collect(); // Disabled: Conservative GC limitation
-    // The deep structure should survive GC
-    expectInt("(car deep-list-tco)", 0);  // Built in reverse order
-    // Verify structure integrity
-    expectInt("(length deep-list-tco)", 1000);
+    gc->collect();  // must not corrupt the (rooted) deep list
+    expectInt("(car deep-list-tco)", 0);        // built in reverse: 0 1 2 ...
+    expectInt("(length deep-list-tco)", 1000);  // structure intact
+    gc->set_gc_threshold(saved);
 }
-#endif
 TEST_F(ZombieSchemeTest, GCDeepEnvironmentChain) {
     // Create deeply nested environments through let forms
     std::string deep_let = "(let ((x0 0))";
