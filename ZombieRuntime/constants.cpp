@@ -3,7 +3,6 @@
 #include "gc_manager.h"
 #include "gc_ptr.h"
 #include "gc_context.h"
-#include "last_words.h"
 #include "atom.h"
 #include "InputPort.h"
 #include "OutputPort.h"
@@ -69,9 +68,6 @@ void init_lisp_constants()
     // Initialize standard I/O ports through GC
     init_stdin_port();
     init_stdout_port();
-
-    // Let the dead speak: record epitaphs for collected objects
-    zombie::runtime::necromancy::install_obituary_hook();
 
     // Mark as initialized
     constants_initialized = true;

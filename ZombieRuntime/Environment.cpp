@@ -114,8 +114,7 @@ Object* Environment::define(Object *var, Object *val)
     // GC SAFETY: until the second cons completes, var and val are only
     // referenced from the C++ stack. The first cons allocates and can
     // trigger a threshold collection, which would reclaim val and bind a
-    // dangling pointer (found via the GC obituary hook: a freshly defined
-    // value's epitaph was spoken while its binding lived on).
+    // dangling pointer.
     gc_root<Object> guard_var(var);
     gc_root<Object> guard_val(val);
 

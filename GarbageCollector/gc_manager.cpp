@@ -60,10 +60,6 @@ void gc_manager::mark_object(gc_object* obj) {
 }
 
 void gc_manager::reclaim(gc_object* obj) {
-    // Last words: every death (sweep or shutdown) passes through here
-    if (m_obituary_hook && obj) {
-        m_obituary_hook(obj);
-    }
     gc_box::deallocate(obj);
 }
 

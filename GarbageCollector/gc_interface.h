@@ -100,26 +100,6 @@ public:
     }
 
     // ========================================================================
-    // Obituary Hook (per-object death notification)
-    // ========================================================================
-
-    /**
-     * @brief Install a callback invoked for each object just before it is
-     * deallocated (sweep or shutdown).
-     *
-     * The hook runs while the object is still valid, but its referenced
-     * objects may already have been reclaimed in the same sweep — the hook
-     * must only read the object shallowly and must not allocate GC memory
-     * or retain the pointer.
-     *
-     * Pass nullptr/empty to remove. One hook at a time; the runtime layer
-     * can fan out if it needs more.
-     */
-    void set_obituary_hook(void (*hook)(gc_object*)) {
-        m_obituary_hook = hook;
-    }
-
-    // ========================================================================
     // memory::ITracer Interface Implementation
     // ========================================================================
 
@@ -398,12 +378,6 @@ protected:
      * Set via constructor, defaults to default_allocator.
      */
     IAllocator* m_allocator;
-
-    /**
-     * @brief Optional per-object death notification (see set_obituary_hook).
-     * Plain function pointer: no allocation, no <functional> dependency.
-     */
-    void (*m_obituary_hook)(gc_object*) = nullptr;
 };
 
 /**

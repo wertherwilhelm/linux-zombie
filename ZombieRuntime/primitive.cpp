@@ -38,7 +38,6 @@
 #include "primitives/primitive_control.h"
 #include "primitives/primitive_io.h"
 #include "primitives/primitive_system.h"
-#include "primitives/primitive_necromancy.h"
 #include "primitives/primitives_export_registry.h"
 #include <cmath>
 #include <cctype>
@@ -114,8 +113,6 @@ Environment* Primitive::install_primitives(Environment* env) {
     PrimitiveIO::install(env);
     PrimitiveSystem::install(env);
 
-    // Install GC graveyard primitives (graveyard, epitaph, seance, ...)
-    PrimitiveNecromancy::install(env);
     // Install export/signature registry primitives
     PrimitiveExportRegistry::install(env);
     // Note: scenegraph excluded - embedders must register explicitly

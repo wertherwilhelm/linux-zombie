@@ -258,9 +258,8 @@ T* gc_manager::allocate(Args&&... args)
 
     // Trigger GC BEFORE allocating, never after: a collection run after the
     // allocation would sweep the brand-new object, because the caller has
-    // had no chance to root it yet. (Found via the GC obituary hook: a
-    // binding cell allocated by Environment::define was reclaimed inside
-    // the very call that created it.)
+    // had no chance to root it yet (a binding cell allocated by
+    // Environment::define was reclaimed inside the very call that created it).
     if (m_strategy->bytes_allocated() > m_gc_threshold)
     {
         collect();

@@ -67,6 +67,18 @@ deleted). Runtime evaluators don't call each other.
 
 ## Fix log (2026-11-13)
 
+- [x] **Removed the necromancy / epitaph / graveyard "death" feature.** Whimsical
+      per-object death-notification system; pruned on request. Deleted
+      `ZombieRuntime/last_words.{h,cpp}`, `primitives/primitive_necromancy.{h,cpp}`,
+      `LispTest/NecromancyTests.cpp`. Un-wired: the GC obituary-hook mechanism itself
+      (`IGarbageCollector::set_obituary_hook` + `m_obituary_hook` + the hook call in
+      `gc_manager::reclaim`, which now just deallocates), `install_obituary_hook` in
+      `constants.cpp`, and the `PrimitiveNecromancy::install` call in `primitive.cpp`.
+      Only necromancy used the hook. `-O0` 1247/1247 (−10 necromancy tests; the one
+      DISABLED epitaph test went with it). (This also retires the conservative-GC
+      awkwardness around that disabled test.)
+
+
 - [!] **Evaluator layering #2 — unify front-end via shared Expander: ATTEMPTED, REVERTED.**
       Routing the tree-walk through `Expander` (expander.cpp) is **not cleanly viable** in the
       current architecture: (1) there is no single evaluation boundary — the test fixture
