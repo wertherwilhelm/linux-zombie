@@ -986,6 +986,36 @@ std::unique_ptr<Stmt> SchemeToCoreirLowering::lower_expr(Object* scheme_expr) {
 
         // Let
         if (op == "let") {
+            Object* head = car(rest);
+            // Named let: (let name ((v init) ...) body ...) desugars to
+            //   (letrec ((name (lambda (v ...) body ...))) (name init ...))
+            // which reuses the (working) letrec + lambda lowering.
+            if (head && head->get_type() == static_cast<int>(Type::SYMBOL)) {
+                Object* name = head;
+                Object* bindings = car(cdr(rest));
+                Object* body = cdr(cdr(rest));
+                std::vector<Object*> vars, inits;
+                for (Object* b = bindings; b && b != nil && b != empty_list; b = cdr(b)) {
+                    Object* binding = car(b);
+                    vars.push_back(car(binding));
+                    inits.push_back(car(cdr(binding)));
+                }
+                Object* params = nil;
+                Object* init_list = nil;
+                for (int i = static_cast<int>(vars.size()) - 1; i >= 0; --i) {
+                    params = cons(vars[i], params);
+                    init_list = cons(inits[i], init_list);
+                }
+                Object* lambda_form = cons(intern_symbol("lambda"), cons(params, body));
+                Object* lr_binding = cons(name, cons(lambda_form, nil));
+                Object* lr_bindings = cons(lr_binding, nil);
+                Object* call_form = cons(name, init_list);  // (name init ...)
+                // (letrec ((name (lambda ...))) (name init ...)) — route through lower_expr
+                // so it follows the same (working) path as a hand-written letrec.
+                Object* letrec_form = cons(intern_symbol("letrec"),
+                                           cons(lr_bindings, cons(call_form, nil)));
+                return lower_expr(letrec_form);
+            }
             Object* bindings = car(rest);
             Object* body = cdr(rest);
             return lower_let(bindings, body);

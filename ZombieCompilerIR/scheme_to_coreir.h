@@ -54,7 +54,7 @@ public:
 
 private:
     Environment* env_;          // Environment for Macro expansion (can be nullptr)
-    Expander* expander_;       // Macro expander (created if env_ is not null)
+    std::unique_ptr<Expander> expander_;  // Macro expander (created if env_ is not null; owns it)
     int temp_counter_;         // For generating unique temporary variable names
 
     // Generate a unique temporary variable name
