@@ -62,8 +62,9 @@ deleted). Runtime evaluators don't call each other.
    Prereq done: eval/new_eval consolidated to a single public `eval` boundary. Remaining
    wrinkle: `eval` is re-entered for closure bodies/macros, and the Expander does eager
    compile-time macro handling vs the tree-walk's lazy model (see the earlier #2 analysis).
-   A deeper internal cleanup also waits here: `eval_list` vs `eval_step_list` duplicate the
-   derived-form dispatch within the tree-walk.
+   (✅ The `eval_list` vs `eval_step_list` internal duplication is now resolved —
+   `eval_step_list`'s trampoline is the single special-form dispatcher; `eval_list` was
+   stripped to just the `guard`/`parameterize` handlers it uniquely serves, −599 lines.)
 3. Add differential tests for toy VM and CoreIR against the tree-walk (CoreIR has none); fix
    §2.1 toy-VM continuations or formally mark it demo-only.
 4. ✅ DONE — empty directories removed.
