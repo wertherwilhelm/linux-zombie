@@ -56,16 +56,29 @@ deleted). Runtime evaluators don't call each other.
   **0 tests, no REPL mode, unreached** — integral-to-complete per owner, not dead.
 
 **Recommendations (priority)**
-1. Break the ZombieBytecode↔ZombieCompilerIR cycle: move the bytecode `Compiler` into
-   `ZombieBytecode` (VM owns its compiler), leave `ZombieCompilerIR` as the optional CoreIR
-   pipeline depending one-way on ZombieBytecode. Removes the circular link.
+1. ✅ DONE — broke the ZombieBytecode↔ZombieCompilerIR cycle (Compiler moved into ZombieBytecode).
 2. Route the tree-walk through the shared `Expander` front-end (or extract a single
    derived-form desugarer both use) so semantics can't drift; delete the inline duplicates.
+   Prereq done: eval/new_eval consolidated to a single public `eval` boundary. Remaining
+   wrinkle: `eval` is re-entered for closure bodies/macros, and the Expander does eager
+   compile-time macro handling vs the tree-walk's lazy model (see the earlier #2 analysis).
+   A deeper internal cleanup also waits here: `eval_list` vs `eval_step_list` duplicate the
+   derived-form dispatch within the tree-walk.
 3. Add differential tests for toy VM and CoreIR against the tree-walk (CoreIR has none); fix
    §2.1 toy-VM continuations or formally mark it demo-only.
-4. Cleanup: remove the empty `ZombieBytecode/ZombieBytecode/` directory.
+4. ✅ DONE — empty directories removed.
 
 ## Fix log (2026-11-13)
+
+- [x] **Cleanup batch** — (1) removed orphaned `auto_traceable.h`; (2) removed 7 empty
+      port-cruft directories (no commit — git doesn't track empty dirs); (3) re-enabled
+      `GCDeepListNestingTCO` (was `#if 0` for the "conservative GC limitation" now fixed);
+      (4) **eval/new_eval consolidation** — `Lisp::eval` (IEvaluator) is now the one public
+      evaluation entry; migrated the external/test callers off `new_eval`, renamed it to
+      `eval_impl`, and made the whole tree-walk machinery private. Behavior-preserving;
+      1248/1248 pass. This gives #2 (front-end unification) a single boundary to build on,
+      though `eval` is still re-entered for closure bodies/macros — the remaining wrinkle.
+
 
 - [x] **Removed the necromancy / epitaph / graveyard "death" feature.** Whimsical
       per-object death-notification system; pruned on request. Deleted
