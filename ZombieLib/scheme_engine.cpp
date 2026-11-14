@@ -161,7 +161,7 @@ void scheme_engine::install_primitives() {
     zombie::runtime::Primitive::install_primitives(global_env_);
 
     // Note: The registry system is still available for optional extension groups
-    // like value-ledger or scenegraph. Use install_group() to add them.
+    // (register with primitive_registry, then install_group() to add them).
 }
 
 void scheme_engine::install_group(const std::string& name) {

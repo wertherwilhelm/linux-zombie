@@ -186,33 +186,8 @@ public:
      */
     bool is_shared() const { return false; }
 
-    // ========================================================================
-    // Value Ledger Support - Stable Identity
-    // ========================================================================
-
-    /**
-     * @brief Get stable ValueId for this Object (for ledger tracking)
-     * @return ValueId (0 means not yet assigned to ledger)
-     * @note Used by Value Ledger for GC-safe provenance tracking
-     */
-    uint64_t value_id() const { return m_value_id; }
-
-    /**
-     * @brief Set ValueId for this Object (called by ledger on first touch)
-     * @param id Unique identifier assigned by ledger
-     * @note Should only be called by Ledger::ensure_entry()
-     */
-    void set_value_id(uint64_t id) { m_value_id = id; }
-
-    /**
-     * @brief Check if this Object has been assigned a ValueId
-     * @return true if ledger has touched this Object
-     */
-    bool has_value_id() const { return m_value_id != 0; }
-
 private:
     size_t m_size;      ///< Reserved for future use (Object size tracking)
-    uint64_t m_value_id;  ///< Stable ID for Value Ledger tracking (0 = not assigned)
     // int _ref_count;  ///< TEMPORARILY DISABLED - uncomment when ready for hybrid ref counting
 };
 

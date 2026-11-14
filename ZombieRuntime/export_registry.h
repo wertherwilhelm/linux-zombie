@@ -7,7 +7,6 @@
  * The ExportRegistry provides:
  * - Named registration of C++ and Scheme functions
  * - Runtime lookup by name
- * - Mirror registration for cross-language calling
  * - Thread-safe access with mutex protection
  *
  * Usage:
@@ -25,7 +24,6 @@
  */
 
 #include "scheme_fn.h"
-#include "value.h"
 #include <string>
 #include <vector>
 #include <unordered_map>
@@ -38,14 +36,12 @@
  * Stores all metadata about an exported function:
  * - name: The exported name (how to look it up)
  * - proc: The callable scheme_fn wrapper
- * - value: Optional Value wrapper with full provenance
  * - origin: Where this export came from ("cpp:init", "scheme:repl")
  * - traits: Properties ("native", "pure", "hot-path")
  */
 struct ExportEntry {
     std::string name;       // Export name
     scheme_fn proc;         // Callable wrapper
-    Value value;            // Full provenance wrapper (optional)
     std::string origin;     // Where it came from
     std::string traits;     // Properties
 
@@ -92,21 +88,6 @@ public:
                          const std::string& traits = "") {
         std::lock_guard<std::mutex> lock(mutex_);
         exports_[name] = ExportEntry(name, proc, origin, traits);
-    }
-
-    /**
-     * @brief Register an export with full Value wrapper
-     *
-     * Use this when you want to track full provenance via the ledger.
-     */
-    void register_export(const std::string& name, const scheme_fn& proc,
-                         const Value& val,
-                         const std::string& origin = "",
-                         const std::string& traits = "") {
-        std::lock_guard<std::mutex> lock(mutex_);
-        ExportEntry entry(name, proc, origin, traits);
-        entry.value = val;
-        exports_[name] = entry;
     }
 
     /**
@@ -194,67 +175,6 @@ public:
     }
 
     // ========================================================================
-    // Mirror Registration (Cross-Language)
-    // ========================================================================
-
-    /**
-     * @brief Register a mirror (cross-language adapter)
-     *
-     * Mirrors are used when you want to call a function from the "other side"
-     * (C++ calling Scheme or Scheme calling C++).
-     */
-    void register_mirror(const std::string& name, const Value& mirror) {
-        std::lock_guard<std::mutex> lock(mutex_);
-        mirrors_[name] = mirror;
-    }
-
-    /**
-     * @brief Find a mirror by name
-     */
-    const Value* find_mirror(const std::string& name) const {
-        std::lock_guard<std::mutex> lock(mutex_);
-        auto it = mirrors_.find(name);
-        return it == mirrors_.end() ? nullptr : &it->second;
-    }
-
-    /**
-     * @brief Check if a mirror exists
-     */
-    bool has_mirror(const std::string& name) const {
-        std::lock_guard<std::mutex> lock(mutex_);
-        return mirrors_.find(name) != mirrors_.end();
-    }
-
-    /**
-     * @brief List all mirror names
-     */
-    std::vector<std::string> list_mirror_names() const {
-        std::lock_guard<std::mutex> lock(mutex_);
-        std::vector<std::string> names;
-        names.reserve(mirrors_.size());
-        for (const auto& pair : mirrors_) {
-            names.push_back(pair.first);
-        }
-        return names;
-    }
-
-    /**
-     * @brief Remove a mirror by name
-     */
-    bool remove_mirror(const std::string& name) {
-        std::lock_guard<std::mutex> lock(mutex_);
-        return mirrors_.erase(name) > 0;
-    }
-
-    /**
-     * @brief Clear all mirrors
-     */
-    void clear_mirrors() {
-        std::lock_guard<std::mutex> lock(mutex_);
-        mirrors_.clear();
-    }
-
-    // ========================================================================
     // Calling Exports
     // ========================================================================
 
@@ -285,7 +205,6 @@ private:
 
     mutable std::mutex mutex_;
     std::unordered_map<std::string, ExportEntry> exports_;
-    std::unordered_map<std::string, Value> mirrors_;
 };
 
 // ============================================================================

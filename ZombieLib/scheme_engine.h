@@ -528,17 +528,10 @@ public:
 
     /**
      * @brief Install a specific Primitive group into the engine
-     * @param name Group name (e.g., "value-ledger", "scenegraph", "my-app")
+     * @param name Group name (e.g., "my-app")
      * @note Allows applications to opt-in to optional Primitive groups
      * @note Groups must be registered with primitive_registry first
      * @note Silently skips if group is not registered
-     *
-     * Example - Install optional Value Ledger primitives:
-     * @code
-     * scheme_engine engine;  // Has core primitives by default
-     * engine.install_group("value-ledger");  // Add value ledger primitives
-     * engine.eval_string("(value-info 42)");  // Now available
-     * @endcode
      *
      * Example - Custom application primitives:
      * @code

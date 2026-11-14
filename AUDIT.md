@@ -14,6 +14,20 @@ this as a working Scheme.
 
 ## Fix log (2026-11-13)
 
+- [x] **Value Ledger / "Multiverse Workbench" pruned entirely** — ~3,400 lines of a
+      grand, mostly-stubbed vision (per-value provenance; Scheme/Native/Bytecode/Dream
+      "realities"; swappable skins; cross-language mirrors; time-travel). Only the Scheme
+      slice was built; the rest was permanently TODO. Removed: `ledger.{h,cpp}`,
+      `mirror.{h,cpp}`, `scheme_skin.{h,cpp}`, `value.h`, `primitives/{primitive,primitives}_value_ledger.*`,
+      `LispTest/ValueLedgerPrimitivesTests.cpp`, `ZombieLib/VALUE_LEDGER_README.md`.
+      Un-wired from the core: dropped the per-`Object` `m_value_id` field (object.h/.cpp —
+      every object is now 8 bytes smaller), the ledger/mirror init in `constants.cpp`, the
+      dead `g_lisp` global (lisp.h/.cpp), the install in `primitive.cpp`, the `ledger()`/
+      `mirrors()` accessors in `runtime_context.*`, and the `Value`/mirror machinery that
+      had leaked into `export_registry.h` (unused by the Scheme-facing export primitives —
+      embedding stays intact). **1257/1257 pass (was 1288; −31 ledger tests), 0 leaks/0
+      errors under ASan.** CoreIR, toy VM, and the embedding/export system were kept.
+
 - [x] **`set!` returned the environment's internal value-list** — `(set! x 99)` in the
       REPL printed `(99 (**BASE**) (**BASE**) …)`. `Environment::set()` returned
       `set_first(valList, val)`, i.e. the frame's *values* list, which leaked out as

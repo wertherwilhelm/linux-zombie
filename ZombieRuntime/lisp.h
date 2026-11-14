@@ -346,12 +346,4 @@ private:
 
 };
 
-/**
- * @brief Global Lisp evaluator pointer (for Value Ledger system)
- * @note Used by Value Ledger primitives to access evaluator
- * @note Set by embedding code or scheme_engine
- * @note Not thread-safe (one global evaluator per process)
- */
-extern Lisp* g_lisp;
-
 } } // namespace zombie::runtime

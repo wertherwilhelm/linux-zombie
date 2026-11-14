@@ -21,9 +21,6 @@
 
 namespace zombie { namespace runtime {
 
-// Global Lisp evaluator pointer (for Value Ledger system)
-Lisp* g_lisp = nullptr;
-
 // Helper function to extract name from symbol or string
 static std::string get_identifier_name(Object* obj) {
     if (is_symbol(obj)) {

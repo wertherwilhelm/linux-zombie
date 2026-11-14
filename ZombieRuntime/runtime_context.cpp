@@ -8,8 +8,6 @@
 #include "atom.h"
 #include "InputPort.h"
 #include "OutputPort.h"
-#include "ledger.h"
-#include "mirror.h"
 #include "library_registry.h"
 
 // Bring in types from zombie::runtime
@@ -65,9 +63,6 @@ RuntimeContext::RuntimeContext(bool initialize_gc) {
     // These can be overridden per-context later
     initialize_ports();
 
-    // Initialize ledger if not done
-    initialize_ledger();
-
     initialized_ = true;
 }
 
@@ -111,12 +106,6 @@ void RuntimeContext::initialize_ports() {
     current_input_port_ = stdin_port;
     current_output_port_ = stdout_port;
     current_error_port_ = stderr_port;
-}
-
-void RuntimeContext::initialize_ledger() {
-    // Ledger initialization happens in init_lisp_constants()
-    // Just verify it's ready
-    // (g_ledger and g_mirrors are initialized there)
 }
 
 void RuntimeContext::ensure_constants() {
@@ -184,21 +173,6 @@ void RuntimeContext::set_error_port(OutputPort* port) {
     current_error_port_ = port;
 }
 
-// ============================================================================
-// Value Ledger & Mirrors
-// ============================================================================
-
-Ledger* RuntimeContext::ledger() const {
-    // Delegate to global for now
-    extern Ledger* g_ledger;
-    return g_ledger;
-}
-
-MirrorRegistry* RuntimeContext::mirrors() const {
-    // Delegate to global for now
-    extern MirrorRegistry* g_mirrors;
-    return g_mirrors;
-}
 
 // ============================================================================
 // Library System

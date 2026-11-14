@@ -7,7 +7,6 @@ namespace zombie { namespace runtime {
 Object::Object()
     : gc_object()  // Base class handles m_marked initialization
     , m_size(0)
-    , m_value_id(0)  // Not assigned to ledger yet
 {
 
 }

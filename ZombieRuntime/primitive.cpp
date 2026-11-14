@@ -38,9 +38,7 @@
 #include "primitives/primitive_control.h"
 #include "primitives/primitive_io.h"
 #include "primitives/primitive_system.h"
-#include "primitives/primitive_value_ledger.h"
 #include "primitives/primitive_necromancy.h"
-#include "primitives/primitives_value_ledger.h"  // For implementation functions
 #include "primitives/primitives_export_registry.h"
 #include <cmath>
 #include <cctype>
@@ -116,8 +114,6 @@ Environment* Primitive::install_primitives(Environment* env) {
     PrimitiveIO::install(env);
     PrimitiveSystem::install(env);
 
-    // Install value-ledger primitives (OOP class)
-    PrimitiveValueLedger::install(env);
     // Install GC graveyard primitives (graveyard, epitaph, seance, ...)
     PrimitiveNecromancy::install(env);
     // Install export/signature registry primitives
@@ -153,7 +149,6 @@ Environment* Primitive::install_sandbox_primitives(Environment* env) {
     // - PrimitiveExceptions (error handling control flow)
     // - PrimitiveParameters (parameterize system control)
     // - PrimitiveBytevectors (R7RS extension, not essential)
-    // - PrimitiveValueLedger (value introspection)
     // - PrimitiveExportRegistry (module system)
     // - make-interpreter, reflection primitives (not in OOP classes)
 

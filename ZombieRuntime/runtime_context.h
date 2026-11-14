@@ -35,8 +35,6 @@
 
 // Forward declarations
 class IGarbageCollector;
-class Ledger;
-class MirrorRegistry;
 
 // Forward declarations in zombie::runtime namespace
 namespace zombie { namespace runtime {
@@ -210,22 +208,6 @@ public:
     void set_error_port(OutputPort* port);
 
     // ========================================================================
-    // Value Ledger & Mirrors
-    // ========================================================================
-
-    /**
-     * @brief Get the value ledger (provenance tracking)
-     * @return Ledger instance
-     */
-    Ledger* ledger() const;
-
-    /**
-     * @brief Get the mirror registry (cross-language reflection)
-     * @return Mirror registry instance
-     */
-    MirrorRegistry* mirrors() const;
-
-    // ========================================================================
     // Library System
     // ========================================================================
 
@@ -295,7 +277,6 @@ private:
 
     // Private initialization helpers
     void initialize_ports();
-    void initialize_ledger();
 };
 
 // ============================================================================

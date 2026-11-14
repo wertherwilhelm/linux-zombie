@@ -3,20 +3,12 @@
 #include "gc_manager.h"
 #include "gc_ptr.h"
 #include "gc_context.h"
-#include "ledger.h"
-#include "mirror.h"
-#include "scheme_skin.h"
 #include "last_words.h"
 #include "atom.h"
 #include "InputPort.h"
 #include "OutputPort.h"
 #include <map>
 #include <mutex>
-
-// Forward declaration for primitives namespace
-namespace primitives {
-    extern Ledger* g_value_ledger;
-}
 
 namespace zombie { namespace runtime {
 
@@ -77,24 +69,6 @@ void init_lisp_constants()
     // Initialize standard I/O ports through GC
     init_stdin_port();
     init_stdout_port();
-
-    // Initialize Value Ledger and Multiverse system
-    if (!g_ledger) {
-        g_ledger = new Ledger();
-
-        // Set the alias pointer for primitives namespace (defined in mirror.cpp)
-        primitives::g_value_ledger = g_ledger;
-
-        // Register default skins
-        g_ledger->register_skin(get_scheme_skin());
-
-        // TODO: Register native, bytecode, and dream skins when available
-    }
-
-    // Initialize Mirror registry
-    if (!g_mirrors) {
-        init_global_mirrors();
-    }
 
     // Let the dead speak: record epitaphs for collected objects
     zombie::runtime::necromancy::install_obituary_hook();
