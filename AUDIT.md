@@ -50,8 +50,8 @@ deleted). Runtime evaluators don't call each other.
   `case-lambda`, `cond-expand`, full macros. The reference.
 - Bytecode: core + all derived forms (via Expander) + `call/cc`, `dynamic-wind`, `guard`,
   `parameterize`; `BytecodeMatchesASTInterpreter` gives 5 differential tests vs tree-walk (88 total).
-- Toy VM: desugars via Expander but **continuations are broken** (`call/cc` returns garbage —
-  §2.1); demo-grade.
+- Toy VM: desugars via Expander; **first-class `call/cc` + `dynamic-wind` work** (119 tests;
+  see §2.1). Still labelled experimental, but continuations are functional, not broken.
 - CoreIR: incomplete (lambda exec TODO coreir.h:144; no local-var lowering; inline-clone throws),
   **0 tests, no REPL mode, unreached** — integral-to-complete per owner, not dead.
 
@@ -65,8 +65,8 @@ deleted). Runtime evaluators don't call each other.
    (✅ The `eval_list` vs `eval_step_list` internal duplication is now resolved —
    `eval_step_list`'s trampoline is the single special-form dispatcher; `eval_list` was
    stripped to just the `guard`/`parameterize` handlers it uniquely serves, −599 lines.)
-3. Add differential tests for toy VM and CoreIR against the tree-walk (CoreIR has none); fix
-   §2.1 toy-VM continuations or formally mark it demo-only.
+3. Add differential tests for CoreIR against the tree-walk (it has none). (Toy-VM
+   continuations already work — §2.1 — and have 119 tests.)
 4. ✅ DONE — empty directories removed.
 
 ## Fix log (2026-11-13)
@@ -362,10 +362,15 @@ Only the short alias `call/cc` works.
 
 ## 2. Evaluators
 
-### 2.1 Toy VM (`--vm`) — continuations broken; experimental
-- `(call/cc (lambda (k) (k 7)))` returns garbage (`(k . (7 . ()))`) instead of 7.
-- `toy_vm.cpp:504` / `:620` throw "call/cc / dynamic-wind: Continuation support
-  not enabled". The toy VM is explicitly experimental; treat as demo-only.
+### 2.1 Toy VM (`--vm`) — continuations WORK ✅ (audit was stale)
+Re-verified 2026-11-14: first-class `call/cc` is fully functional in the toy VM via
+`ContinuationSupport` (capture = copy the frame stack; invoke = restore it + rewind the
+dynamic-wind stack). Confirmed: escape, non-escape, nested call/cc, re-invokable stored
+continuations, `dynamic-wind`, and `dynamic-wind` + escape all behave correctly; **119
+continuation/dynamic-wind/VM tests pass** (ContinuationTests run against the toy VM). The
+old "returns garbage / not enabled" symptom no longer reproduces — it was fixed since the
+original audit. The `enable_continuations=false` path (toy_vm.cpp throws "not enabled") is
+only hit if a VM is constructed with continuations disabled; the REPL/engine enable them.
 
 ### 2.2 CoreIR (`ZombieCompilerIR`) — incomplete by design
 Per `docs/COREIR_ROADMAP.md` it is a "proof-of-concept"; confirmed in code:
