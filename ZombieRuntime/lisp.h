@@ -10,7 +10,7 @@
  *
  * **Evaluation Strategy:**
  * The Lisp class uses a hybrid evaluation model:
- * - **Recursive evaluation** (new_eval): Simple, direct recursion for most expressions
+ * - **Recursive evaluation** (eval_impl): Simple, direct recursion for most expressions
  * - **Trampolined evaluation** (eval_step): Returns eval_result for TCO in tail position
  *
  * **Special Forms Handled:**
@@ -71,7 +71,7 @@ namespace zombie { namespace runtime {
  * with n=10000), the evaluator uses trampolining for tail calls:
  * - eval_step() returns eval_result (either value or Continuation)
  * - Caller loops until final value is produced
- * - Only tail position calls use trampolining (non-tail use new_eval)
+ * - Only tail position calls use trampolining (non-tail use eval_impl)
  *
  * **Special Form Handlers:**
  * - **quote**: Return argument unevaluated
@@ -93,14 +93,14 @@ namespace zombie { namespace runtime {
  * Environment* env = evaluator.get_environment();
  *
  * // Evaluate simple expression
- * Object* result = evaluator.new_eval(read_string("(+ 1 2)"), env);  // Returns 3
+ * Object* result = evaluator.eval(read_string("(+ 1 2)"), env);  // Returns 3
  *
  * // Define function
- * evaluator.new_eval(read_string("(define (factorial n) "
- *                                 "(if (= n 0) 1 (* n (factorial (- n 1)))))"), env);
+ * evaluator.eval(read_string("(define (factorial n) "
+ *                            "(if (= n 0) 1 (* n (factorial (- n 1)))))"), env);
  *
  * // Call function (TCO handles deep recursion)
- * Object* fac = evaluator.new_eval(read_string("(factorial 10000)"), env);
+ * Object* fac = evaluator.eval(read_string("(factorial 10000)"), env);
  * @endcode
  *
  * @see IEvaluator for interface contract
@@ -132,11 +132,11 @@ public:
      * @param expr Scheme expression to evaluate (atom or list)
      * @param env Environment for variable lookup
      * @return Result of evaluation
-     * @note Delegates to new_eval() for actual evaluation
+     * @note Delegates to eval_impl() for actual evaluation
      * @note This is the main entry point when used as IEvaluator
      */
     Object* eval(Object* expr, Environment* env) override {
-        return new_eval(expr, env);
+        return eval_impl(expr, env);
     }
 
     /**
@@ -146,6 +146,18 @@ public:
     Environment* get_environment() override {
         return m_global_env;
     }
+
+    /**
+     * @brief Set global environment (used by the engine at setup).
+     */
+    void set_environment(Environment* env) { m_global_env = env; }
+
+private:
+    // ========================================================================
+    // Internal evaluation machinery — NOT public API. `eval()` (above) is the one
+    // true entry point; everything below is the tree-walk implementation it drives.
+    // (eval_impl was formerly the public, confusingly-named `new_eval`.)
+    // ========================================================================
 
     // ========================================================================
     // Main Evaluation Methods (Recursive Strategy)
@@ -157,9 +169,9 @@ public:
      * @param treat_as_single_arg If true, don't evaluate as function call (internal flag)
      * @return Result of evaluation
      * @note Uses global environment (m_global_env)
-     * @note Convenience wrapper for new_eval(x, m_global_env)
+     * @note Convenience wrapper for eval_impl(x, m_global_env)
      */
-    Object* new_eval(Object* x, bool treat_as_single_arg = false);
+    Object* eval_impl(Object* x, bool treat_as_single_arg = false);
 
     /**
      * @brief Evaluate expression in specified environment (main evaluator)
@@ -175,7 +187,7 @@ public:
      * 2. If list: delegate to eval_list()
      * 3. Return result
      */
-    Object* new_eval(Object* x, Environment* env, bool treat_as_single_arg = false);
+    Object* eval_impl(Object* x, Environment* env, bool treat_as_single_arg = false);
 
     /**
      * @brief Evaluate atom (self-evaluating or variable lookup)
@@ -263,16 +275,9 @@ public:
      * @return List of results (ConsCell)
      * @note Evaluates each element and returns list of values
      * @note Used by apply and other primitives
-     * @deprecated Prefer using new_eval() directly
+     * @deprecated Prefer using eval_impl() directly
      */
     ConsCell* eval_args(Object *List, Environment* env);
-
-    /**
-     * @brief Set global environment (legacy mutator)
-     * @param env New global environment
-     * @note Rarely needed; environment set in constructor
-     */
-    void set_environment(Environment* env){ m_global_env = env;}
 
     /**
      * @brief Evaluate cond clauses (R5RS cond special form)

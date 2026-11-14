@@ -583,7 +583,7 @@ TEST_F(R7RSLibraryTest, EvaluateBeginBlocksSimpleDefine) {
 
     // Evaluate begin blocks using Lisp evaluator
     auto eval_func = [this](Object* form, Environment* env_arg) {
-        return this->interpreter->new_eval(form, env_arg);
+        return this->interpreter->eval(form, env_arg);
     };
 
     ASSERT_TRUE(lib->evaluate_begin_blocks(eval_func, error)) << error;
@@ -623,7 +623,7 @@ TEST_F(R7RSLibraryTest, EvaluateBeginBlocksMultipleDefines) {
 
     // Evaluate begin blocks
     auto eval_func = [this](Object* form, Environment* env_arg) {
-        return this->interpreter->new_eval(form, env_arg);
+        return this->interpreter->eval(form, env_arg);
     };
 
     ASSERT_TRUE(lib->evaluate_begin_blocks(eval_func, error)) << error;
@@ -663,7 +663,7 @@ TEST_F(R7RSLibraryTest, EvaluateBeginBlocksWithFunction) {
 
     // Evaluate begin blocks
     auto eval_func = [this](Object* form, Environment* env_arg) {
-        return this->interpreter->new_eval(form, env_arg);
+        return this->interpreter->eval(form, env_arg);
     };
 
     ASSERT_TRUE(lib->evaluate_begin_blocks(eval_func, error)) << error;
@@ -815,7 +815,7 @@ TEST_F(R7RSLibraryTest, ImportSchemeBaseIntoUserLibrary) {
 
     // Evaluate begin blocks to define square
     auto eval_func = [this](Object* form, Environment* env_arg) {
-        return this->interpreter->new_eval(form, env_arg);
+        return this->interpreter->eval(form, env_arg);
     };
 
     ASSERT_TRUE(lib->evaluate_begin_blocks(eval_func, error)) << error;
@@ -892,7 +892,7 @@ TEST_F(R7RSLibraryTest, CompleteEndToEndWorkflow) {
 
     // Step 4: Evaluate begin blocks to define functions
     auto eval_func = [this](Object* form, Environment* env_arg) {
-        return this->interpreter->new_eval(form, env_arg);
+        return this->interpreter->eval(form, env_arg);
     };
 
     ASSERT_TRUE(lib->evaluate_begin_blocks(eval_func, error)) << error;
@@ -921,25 +921,25 @@ TEST_F(R7RSLibraryTest, CompleteEndToEndWorkflow) {
 
     // Call square(5) - should return 25
     Object* square_code = reader.read_from_string("(square 5)");
-    Object* square_result = interpreter->new_eval(square_code, lib->environment());
+    Object* square_result = interpreter->eval(square_code, lib->environment());
     ASSERT_TRUE(numeric::is_integer_value(square_result));
     EXPECT_EQ(numeric::to_int64(square_result), 25);
 
     // Call cube(3) - should return 27
     Object* cube_code = reader.read_from_string("(cube 3)");
-    Object* cube_result = interpreter->new_eval(cube_code, lib->environment());
+    Object* cube_result = interpreter->eval(cube_code, lib->environment());
     ASSERT_TRUE(numeric::is_integer_value(cube_result));
     EXPECT_EQ(numeric::to_int64(cube_result), 27);
 
     // Call add-one(41) - should return 42
     Object* add_one_code = reader.read_from_string("(add-one 41)");
-    Object* add_one_result = interpreter->new_eval(add_one_code, lib->environment());
+    Object* add_one_result = interpreter->eval(add_one_code, lib->environment());
     ASSERT_TRUE(numeric::is_integer_value(add_one_result));
     EXPECT_EQ(numeric::to_int64(add_one_result), 42);
 
     // Call factorial(5) - should return 120
     Object* factorial_code = reader.read_from_string("(factorial 5)");
-    Object* factorial_result = interpreter->new_eval(factorial_code, lib->environment());
+    Object* factorial_result = interpreter->eval(factorial_code, lib->environment());
     ASSERT_TRUE(numeric::is_integer_value(factorial_result));
     EXPECT_EQ(numeric::to_int64(factorial_result), 120);
 
@@ -987,7 +987,7 @@ TEST_F(R7RSLibraryTest, MultipleLibrariesWithDependencies) {
     ASSERT_TRUE(lib_a->initialize(env, error)) << error;
 
     auto eval_func = [this](Object* form, Environment* env_arg) {
-        return this->interpreter->new_eval(form, env_arg);
+        return this->interpreter->eval(form, env_arg);
     };
 
     ASSERT_TRUE(lib_a->evaluate_begin_blocks(eval_func, error)) << error;
@@ -1070,13 +1070,13 @@ TEST_F(R7RSLibraryTest, MultipleLibrariesWithDependencies) {
 
     // Test quad(5) = double(double(5)) = double(10) = 20
     Object* quad_code = reader.read_from_string("(quad 5)");
-    Object* quad_result = interpreter->new_eval(quad_code, lib_b->environment());
+    Object* quad_result = interpreter->eval(quad_code, lib_b->environment());
     ASSERT_TRUE(numeric::is_integer_value(quad_result));
     EXPECT_EQ(numeric::to_int64(quad_result), 20);
 
     // Test sextuple(7) = double(triple(7)) = double(21) = 42
     Object* sextuple_code = reader.read_from_string("(sextuple 7)");
-    Object* sextuple_result = interpreter->new_eval(sextuple_code, lib_b->environment());
+    Object* sextuple_result = interpreter->eval(sextuple_code, lib_b->environment());
     ASSERT_TRUE(numeric::is_integer_value(sextuple_result));
     EXPECT_EQ(numeric::to_int64(sextuple_result), 42);
 
@@ -1155,17 +1155,17 @@ TEST_F(R7RSLibraryTest, SelectiveImportOnly) {
 
     // Import only + and - into the empty environment
     Object* import_expr = reader->read_from_string("(import (only (scheme base) + -))");
-    interpreter->new_eval(import_expr, empty_env);
+    interpreter->eval(import_expr, empty_env);
 
     // Should be able to use + and -
     Object* test_expr = reader->read_from_string("(+ 10 (- 5 2))");
-    Object* result = interpreter->new_eval(test_expr, empty_env);
+    Object* result = interpreter->eval(test_expr, empty_env);
     int actual = static_cast<int>(numeric::to_int64(result));
     EXPECT_EQ(actual, 13);
 
     // Verify that other symbols like * are not available
     Object* bad_expr = reader->read_from_string("(* 2 3)");
-    EXPECT_THROW(interpreter->new_eval(bad_expr, empty_env), std::runtime_error);
+    EXPECT_THROW(interpreter->eval(bad_expr, empty_env), std::runtime_error);
 }
 
 // ============================================================================
@@ -1227,17 +1227,17 @@ TEST_F(R7RSLibraryTest, ImportWithExcept) {
 
     // Import all from (scheme base) except +
     Object* import_expr = reader->read_from_string("(import (except (scheme base) +))");
-    interpreter->new_eval(import_expr, empty_env);
+    interpreter->eval(import_expr, empty_env);
 
     // Should be able to use - and other symbols
     Object* test_expr = reader->read_from_string("(- 10 3)");
-    Object* result = interpreter->new_eval(test_expr, empty_env);
+    Object* result = interpreter->eval(test_expr, empty_env);
     int actual = static_cast<int>(numeric::to_int64(result));
     EXPECT_EQ(actual, 7);
 
     // Verify that + is not available
     Object* bad_expr = reader->read_from_string("(+ 1 2)");
-    EXPECT_THROW(interpreter->new_eval(bad_expr, empty_env), std::runtime_error);
+    EXPECT_THROW(interpreter->eval(bad_expr, empty_env), std::runtime_error);
 }
 
 // ============================================================================
@@ -1315,7 +1315,7 @@ TEST_F(R7RSLibraryTest, ExportUndefinedSymbolError) {
     ASSERT_TRUE(lib->initialize(env, error)) << error;
 
     auto eval_func = [this](Object* form, Environment* env_arg) {
-        return this->interpreter->new_eval(form, env_arg);
+        return this->interpreter->eval(form, env_arg);
     };
     ASSERT_TRUE(lib->evaluate_begin_blocks(eval_func, error)) << error;
 
@@ -1361,7 +1361,7 @@ TEST_F(R7RSLibraryTest, NamespaceIsolation) {
     ASSERT_TRUE(lib->initialize(env, error)) << error;
 
     auto eval_func = [this](Object* form, Environment* env_arg) {
-        return this->interpreter->new_eval(form, env_arg);
+        return this->interpreter->eval(form, env_arg);
     };
     ASSERT_TRUE(lib->evaluate_begin_blocks(eval_func, error)) << error;
 
@@ -1424,7 +1424,7 @@ TEST_F(R7RSLibraryTest, ReExportImportedSymbols) {
     ASSERT_TRUE(lib1_obj->initialize(env, error)) << error;
 
     auto eval_func = [this](Object* form, Environment* env_arg) {
-        return this->interpreter->new_eval(form, env_arg);
+        return this->interpreter->eval(form, env_arg);
     };
     ASSERT_TRUE(lib1_obj->evaluate_begin_blocks(eval_func, error)) << error;
 
@@ -1498,7 +1498,7 @@ TEST_F(R7RSLibraryTest, HierarchicalLibraryNames) {
     ASSERT_TRUE(lib->initialize(env, error)) << error;
 
     auto eval_func = [this](Object* form, Environment* env_arg) {
-        return this->interpreter->new_eval(form, env_arg);
+        return this->interpreter->eval(form, env_arg);
     };
     ASSERT_TRUE(lib->evaluate_begin_blocks(eval_func, error)) << error;
 

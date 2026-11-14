@@ -97,14 +97,14 @@ protected:
 
         // If it's a list with one element, eval that element
         if (program->pair() && is_nil(cdr(program))) {
-            return interpreter->new_eval(car(program), env);
+            return interpreter->eval(car(program), env);
         }
 
         // Multiple expressions: wrap in (begin ...)
         // IMPORTANT: Use gc_new instead of raw new to ensure GC tracking
         Object* begin_list = cons(gc_new<a_symbol>("begin"), program);
         gc_root<Object> guard_begin(begin_list);  // GC SAFETY
-        return interpreter->new_eval(begin_list, env);
+        return interpreter->eval(begin_list, env);
     }
 
     // Helper: Evaluate and expect integer result

@@ -517,7 +517,7 @@ TEST_F(BytecodeVMTest, BytecodeMatchesASTInterpreter) {
 
         // Eval with AST interpreter
         Object* ast_expr = test_reader.read_from_string(code);
-        Object* ast_result = ast_interp->new_eval(ast_expr, ast_env);
+        Object* ast_result = ast_interp->eval(ast_expr, ast_env);
 
         // Compare results
         if (numeric::is_number(bc_result) && numeric::is_number(ast_result)) {

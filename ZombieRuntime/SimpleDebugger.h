@@ -228,7 +228,7 @@ public:
             if (saved_ctx_.vm) {
                 // Use bytecode VM
                 Lisp evaluator;
-                return evaluator.new_eval(parsed, frame.env);
+                return evaluator.eval(parsed, frame.env);
             }
         } catch (...) {
             return nil;

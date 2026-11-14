@@ -172,7 +172,7 @@ ConsCell* Lisp::eval_args(Object *List, Environment*env) {
         gc_root<Object> guard_result(result);
 
         while (current != nil && !current->is_nil() && current->pair()) {
-            Object* elem_evaluated = new_eval(first(current), env);
+            Object* elem_evaluated = eval_impl(first(current), env);
 
             // Protect elem_evaluated during cons allocation
             gc_root<Object> guard_elem(elem_evaluated);
@@ -195,7 +195,7 @@ Object * Lisp::reduce_cond(Object *clauses, Environment*env) {
             return gc_new<a_bool>(false);
         }
         Object *clause = first(clauses); clauses = rest(clauses);
-        if (get_identifier_name(first(clause)) == "else" || truth(result = new_eval(first(clause), env))) {
+        if (get_identifier_name(first(clause)) == "else" || truth(result = eval_impl(first(clause), env))) {
             if (rest(clause) == NULL) {
                 return list(gc_new<a_string>("quote"), result);
             }
@@ -209,11 +209,11 @@ Object * Lisp::reduce_cond(Object *clauses, Environment*env) {
     }
 }
 
-Object* Lisp::new_eval(Object* x, bool treat_as_single_arg) {
-    return new_eval(x, this->m_global_env, treat_as_single_arg);
+Object* Lisp::eval_impl(Object* x, bool treat_as_single_arg) {
+    return eval_impl(x, this->m_global_env, treat_as_single_arg);
 }
 
-Object* Lisp::new_eval(Object* x, Environment*env, bool treat_as_single_arg) {
+Object* Lisp::eval_impl(Object* x, Environment*env, bool treat_as_single_arg) {
     // Trampoline loop for Tail Call Optimization (TCO)
     // Instead of recursing, we loop and evaluate tail calls iteratively
     eval_result result = eval_result::make_tailcall(x, env);
@@ -226,7 +226,7 @@ Object* Lisp::new_eval(Object* x, Environment*env, bool treat_as_single_arg) {
 }
 
 // TCO: Local trampolining - evaluates expression to a value without creating new stack frame
-// This is critical for unlimited TCO: by trampolining locally instead of calling new_eval(),
+// This is critical for unlimited TCO: by trampolining locally instead of calling eval_impl(),
 // we avoid nesting trampoline loops on the C++ stack
 Object* Lisp::eval_to_value(Object* x, Environment* env) {
     eval_result result = eval_step(x, env, false);
@@ -283,9 +283,9 @@ Object* Lisp::eval_list(Object* x, Environment*env)
         return first(args);
     } else if (fn_val == "define") {
         if (!first(args)->is_atom()) {
-            return env->define(first(first(args)), new_eval(cons(gc_new<a_string>("lambda"), cons(rest(first(args)), rest(args))), env));
+            return env->define(first(first(args)), eval_impl(cons(gc_new<a_string>("lambda"), cons(rest(first(args)), rest(args))), env));
         } else {
-            return env->define(first(args), new_eval(second(args), env));
+            return env->define(first(args), eval_impl(second(args), env));
         }
     }
     else if (fn_val == "define-syntax") {
@@ -426,7 +426,7 @@ Object* Lisp::eval_list(Object* x, Environment*env)
 
         // Evaluate begin blocks
         auto eval_func = [this](Object* form, Environment* env_arg) -> Object* {
-            return this->new_eval(form, env_arg);
+            return this->eval_impl(form, env_arg);
         };
 
         if (!lib->evaluate_begin_blocks(eval_func, error)) {
@@ -441,7 +441,7 @@ Object* Lisp::eval_list(Object* x, Environment*env)
         for (; args != nullptr; args = rest(args)) {
             ConsCell* cons_args = dynamic_cast<ConsCell*>(args);
             if (cons_args != nullptr) {
-                last_eval = new_eval(first(args), env);
+                last_eval = eval_impl(first(args), env);
             } else {
                 // Here you could either throw an exception or handle this case in a different way
                 //throw std::runtime_error("Expected a cons cell in the argument list");
@@ -450,19 +450,19 @@ Object* Lisp::eval_list(Object* x, Environment*env)
         }
         return last_eval;
     } else if (fn_val == "set!") {
-        return env->set(first(args), new_eval(second(args), env));
+        return env->set(first(args), eval_impl(second(args), env));
     } else if (fn_val == "if") {
-        x = (truth(new_eval(first(args), env))) ? second(args) : third(args);
-        return new_eval(x, env);  // Evaluate and return the chosen branch
+        x = (truth(eval_impl(first(args), env))) ? second(args) : third(args);
+        return eval_impl(x, env);  // Evaluate and return the chosen branch
     } else if (fn_val == "when") {
         // (when test expr1 expr2 ...) → (if test (begin expr1 expr2 ...))
         Object* test = first(args);
         Object* body = rest(args);
-        if (truth(new_eval(test, env))) {
+        if (truth(eval_impl(test, env))) {
             // Execute body expressions in sequence
             Object* result = nil;
             for (Object* expr_list = body; !expr_list->is_nil(); expr_list = rest(expr_list)) {
-                result = new_eval(first(expr_list), env);
+                result = eval_impl(first(expr_list), env);
             }
             return result;
         } else {
@@ -472,11 +472,11 @@ Object* Lisp::eval_list(Object* x, Environment*env)
         // (unless test expr1 expr2 ...) → (if (not test) (begin expr1 expr2 ...))
         Object* test = first(args);
         Object* body = rest(args);
-        if (!truth(new_eval(test, env))) {
+        if (!truth(eval_impl(test, env))) {
             // Execute body expressions in sequence
             Object* result = nil;
             for (Object* expr_list = body; !expr_list->is_nil(); expr_list = rest(expr_list)) {
-                result = new_eval(first(expr_list), env);
+                result = eval_impl(first(expr_list), env);
             }
             return result;
         } else {
@@ -487,20 +487,20 @@ Object* Lisp::eval_list(Object* x, Environment*env)
         // value, short-circuit and return it; otherwise return the last value.
         Object* result = (Object*)t;
         for (Object* a = args; !a->is_nil(); a = rest(a)) {
-            result = new_eval(first(a), env);
+            result = eval_impl(first(a), env);
             if (!truth(result)) return result;
         }
         return result;
     } else if (fn_val == "or") {
         // R5RS 4.2.1: (or) => #f. Return the first true value; else #f.
         for (Object* a = args; !a->is_nil(); a = rest(a)) {
-            Object* result = new_eval(first(a), env);
+            Object* result = eval_impl(first(a), env);
             if (truth(result)) return result;
         }
         return (Object*)false_obj;
     } else if (fn_val == "cond") {
         x = reduce_cond(args, env);
-        return new_eval(x, env);  // Evaluate and return the chosen branch
+        return eval_impl(x, env);  // Evaluate and return the chosen branch
     } else if (fn_val == "lambda") {
         return gc_new<Closure>(first(args), rest(args), env);
     } else if (fn_val == "case-lambda") {
@@ -587,7 +587,7 @@ Object* Lisp::eval_list(Object* x, Environment*env)
             Object* call_expr = cons(name, vals);
             Object* letrec_expr = cons(gc_new<a_string>("letrec"), cons(letrec_binding, cons(call_expr, nil)));
 
-            return new_eval(letrec_expr, env);
+            return eval_impl(letrec_expr, env);
         } else {
             // Regular let: (let ((x 1) (y 2)) body...)
             // => ((lambda (x y) body...) 1 2)
@@ -623,7 +623,7 @@ Object* Lisp::eval_list(Object* x, Environment*env)
             Object* lambda_expr = cons(gc_new<a_string>("lambda"), cons(vars, body));
             Object* call_expr = cons(lambda_expr, vals);
 
-            return new_eval(call_expr, env);
+            return eval_impl(call_expr, env);
         }
     } else if (fn_val == "let*") {
         // let*: (let* ((x 1) (y (+ x 1))) body...)
@@ -633,7 +633,7 @@ Object* Lisp::eval_list(Object* x, Environment*env)
 
         if (bindings->is_nil()) {
             // No bindings, just evaluate body in sequence
-            return new_eval(cons(gc_new<a_string>("begin"), body), env);
+            return eval_impl(cons(gc_new<a_string>("begin"), body), env);
         } else {
             // Transform into nested let
             Object* first_binding = first(bindings);
@@ -642,12 +642,12 @@ Object* Lisp::eval_list(Object* x, Environment*env)
             if (rest_bindings->is_nil()) {
                 // Last binding: (let ((var val)) body...)
                 Object* let_expr = cons(gc_new<a_string>("let"), cons(cons(first_binding, nil), body));
-                return new_eval(let_expr, env);
+                return eval_impl(let_expr, env);
             } else {
                 // Multiple bindings: (let ((var val)) (let* (rest...) body...))
                 Object* inner_let_star = cons(gc_new<a_string>("let*"), cons(rest_bindings, body));
                 Object* let_expr = cons(gc_new<a_string>("let"), cons(cons(first_binding, nil), cons(inner_let_star, nil)));
-                return new_eval(let_expr, env);
+                return eval_impl(let_expr, env);
             }
         }
     } else if (fn_val == "letrec") {
@@ -679,7 +679,7 @@ Object* Lisp::eval_list(Object* x, Environment*env)
         Object* let_body = append_two_lists(set_exprs, body);
         Object* let_expr = cons(gc_new<a_string>("let"), cons(init_bindings, let_body));
 
-        return new_eval(let_expr, env);
+        return eval_impl(let_expr, env);
     } else if (fn_val == "let-syntax") {
         // let-syntax: (let-syntax ((name1 (syntax-rules ...)) ...) body...)
         // Create a new environment with local Macro definitions
@@ -719,7 +719,7 @@ Object* Lisp::eval_list(Object* x, Environment*env)
         // Evaluate body in local environment with macros defined
         Object* result = nil;
         for (Object* b = body; !b->is_nil(); b = rest(b)) {
-            result = new_eval(first(b), local_env);
+            result = eval_impl(first(b), local_env);
         }
         return result;
 
@@ -765,7 +765,7 @@ Object* Lisp::eval_list(Object* x, Environment*env)
         // Evaluate body in local environment with macros defined
         Object* result = nil;
         for (Object* b = body; !b->is_nil(); b = rest(b)) {
-            result = new_eval(first(b), local_env);
+            result = eval_impl(first(b), local_env);
         }
         return result;
 
@@ -802,7 +802,7 @@ Object* Lisp::eval_list(Object* x, Environment*env)
 
         // Build and evaluate (cond ...)
         Object* cond_expr = cons(intern_symbol("cond"), cond_clauses);
-        return new_eval(cond_expr, env);
+        return eval_impl(cond_expr, env);
     } else if (fn_val == "cond-expand") {
         // cond-expand: (cond-expand (feature-requirement body ...) ...)
         // R7RS conditional compilation based on available features
@@ -821,7 +821,7 @@ Object* Lisp::eval_list(Object* x, Environment*env)
                 // Evaluate body expressions in sequence
                 Object* result = nil;
                 for (Object* b = clause_body; !b->is_nil(); b = rest(b)) {
-                    result = new_eval(first(b), env);
+                    result = eval_impl(first(b), env);
                 }
                 return result;
             }
@@ -832,12 +832,12 @@ Object* Lisp::eval_list(Object* x, Environment*env)
     } else if (fn_val == "do") {
         // Desugar do to letrec with named loop (helper function reduces stack overhead)
         Object* letrec_expr = transform_do_to_letrec(args);
-        return new_eval(letrec_expr, env);
+        return eval_impl(letrec_expr, env);
     } else if (fn_val == "quasiquote") {
         // Expand quasiquote into cons/append/quote operations and evaluate
         Object* template_expr = first(args);
         Object* expanded = qq_expand(template_expr, env);
-        return new_eval(expanded, env);
+        return eval_impl(expanded, env);
     } else if (fn_val == "guard") {
         // (guard (var clause ...) body ...)  [R7RS 4.2.7]
         // Evaluates body with a handler that escapes back here; on a raise
@@ -860,7 +860,7 @@ Object* Lisp::eval_list(Object* x, Environment*env)
             try {
                 Object* result = nil;
                 for (Object* b = body; !b->is_nil(); b = rest(b)) {
-                    result = new_eval(first(b), env);
+                    result = eval_impl(first(b), env);
                 }
                 return result;
             } catch (const zombie::runtime::exc::GuardEscape& ge) {
@@ -897,11 +897,11 @@ Object* Lisp::eval_list(Object* x, Environment*env)
             }
             Object* test = first(clause);
             bool is_else = get_identifier_name(test) == "else";
-            Object* test_val = is_else ? nullptr : new_eval(test, guard_env);
+            Object* test_val = is_else ? nullptr : eval_impl(test, guard_env);
             if (is_else || truth(test_val)) {
                 Object* result = is_else ? nil : test_val;
                 for (Object* e = rest(clause); !e->is_nil(); e = rest(e)) {
-                    result = new_eval(first(e), guard_env);
+                    result = eval_impl(first(e), guard_env);
                 }
                 return result;
             }
@@ -933,13 +933,13 @@ Object* Lisp::eval_list(Object* x, Environment*env)
             if (!binding->pair() || rest(binding)->is_nil()) {
                 throw std::runtime_error("parameterize: each binding must be (param value)");
             }
-            Object* param_obj = new_eval(first(binding), env);
+            Object* param_obj = eval_impl(first(binding), env);
             a_parameter* param = dynamic_cast<a_parameter*>(param_obj);
             if (!param) {
                 throw std::runtime_error("parameterize: not a parameter object");
             }
             roots.emplace_back(gc_ptr<Object>(param_obj));
-            Object* value = new_eval(second(binding), env);
+            Object* value = eval_impl(second(binding), env);
             roots.emplace_back(gc_ptr<Object>(value));
             params.push_back(param);
             new_values.push_back(value);
@@ -965,7 +965,7 @@ Object* Lisp::eval_list(Object* x, Environment*env)
 
         Object* result = nil;
         for (Object* b = body; !b->is_nil(); b = rest(b)) {
-            result = new_eval(first(b), env);
+            result = eval_impl(first(b), env);
         }
         return result;
     } else if (fn_val == "***EXIT_SYS!") {
@@ -975,7 +975,7 @@ Object* Lisp::eval_list(Object* x, Environment*env)
         //AfxMessageBox(CString(message.c_str()));
         return nil;  // Was falling off the end of the function (C4715/UB)
     } else {
-        Object* proc_obj = new_eval(car(expr_as_pair), env);
+        Object* proc_obj = eval_impl(car(expr_as_pair), env);
         // GC SAFETY: Protect proc_obj during subsequent allocations (eval_args, expand, etc.)
         gc_root<Object> guard_proc(proc_obj);
 
@@ -990,7 +990,7 @@ Object* Lisp::eval_list(Object* x, Environment*env)
             // Pass the FULL form to the expander (pattern includes the Macro name)
             Object* expansion = transformer->expand(expr_as_pair, env);
             gc_root<Object> guard_expansion(expansion);  // GC SAFETY
-            Object* result = new_eval(expansion, env);
+            Object* result = eval_impl(expansion, env);
             return result;
         }
 
@@ -998,7 +998,7 @@ Object* Lisp::eval_list(Object* x, Environment*env)
         if (((Base*)proc_obj)->instance_of() == static_cast<int>(Base::atype::MACRO)) {
             ConsCell* expanded = ((Macro*)proc_obj)->expand(this, expr_as_pair, cdr(expr_as_pair), env);
             gc_root<Object> guard_expanded((Object*)expanded);  // GC SAFETY
-            Object* result = new_eval(expanded, env);
+            Object* result = eval_impl(expanded, env);
             return result;
         }
 
@@ -1059,10 +1059,10 @@ eval_result Lisp::eval_step_list(Object* x, Environment* env) {
             gc_root<Object> inner_cons(cons(lambda_args.get(), lambda_body.get()));
             gc_root<Object> lambda_expr(cons(lambda_sym.get(), inner_cons.get()));
 
-            Object* result = new_eval(lambda_expr.get(), env);
+            Object* result = eval_impl(lambda_expr.get(), env);
             return eval_result::make_value(env->define(first(first(args)), result));
         } else {
-            Object* result = new_eval(second(args), env);
+            Object* result = eval_impl(second(args), env);
             return eval_result::make_value(env->define(first(args), result));
         }
     }
@@ -1204,7 +1204,7 @@ eval_result Lisp::eval_step_list(Object* x, Environment* env) {
 
         // Evaluate begin blocks
         auto eval_func = [this](Object* form, Environment* env_arg) -> Object* {
-            return this->new_eval(form, env_arg);
+            return this->eval_impl(form, env_arg);
         };
 
         if (!lib->evaluate_begin_blocks(eval_func, error)) {
@@ -1223,7 +1223,7 @@ eval_result Lisp::eval_step_list(Object* x, Environment* env) {
         while (current != nullptr && !current->is_nil() && rest(current) != nullptr && !rest(current)->is_nil()) {
             ConsCell* cons_current = dynamic_cast<ConsCell*>(current);
             if (cons_current != nullptr) {
-                new_eval(first(current), env);  // Evaluate for side effect
+                eval_impl(first(current), env);  // Evaluate for side effect
                 current = rest(current);
             } else {
                 break;
@@ -1238,12 +1238,12 @@ eval_result Lisp::eval_step_list(Object* x, Environment* env) {
         }
     }
     else if (fn_val == "set!") {
-        Object* val = new_eval(second(args), env);
+        Object* val = eval_impl(second(args), env);
         return eval_result::make_value(env->set(first(args), val));
     }
     else if (fn_val == "if") {
         // Evaluate condition
-        Object* cond = new_eval(first(args), env);
+        Object* cond = eval_impl(first(args), env);
 
         // Choose branch based on condition (tail call!)
         Object* branch = truth(cond) ? second(args) : third(args);
@@ -1253,7 +1253,7 @@ eval_result Lisp::eval_step_list(Object* x, Environment* env) {
         // (when test expr1 expr2 ...) → (if test (begin expr1 expr2 ...))
         Object* test = first(args);
         Object* body = rest(args);
-        Object* test_result = new_eval(test, env);
+        Object* test_result = eval_impl(test, env);
         if (truth(test_result)) {
             // Execute body expressions in sequence, last one is tail call
             Object* result = nil;
@@ -1265,7 +1265,7 @@ eval_result Lisp::eval_step_list(Object* x, Environment* env) {
                     return eval_result::make_tailcall(expr, env);
                 } else {
                     // Not last - evaluate for side effects
-                    result = new_eval(expr, env);
+                    result = eval_impl(expr, env);
                     body = remaining;
                 }
             }
@@ -1278,7 +1278,7 @@ eval_result Lisp::eval_step_list(Object* x, Environment* env) {
         // (unless test expr1 expr2 ...) → (if (not test) (begin expr1 expr2 ...))
         Object* test = first(args);
         Object* body = rest(args);
-        Object* test_result = new_eval(test, env);
+        Object* test_result = eval_impl(test, env);
         if (!truth(test_result)) {
             // Execute body expressions in sequence, last one is tail call
             Object* result = nil;
@@ -1290,7 +1290,7 @@ eval_result Lisp::eval_step_list(Object* x, Environment* env) {
                     return eval_result::make_tailcall(expr, env);
                 } else {
                     // Not last - evaluate for side effects
-                    result = new_eval(expr, env);
+                    result = eval_impl(expr, env);
                     body = remaining;
                 }
             }
@@ -1309,7 +1309,7 @@ eval_result Lisp::eval_step_list(Object* x, Environment* env) {
             if (remaining->is_nil()) {
                 return eval_result::make_tailcall(expr, env);  // value is the result
             }
-            Object* v = new_eval(expr, env);
+            Object* v = eval_impl(expr, env);
             if (!truth(v)) return eval_result::make_value(v);  // short-circuit false
             args = remaining;
         }
@@ -1324,7 +1324,7 @@ eval_result Lisp::eval_step_list(Object* x, Environment* env) {
             if (remaining->is_nil()) {
                 return eval_result::make_tailcall(expr, env);  // value is the result
             }
-            Object* v = new_eval(expr, env);
+            Object* v = eval_impl(expr, env);
             if (truth(v)) return eval_result::make_value(v);  // short-circuit true
             args = remaining;
         }
@@ -1529,7 +1529,7 @@ eval_result Lisp::eval_step_list(Object* x, Environment* env) {
             Object* val_expr = second(first_binding);
             Object* rest_bindings = rest(bindings);
 
-            Object* val = new_eval(val_expr, env);
+            Object* val = eval_impl(val_expr, env);
 
             Object* lambda_expr = cons(gc_new<a_string>("lambda"),
                 cons(cons(var, nil),
@@ -1566,7 +1566,7 @@ eval_result Lisp::eval_step_list(Object* x, Environment* env) {
             Object* binding = first(b);
             Object* var = first(binding);
             Object* val_expr = second(binding);
-            Object* val = new_eval(val_expr, letrec_env);
+            Object* val = eval_impl(val_expr, letrec_env);
             letrec_env->set(var, val);
         }
 
@@ -1661,7 +1661,7 @@ eval_result Lisp::eval_step_list(Object* x, Environment* env) {
 
     // Function application (reached if fn is not a string special form, or if it didn't match any special form)
     {
-        Object* proc = new_eval(fn, env);
+        Object* proc = eval_impl(fn, env);
         // GC SAFETY: Protect proc during subsequent allocations
         gc_root<Object> guard_proc(proc);
 
