@@ -90,7 +90,7 @@ public:
      * @param owner The gc_object containing this field
      *
      * Must be called once after construction to enable automatic write barriers.
-     * Typically called from auto_traceable::_gc_bind_fields() or GC_INIT_FIELDS() Macro.
+     * Typically called from a GC_INIT_FIELDS()-style field-binding macro.
      *
      * Example:
      *   struct Node : gc_object {
