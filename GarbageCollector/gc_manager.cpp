@@ -29,6 +29,10 @@ gc_manager::gc_manager()
     m_strategy->set_gc_manager(this);
 }
 
+void gc_manager::set_scan_stack(bool on) {
+    m_strategy->set_scan_stack(on);
+}
+
 gc_manager::~gc_manager() {
     delete m_strategy;
 }
@@ -114,6 +118,11 @@ void gc_manager::on_allocate(gc_object* obj) {
 void initialize_gc() {
     if (!gc) {
         gc = new gc_manager();
+        // This is the process-wide runtime GC. The reader/evaluator hold live Object*
+        // in unrooted C++ locals, so it must conservatively scan the machine stack during
+        // mark to avoid reclaiming them mid-operation. Isolated gc_manager / gc_manager_t
+        // instances (tests, embedding with explicit roots) stay PRECISE by default.
+        gc->set_scan_stack(true);
         // Set as current thread-local GC
         gc_context::set_current(gc);
     }

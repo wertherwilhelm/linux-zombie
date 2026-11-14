@@ -67,6 +67,71 @@ deleted). Runtime evaluators don't call each other.
 
 ## Fix log (2026-11-13)
 
+- [!] **Evaluator layering #2 — unify front-end via shared Expander: ATTEMPTED, REVERTED.**
+      Routing the tree-walk through `Expander` (expander.cpp) is **not cleanly viable** in the
+      current architecture: (1) there is no single evaluation boundary — the test fixture
+      (`TestFixture.h:100`) and internal code call `new_eval` **directly**, bypassing `eval()`,
+      so a boundary-level `expand()` can't be validated by the suite and stage-2's deletion of
+      the inline handlers would break the test path (derived forms would reach `new_eval` with
+      no handler and no expansion); (2) the `Expander` does **eager, expand-time** macro
+      registration/expansion (`define-syntax` → `env->define` + returns `(begin)`; expands user
+      macro calls), a different model than the tree-walk's lazy runtime macros; (3) it only
+      partially overlaps (keeps named-`let`, skips parameterize/delay/define-library/import).
+      Proper fix is a deliberate refactor: either establish ONE evaluation entry, or extract a
+      pure *structural* desugarer (no macro handling) that both the Expander and `new_eval`'s
+      dispatch call per-form. Deferred. (#1 — the dependency-cycle break — stands and is good.)
+
+- [x] **FIXED — deep-loop corruption (precise GC vs. conservative-assuming code).**
+      The runtime GC marks only explicit roots but the reader/evaluator/desugaring keep live
+      `Object*` in unrooted C++ locals, so a collection mid-operation reclaimed them
+      (use-after-free; "Unbound variable: +"; "cannot take first/rest of an atom"). Fix, in
+      layers (ASan + low-threshold repro `GCEdgeCaseTests::DeepLoopGCDoesNotCorruptLiveState`):
+      1. `scheme_reader::read_list()` + `read_program_from_string()` — rooted the in-progress
+         list head and each element across `read_expr()`/`cons()`.
+      2. `MarkSweepStrategy` — added **conservative stack scanning** (`mark_conservative_stack`):
+         spills registers via setjmp, scans [current SP .. `__libc_stack_end`) word-by-word, and
+         marks any word that is exactly a known-live object. `no_sanitize_address` on that fn so
+         ASan's stack red zones don't false-trip. Safe for this non-moving collector (objects
+         never relocate; false positives just retain one extra cycle).
+      3. **Opt-in per instance** (`set_scan_stack`, default OFF): only the process-wide runtime
+         GC (`initialize_gc`) enables it; isolated `gc_manager`/`gc_manager_t` instances
+         (tests/embedding with explicit roots) stay PRECISE, so their exact-collection assertions
+         still hold.
+      4. Reconciled the few collection-assertion tests: `GCRootsDoNotLeakAfterRemoval` now uses an
+         isolated precise `gc_manager_t`; `NecromancyTest.EpitaphIsSpokenAtDeath` DISABLED (asserting
+         a *specific* object's prompt death is not guaranteeable under a conservative collector —
+         feature still works; a C++-level precise-gc obituary test would be the deterministic
+         replacement).
+      Result: `-O0` and ASan both **1257/1257, 0 leaks / 0 errors**; the deep-loop repro that
+      used to corrupt now passes under ASan. The REPL deep-loop corruption is gone.
+
+- [x] ~~**ROOT CAUSE FOUND — precise GC vs. conservative-assuming code (deep-loop corruption).**~~ (fixed above)
+      Chased the deep-loop corruption with ASan + a low-`gc_threshold` repro
+      (`GCEdgeCaseTests.cpp: DeepLoopGCStress_TEMP`). The crashes are a chain of
+      **unrooted C++ locals holding live `Object*` across allocations that trigger GC**:
+      · `scheme_reader::read_list()` and `read_program_from_string()` built the in-progress
+        list in unrooted locals → GC during a later `read_expr()` swept it → next `set_cdr`
+        hit freed memory. **FIXED** (rooted the head + each element; 1257 still pass).
+      · Then `Lisp::eval_step_list` named-`let` desugaring (lisp.cpp:1471-1475) builds
+        `vars`/`vals` via `cons` + `reverse`, unrooted → freed mid-build. **(not yet fixed)**
+      Root cause: `MarkSweepStrategy::mark()` scans ONLY explicit roots (`m_gc_roots`,
+      `m_persistent_roots`) — it does **not** scan the C++ stack, yet the header advertises
+      "conservative root scanning" (mark_sweep_strategy.h:17) and the reader/evaluator/
+      desugaring are written as if stack locals are automatically protected. So every
+      unrooted intermediate is a latent use-after-free, triggered whenever GC fires mid-op
+      (deep loops, or a low threshold). Masked in tests by the 100 MB threshold.
+      **Strategic choice (see report):** (A) implement conservative stack scanning in the
+      non-moving mark-sweep GC (validate stack words against `m_all_objects`; matches the
+      documented intent; fixes the whole class at once) — recommended; or (B) stay precise
+      and hand-root every intermediate across reader+evaluator+desugaring (endless whack-a-mole).
+
+- [x] **HIGH (pre-existing): deep loops corrupt live state via the engine/REPL — FIXED.**
+      `(let loop ((i 0)(acc 0)) (if (< i 100000) (loop (+ i 1)(+ acc i)) acc))` corrupted at
+      ~10^5 iterations ("Unbound variable: +", "cannot take first/rest of an atom") in both
+      `--lisp` and `--bytecode`. Root cause + fix: see the consolidated entry above
+      (reader rooting + conservative stack scanning in the runtime GC). Verified gone.
+
+
 - [x] **Evaluator layering #1 — broke the ZombieBytecode↔ZombieCompilerIR cycle.** Moved
       the bytecode `Compiler` (`compiler.{h,cpp}`) from `ZombieCompilerIR` into
       `ZombieBytecode` (where its VM lives); it references no CoreIR types, only

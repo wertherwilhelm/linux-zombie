@@ -131,6 +131,15 @@ public:
     void set_gc_threshold(size_t threshold) { m_gc_threshold = threshold; }
 
     /**
+     * @brief Enable/disable conservative C++ stack scanning during collection.
+     *
+     * OFF by default (precise: only explicit roots). The process-wide runtime GC
+     * (initialize_gc) turns this on because the reader/evaluator keep live Object* in
+     * unrooted C++ locals. Isolated instances used with explicit roots should leave it off.
+     */
+    void set_scan_stack(bool on);
+
+    /**
      * @brief Get garbage collection statistics
      */
     struct gc_stats {

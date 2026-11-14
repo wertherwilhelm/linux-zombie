@@ -97,6 +97,19 @@ private:
      */
     void mark_from(gc_object* obj);
 
+    /**
+     * @brief Conservatively scan the C++ machine stack (and spilled registers) and
+     *        mark any word that points at a known-live object.
+     * @param valid_objects The set of currently-tracked objects (built in mark()).
+     *
+     * The reader/evaluator/desugaring hold live Object* in ordinary C++ locals that are
+     * not explicitly rooted; without this scan a collection triggered mid-operation would
+     * reclaim them (use-after-free — see AUDIT). Safe for this non-moving collector:
+     * objects are never relocated, so a conservatively-discovered root can't be
+     * invalidated, and false positives merely retain an object one extra cycle.
+     */
+    void mark_conservative_stack(const std::unordered_set<gc_object*>& valid_objects);
+
     /// All allocated objects.
     std::vector<gc_object*> m_all_objects;
     /// GC roots with refcounts (registered via add_root).
@@ -119,6 +132,12 @@ private:
     /// Iterative marking support: worklist for mark phase.
     std::vector<gc_object*>* m_marking_worklist = nullptr;
 
+    /// When true, mark() also conservatively scans the C++ machine stack (see
+    /// mark_conservative_stack). OFF by default so isolated instances stay PRECISE
+    /// (tests/embedding that manage roots explicitly). The runtime global GC enables
+    /// it, because the reader/evaluator keep live Object* in unrooted C++ locals.
+    bool m_scan_stack = false;
+
 public:
     // IGarbageCollector persistent root interface
     void register_persistent_root(gc_object** root_ptr);
@@ -126,6 +145,10 @@ public:
 
     // Check if collection is currently in progress
     bool is_collecting() const { return m_collecting; }
+
+    /// Enable/disable conservative C++ stack scanning during mark (see m_scan_stack).
+    void set_scan_stack(bool on) { m_scan_stack = on; }
+    bool scan_stack() const { return m_scan_stack; }
 };
 
 /**

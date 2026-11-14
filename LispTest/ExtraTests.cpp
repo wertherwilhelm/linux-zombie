@@ -1,5 +1,8 @@
 #include "pch.h"
 #include "TestFixture.h"
+#include "gc_manager_template.h"   // isolated precise GC for collection-semantics tests
+#include "mark_sweep_strategy.h"
+#include "gc_allocator.h"
 
 
 // Access to global GC instance
@@ -56,46 +59,24 @@ TEST_F(ZombieSchemeTest, GCRootsAllowAccessAfterCollection) {
 }
 // Test passes in isolation but fails when run with full suite due to conservative stack scanning
 TEST_F(ZombieSchemeTest, GCRootsDoNotLeakAfterRemoval) {
-    // Note: interpreter and env are already protected by the test fixture
-    // Create some permanent guard objects to ensure heap isn't empty
-    // (prevents potential edge cases in GC)
-    // IMPORTANT: a persistent root must point at a slot that outlives the
-    // registration. Register the address of the *vector element* (stable because
-    // we reserve() up front), NOT the address of a loop-local — the latter dangles
-    // the moment the iteration ends, so mark() would dereference dead stack (an
-    // ASan stack-use-after-scope), and the root could never be removed since the
-    // cleanup loop below sees a different address.
-    std::vector<a_double*> guards;
-    guards.reserve(5);
-    for (int i = 0; i < 5; i++) {
-        guards.push_back(gc->allocate<a_double>(i * 100.0));
-        gc->add_root(reinterpret_cast<void**>(&guards.back()));
-    }
-    // Create the test Object and add it as a root
-    a_double* rooted = gc->allocate<a_double>(5678.0);
-    gc->add_root(reinterpret_cast<void**>(&rooted));
-    // Force GC collection - Object should survive because it's rooted
-    gc->collect();
-    // Record state before removing root
-    size_t objects_before = gc->object_count();
-    auto stats_before = gc->get_stats();
-    // Remove the root
-    gc->remove_root(reinterpret_cast<void**>(&rooted));
-    // Force GC collection again - Object should be collected now
-    gc->collect();
-    // Verify the Object was collected by checking GC statistics
-    size_t objects_after = gc->object_count();
-    auto stats_after = gc->get_stats();
-    // The Object count should decrease by at least 1
-    ASSERT_LT(objects_after, objects_before);
-    // The number of objects collected should increase
-    ASSERT_GT(stats_after.objects_collected, stats_before.objects_collected);
-    // Clean up guard objects
-    for (auto& guard : guards) {
-        gc->remove_root(reinterpret_cast<void**>(&guard));
-    }
-    // Note: We do NOT access 'rooted' or 'guard' pointers after removal
-    // because they may be freed memory (undefined behavior)
+    // "Removing a root lets the object be collected" is a PRECISE-GC property. The
+    // process-wide runtime `gc` is CONSERVATIVE (it scans the C++ stack, so a lingering
+    // local like `rooted` keeps the object alive), so this can't be asserted there.
+    // Use an isolated precise gc_manager_t (explicit roots only) — the correct place to
+    // test collection semantics, mirroring GCAllocatorTest.
+    gc_manager_t<MarkSweepStrategy, MallocAllocator> local_gc;
+
+    a_double* rooted = local_gc.allocate<a_double>(5678.0);
+    local_gc.add_root(reinterpret_cast<void**>(&rooted));
+    local_gc.collect();  // survives — it's rooted
+    size_t objects_before = local_gc.object_count();
+    EXPECT_GT(objects_before, 0u);
+
+    local_gc.remove_root(reinterpret_cast<void**>(&rooted));
+    local_gc.collect();  // now unreachable → collected
+    size_t objects_after = local_gc.object_count();
+
+    EXPECT_LT(objects_after, objects_before);
 }
 // Test passes in isolation but fails when run with full suite due to conservative stack scanning
 TEST_F(ZombieSchemeTest, GCRootMultipleObjects) {

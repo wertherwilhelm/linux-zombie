@@ -41,6 +41,8 @@ Object* scheme_reader::read_program_from_string(const std::string& source) {
 
     Object* result = nil;
     Object* tail = nil;
+    gc_root<Object> result_guard;  // GC SAFETY: keep the in-progress program list alive
+                                   // across allocations in later read_expr() calls.
 
     while (!at_end()) {
         skip_whitespace();
@@ -58,10 +60,12 @@ Object* scheme_reader::read_program_from_string(const std::string& source) {
         }
 
         // Append to result list
+        gc_root<Object> expr_guard(expr);  // protect across cons()
         Object* new_cell = cons(expr, nil);
         if (result == nil) {
             result = new_cell;
             tail = new_cell;
+            result_guard = gc_root<Object>(result);  // protect the head henceforth
         } else {
             set_rest(tail, new_cell);
             tail = new_cell;
@@ -151,6 +155,12 @@ Object* scheme_reader::read_list() {
 
     Object* result = nil;
     Object* tail = nil;
+    // GC SAFETY: reading subsequent elements allocates (interned symbols, sub-lists)
+    // and can trigger a collection. Without rooting, the in-progress list is swept and
+    // the next set_cdr writes into freed memory (heap-use-after-free). `result` is the
+    // list head (assigned once); rooting it keeps the whole spine reachable. Each
+    // element is rooted across the cons() that appends it.
+    gc_root<Object> result_guard;
 
     while (true) {
         skip_whitespace();
@@ -177,6 +187,7 @@ Object* scheme_reader::read_list() {
             if (!cdr_expr) {
                 return make_error("read: expected expression after '.'");
             }
+            gc_root<Object> cdr_guard(cdr_expr);  // protect across any trailing allocation
 
             // Check for error (starts with "ERROR:")
             a_string* err = dynamic_cast<a_string*>(cdr_expr);
@@ -205,10 +216,12 @@ Object* scheme_reader::read_list() {
             return expr;
         }
 
+        gc_root<Object> expr_guard(expr);  // protect expr across the cons() allocation
         Object* new_cell = cons(expr, nil);
         if (result == nil) {
             result = new_cell;
             tail = new_cell;
+            result_guard = gc_root<Object>(result);  // protect the list head henceforth
         } else {
             // Use set_cdr_noclone to avoid cloning issues
             ((ConsCell*)tail)->set_cdr_noclone(new_cell);

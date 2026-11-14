@@ -5,6 +5,12 @@
 #include "gc_object.h"
 #include <iostream>
 #include <chrono>
+#include <csetjmp>
+#include <cstdint>
+
+// glibc: highest address of the main thread's stack (the stack grows downward, so
+// this is the base/top end). The Scheme runtime is single-threaded on the main thread.
+extern "C" { extern void* __libc_stack_end; }
 
 MarkSweepStrategy::MarkSweepStrategy()
     : m_bytes_allocated(0)
@@ -133,6 +139,50 @@ void MarkSweepStrategy::mark() {
         }
 
         mark_from(obj);
+    }
+
+    // Conservative stack scan: the reader/evaluator/desugaring keep live Object* in
+    // plain C++ locals and registers that are NOT explicitly rooted. Scan the machine
+    // stack and retain anything those references point at, so a collection triggered
+    // mid-operation can't reclaim them. (Root cause of the deep-loop corruption.)
+    // Opt-in: only the runtime global GC enables this; isolated instances stay precise.
+    if (m_scan_stack) {
+        mark_conservative_stack(valid_objects);
+    }
+}
+
+// Reads raw stack words, which under ASan/TSan includes instrumentation red zones;
+// exempt it from sanitizer instrumentation (the red-zone bytes are mapped and never
+// match a live-object address, so skipping the checks here is safe).
+#if defined(__GNUC__) || defined(__clang__)
+__attribute__((no_sanitize_address))
+#endif
+void MarkSweepStrategy::mark_conservative_stack(const std::unordered_set<gc_object*>& valid_objects) {
+    // Spill callee-saved registers onto the stack so pointers held only in registers
+    // are scanned too; `regs` lives on this frame and is covered by the scan below.
+    std::jmp_buf regs;
+    (void)setjmp(regs);
+
+    char* base = static_cast<char*>(__libc_stack_end);
+
+    volatile char* sp_marker = nullptr;
+    char* top = const_cast<char*>(reinterpret_cast<volatile char*>(&sp_marker));
+    // Guarantee the register-spill buffer is within the scanned range regardless of how
+    // the compiler ordered these locals.
+    char* regs_lo = reinterpret_cast<char*>(&regs);
+    if (regs_lo < top) top = regs_lo;
+
+    // Implausible/unknown bounds (e.g. a non-main thread) → skip; degrade to precise.
+    if (!base || top >= base) return;
+
+    // Align down to pointer size and scan word-by-word toward the stack base.
+    top = reinterpret_cast<char*>(reinterpret_cast<uintptr_t>(top) & ~static_cast<uintptr_t>(sizeof(void*) - 1));
+    for (char* p = top; p + sizeof(void*) <= base; p += sizeof(void*)) {
+        gc_object* cand = *reinterpret_cast<gc_object* const*>(p);
+        // Conservative: only if the word is exactly a known live-object address.
+        if (cand && valid_objects.find(cand) != valid_objects.end()) {
+            mark_from(cand);
+        }
     }
 }
 

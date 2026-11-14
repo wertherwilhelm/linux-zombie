@@ -483,3 +483,19 @@ TEST(GCDeallocateSafety, DeallocateThenCollectDoesNotDoubleFree) {
     local.collect();
     EXPECT_EQ(local.object_count(), base);
 }
+
+// Regression: a deep tail-recursive loop keeps live Object* in unrooted C++ locals
+// (arg lists, env, desugar temporaries). Forcing collections mid-loop must NOT corrupt
+// them — this is what the runtime GC's conservative stack scanning guarantees. Before
+// that fix this aborted under ASan (heap-use-after-free) / produced wrong results.
+// (Low threshold → GC fires repeatedly during the loop; kept modest so it stays fast.)
+TEST_F(ZombieSchemeTest, DeepLoopGCDoesNotCorruptLiveState) {
+    size_t saved = gc->gc_threshold();
+    // Low enough to fire several collections during the loop (each would have corrupted
+    // live state before the fix), but not so low that the per-collect conservative stack
+    // scan makes the test slow.
+    gc->set_gc_threshold(256 * 1024);
+    expectInt("(let loop ((i 0) (acc 0)) (if (< i 2000) (loop (+ i 1) (+ acc i)) acc))",
+              1999000);  // sum 0..1999
+    gc->set_gc_threshold(saved);
+}
