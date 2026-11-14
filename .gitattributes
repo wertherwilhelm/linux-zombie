@@ -1,0 +1,7 @@
+# Linux/CMake tree: store and check out all text files with LF line endings.
+# This repo originated from a Visual Studio solution and had mixed CRLF/LF;
+# normalize to LF to keep diffs clean.
+* text=auto eol=lf
+
+# Binary assets: never normalize.
+*.bin binary
