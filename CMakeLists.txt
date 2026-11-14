@@ -78,13 +78,11 @@ target_link_libraries(ZombieBytecode PUBLIC ZombieRuntime)
 zombie_glob(COMPILERIR_SRCS "${CMAKE_CURRENT_SOURCE_DIR}/ZombieCompilerIR")
 add_library(ZombieCompilerIR STATIC ${COMPILERIR_SRCS})
 target_include_directories(ZombieCompilerIR PUBLIC ${ZOMBIE_INCLUDE_DIRS})
+# One-way: CoreIR lowers to bytecode (coreir_to_bytecode), so it depends on
+# ZombieBytecode. The bytecode Compiler now lives in ZombieBytecode itself, so
+# there is no longer a reverse edge — the former ZombieBytecode↔ZombieCompilerIR
+# cycle is gone.
 target_link_libraries(ZombieCompilerIR PUBLIC ZombieBytecode)
-
-# ZombieBytecode's VM (bytecode_vm.cpp) calls zombie::bytecode::Compiler, which
-# lives in ZombieCompilerIR — a genuine cycle between the two static libs.
-# MSVC resolved it implicitly; declaring both directions lets CMake/GNU ld
-# repeat the archives on the link line to satisfy the cross-references.
-target_link_libraries(ZombieBytecode PUBLIC ZombieCompilerIR)
 
 # --- ZombieLib (embedding facade) ------------------------------------------
 zombie_glob(ZOMBIELIB_SRCS "${CMAKE_CURRENT_SOURCE_DIR}/ZombieLib")

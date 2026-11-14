@@ -3,7 +3,7 @@
 #include "Object.h"
 #include "Environment.h"
 #include "expander.h"
-#include "../ZombieBytecode/bytecode_opcodes.h"
+#include "bytecode_opcodes.h"
 #include <vector>
 #include <cstdint>
 #include <unordered_map>

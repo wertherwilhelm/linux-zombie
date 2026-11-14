@@ -12,7 +12,68 @@ this as a working Scheme.
 
 ---
 
+## Evaluator architecture audit (2026-11-13)
+
+Four execution paths, one shared value/runtime core.
+
+**Inventory**
+| Path | Module / entry | IEvaluator? | Role |
+|---|---|---|---|
+| Tree-walk `Lisp` | `ZombieRuntime/lisp.cpp` (1847) `new_eval`/`eval_step` | yes | default `--lisp`; reference evaluator |
+| Bytecode | `ZombieBytecode/bytecode_vm.cpp` (655) + `Compiler` in **`ZombieCompilerIR/compiler.cpp`** (920) | yes (`BytecodeVM`) | `--bytecode` |
+| Toy VM | `ZombieRuntime/toy_vm.cpp` (984) | yes | `--vm`, experimental |
+| CoreIR | `ZombieCompilerIR/` scheme_to_coreir(1455)+coreir+verifier+coreir_to_bytecode (~4.4k) | **no** (compiler pipeline) | Scheme→CoreIR→bytecode; not wired to REPL/tests |
+
+**What's shared (good isolation):** one Object/atom/cons value model, one `Environment`,
+one reader, one primitive set. `IEvaluator` (i_evaluator.h) is a clean 2-method seam
+(`eval`, `get_environment`). `scheme_engine` owns the evaluator via
+`create_evaluator(EvaluatorType)` + `owns_evaluator_`, and can take an injected evaluator —
+good ownership/isolation. No evaluator global-state leaks remain (the ledger's `g_lisp` was
+deleted). Runtime evaluators don't call each other.
+
+**Layering problems**
+1. **Circular module dependency:** `ZombieBytecode → ZombieCompilerIR` (CMakeLists:87) *and*
+   `ZombieCompilerIR → ZombieBytecode` (:81). The bytecode `Compiler` lives in
+   `ZombieCompilerIR` (so the VM depends on it), while `coreir_to_bytecode` emits ZombieBytecode
+   (so CoreIR depends back). The two libs are one tangled unit, not layers.
+2. **Misplaced compiler:** the plain bytecode `Compiler` sits in `ZombieCompilerIR`, which also
+   holds CoreIR — the module name/placement conflates "bytecode compiler" with "CoreIR pipeline".
+3. **Front-end applied asymmetrically (semantic-drift risk):** bytecode (compiler.cpp:35,40) and
+   toy VM run the shared `Expander` (expander.cpp — desugars let/let*/letrec/case/do/when/unless/
+   and/or/quasiquote/cond + user `define-syntax`) before executing core forms. The **tree-walk
+   does NOT** run the Expander front-end; `new_eval` reimplements the derived forms inline and
+   only calls the expander for *user* macros (lisp.cpp:991/1671). So derived-form semantics exist
+   in two places and can drift — exactly the earlier `and`/`or` and `call/cc` per-evaluator bugs.
+
+**Completeness**
+- Tree-walk: fullest R5/R7 — adds `define-library`, `import`, `parameterize`, `guard`, `delay`,
+  `case-lambda`, `cond-expand`, full macros. The reference.
+- Bytecode: core + all derived forms (via Expander) + `call/cc`, `dynamic-wind`, `guard`,
+  `parameterize`; `BytecodeMatchesASTInterpreter` gives 5 differential tests vs tree-walk (88 total).
+- Toy VM: desugars via Expander but **continuations are broken** (`call/cc` returns garbage —
+  §2.1); demo-grade.
+- CoreIR: incomplete (lambda exec TODO coreir.h:144; no local-var lowering; inline-clone throws),
+  **0 tests, no REPL mode, unreached** — integral-to-complete per owner, not dead.
+
+**Recommendations (priority)**
+1. Break the ZombieBytecode↔ZombieCompilerIR cycle: move the bytecode `Compiler` into
+   `ZombieBytecode` (VM owns its compiler), leave `ZombieCompilerIR` as the optional CoreIR
+   pipeline depending one-way on ZombieBytecode. Removes the circular link.
+2. Route the tree-walk through the shared `Expander` front-end (or extract a single
+   derived-form desugarer both use) so semantics can't drift; delete the inline duplicates.
+3. Add differential tests for toy VM and CoreIR against the tree-walk (CoreIR has none); fix
+   §2.1 toy-VM continuations or formally mark it demo-only.
+4. Cleanup: remove the empty `ZombieBytecode/ZombieBytecode/` directory.
+
 ## Fix log (2026-11-13)
+
+- [x] **Evaluator layering #1 — broke the ZombieBytecode↔ZombieCompilerIR cycle.** Moved
+      the bytecode `Compiler` (`compiler.{h,cpp}`) from `ZombieCompilerIR` into
+      `ZombieBytecode` (where its VM lives); it references no CoreIR types, only
+      ZombieRuntime + the local opcode header. Dropped the reverse CMake link
+      (`ZombieBytecode PUBLIC ZombieCompilerIR`). Now one-way: `ZombieCompilerIR →
+      ZombieBytecode` (CoreIR lowers to bytecode). Build order is topological; 88 bytecode
+      tests + full 1257 pass.
 
 - [x] **Value Ledger / "Multiverse Workbench" pruned entirely** — ~3,400 lines of a
       grand, mostly-stubbed vision (per-value provenance; Scheme/Native/Bytecode/Dream
