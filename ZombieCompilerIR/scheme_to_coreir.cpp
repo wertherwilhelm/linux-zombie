@@ -94,6 +94,25 @@ std::string SchemeToCoreirLowering::get_symbol_name(Object* sym) {
     throw std::runtime_error("Expected symbol or string");
 }
 
+// Convert an atomic Scheme expr to a CoreIR Atom. Single source of truth so that
+// quote-stripping ((quote X) -> datum X) is consistent across every lowering path;
+// scattered copies of this logic previously disagreed (some returned a literal of the
+// whole (quote X) form, yielding "Unbound variable:" / wrong results).
+Atom SchemeToCoreirLowering::atomic_to_atom(Object* expr) {
+    if (expr->get_type() == static_cast<int>(Type::SYMBOL)) {
+        return Atom::makeVar(get_symbol_name(expr), TypeHint::UNKNOWN);
+    }
+    if (expr->pair()) {
+        Object* head = car(expr);
+        if (head && head->get_type() == static_cast<int>(Type::SYMBOL) &&
+            get_symbol_name(head) == "quote") {
+            Object* quoted = car(cdr(expr));
+            return Atom::makeLit(quoted, infer_type(quoted));
+        }
+    }
+    return Atom::makeLit(expr, infer_type(expr));
+}
+
 // ============================================================================
 // Primitive Operation Detection
 // ============================================================================
@@ -233,16 +252,10 @@ std::unique_ptr<Expr> SchemeToCoreirLowering::lower_expr_to_expr(Object* scheme_
     // Handle atomic expressions
     if (is_atomic(scheme_expr)) {
         // For atomic values, we can't directly create an Expr
-        // Wrap in a no-op Primitive (+ x 0)
+        // Wrap in a no-op Primitive (+ x 0) to carry the atom through as an Expr.
         std::vector<Atom> args;
-
-        if (scheme_expr->get_type() == static_cast<int>(Type::SYMBOL)) {
-            args.push_back(Atom::makeVar(get_symbol_name(scheme_expr)));
-        } else {
-            args.push_back(Atom::makeLit(scheme_expr));
-        }
+        args.push_back(atomic_to_atom(scheme_expr));
         args.push_back(Atom::makeLit(numeric::make_integer(0)));
-
         return std::make_unique<Expr>(Expr::makePrim("+", std::move(args)));
     }
 
@@ -478,11 +491,7 @@ std::unique_ptr<Stmt> SchemeToCoreirLowering::lower_if(Object* cond,
     std::unique_ptr<Stmt> cond_stmts = nullptr;
 
     if (is_atomic(cond)) {
-        if (cond->get_type() == static_cast<int>(Type::SYMBOL)) {
-            cond_atom = Atom::makeVar(get_symbol_name(cond));
-        } else {
-            cond_atom = Atom::makeLit(cond);
-        }
+        cond_atom = atomic_to_atom(cond);
     } else {
         // Complex condition: lower to statement chain and extract result
         cond_stmts = lower_expr(cond);
@@ -492,7 +501,8 @@ std::unique_ptr<Stmt> SchemeToCoreirLowering::lower_if(Object* cond,
 
     // Lower then and else branches
     auto then_stmt = lower_expr(then_expr);
-    auto else_stmt = lower_expr(else_expr);
+    auto else_stmt = else_expr ? lower_expr(else_expr)
+                               : Stmt::makeReturn(Atom::makeLit(nil, TypeHint::VOID));
 
     // Create the If statement
     auto if_stmt = Stmt::makeIf(std::move(cond_atom),
@@ -612,16 +622,24 @@ std::unique_ptr<Stmt> SchemeToCoreirLowering::lower_cond(Object* clauses) {
         }
     }
 
-    // Regular clause: (test => expr)
-    // Lower test condition
-    auto test_stmt = lower_expr(test);
+    // Regular clause: (test expr ...)
+    // Atomic tests (#t, symbols, (quote X)) become the cond atom directly; complex
+    // tests lower to a statement chain whose result var is the atom. (Previously an
+    // atomic test went through extract_result_var, which returned "" -> empty var.)
+    Atom cond_atom;
+    std::unique_ptr<Stmt> test_stmt = nullptr;
+    if (is_atomic(test)) {
+        cond_atom = atomic_to_atom(test);
+    } else {
+        test_stmt = lower_expr(test);
+        cond_atom = Atom::makeVar(extract_result_var(test_stmt.get()));
+    }
 
     // Lower actions (multiple expressions = begin)
     std::unique_ptr<Stmt> then_branch;
     if (is_nil(actions)) {
-        // No actions - return the test result
-        std::string result_var = extract_result_var(test_stmt.get());
-        then_branch = Stmt::makeReturn(Atom::makeVar(result_var));
+        // No actions - return the test's own value
+        then_branch = Stmt::makeReturn(cond_atom);
     } else if (is_nil(cdr(actions))) {
         // Single action
         then_branch = lower_expr(car(actions));
@@ -630,18 +648,14 @@ std::unique_ptr<Stmt> SchemeToCoreirLowering::lower_cond(Object* clauses) {
         then_branch = lower_begin(actions);
     }
 
-    // Lower rest of clauses (else branch)
+    // Rest of clauses form the else branch
     auto else_branch = lower_cond(rest_clauses);
 
-    // Extract test result atom from test_stmt
-    std::string test_result = extract_result_var(test_stmt.get());
-    Atom cond_atom = Atom::makeVar(test_result);
-
-    // Build if statement
     auto if_stmt = Stmt::makeIf(cond_atom, std::move(then_branch), std::move(else_branch));
-
-    // Chain test evaluation before if
-    return inline_stmt_chain(std::move(test_stmt), std::move(if_stmt));
+    if (test_stmt) {
+        return inline_stmt_chain(std::move(test_stmt), std::move(if_stmt));
+    }
+    return if_stmt;
 }
 
 // ============================================================================
@@ -954,14 +968,9 @@ std::unique_ptr<Stmt> SchemeToCoreirLowering::lower_expr(Object* scheme_expr) {
     // This handles let*, letrec, case, do, quasiquote, and any user-defined macros
     scheme_expr = expand(scheme_expr);
 
-    // Handle atomic expressions - just return them
+    // Handle atomic expressions (symbol, literal, or (quote X)) - just return them
     if (is_atomic(scheme_expr)) {
-        if (scheme_expr->get_type() == static_cast<int>(Type::SYMBOL)) {
-            return Stmt::makeReturn(Atom::makeVar(get_symbol_name(scheme_expr), TypeHint::UNKNOWN));
-        } else {
-            TypeHint hint = infer_type(scheme_expr);
-            return Stmt::makeReturn(Atom::makeLit(scheme_expr, hint));
-        }
+        return Stmt::makeReturn(atomic_to_atom(scheme_expr));
     }
 
     // Handle list expressions
@@ -980,7 +989,10 @@ std::unique_ptr<Stmt> SchemeToCoreirLowering::lower_expr(Object* scheme_expr) {
         if (op == "if") {
             Object* cond = car(rest);
             Object* then_expr = car(cdr(rest));
-            Object* else_expr = car(cdr(cdr(rest)));
+            // else is optional: (if test then) has no else branch. Pass nullptr so
+            // lower_if yields an unspecified (nil) value rather than dereferencing nil.
+            Object* else_tail = cdr(cdr(rest));
+            Object* else_expr = (else_tail && else_tail->pair()) ? car(else_tail) : nullptr;
             return lower_if(cond, then_expr, else_expr);
         }
 

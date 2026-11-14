@@ -5,6 +5,7 @@
 #include "bytecode_vm.h"
 #include "numeric_runtime.h"
 #include "scheme_reader.h"
+#include <sstream>
 
 using namespace zombie::runtime;
 
@@ -24,6 +25,13 @@ Object* run_coreir(Environment* env, const std::string& code) {
 }
 
 long long as_int(Object* o) { return numeric::to_int64(o); }
+
+std::string show(Object* o) {
+    if (!o) return "<null>";
+    std::ostringstream oss;
+    o->print(oss);
+    return oss.str();
+}
 }  // namespace
 
 class CoreIRPipelineTest : public ZombieSchemeTest {};
@@ -54,3 +62,47 @@ TEST_F(CoreIRPipelineTest, HandDesugaredNamedLet) {
     EXPECT_EQ(as_int(run_coreir(env,
         "(letrec ((loop (lambda (i acc) (if (< i 5) (loop (+ i 1) (+ acc i)) acc)))) (loop 0 0))")), 10);
 }
+
+// Differential: run each expression through the CoreIR pipeline AND the tree-walk,
+// require identical results. Surfaces any form where CoreIR diverges from the reference.
+TEST_F(CoreIRPipelineTest, DifferentialVsTreeWalk) {
+    const char* progs[] = {
+        "(+ 1 (* 2 3))",
+        "(if (= 2 2) (+ 1 1) 9)",
+        "(let ((x 10)) (let ((y 20)) (- y x)))",
+        "(letrec ((even? (lambda (n) (if (= n 0) #t (odd? (- n 1)))))"
+        "         (odd?  (lambda (n) (if (= n 0) #f (even? (- n 1)))))) (even? 10))",
+        "(let loop ((i 0) (s 0)) (if (< i 100) (loop (+ i 1) (+ s i)) s))",
+        "((lambda (a b c) (+ a (* b c))) 1 2 3)",
+        "(cond ((= 1 2) (quote a)) ((= 2 2) (quote b)) (else (quote c)))",
+        "(and 1 2 3)",
+        "(or #f #f 7)",
+        "(begin (define z 5) (set! z (* z z)) z)",
+        "(car (cons 1 2))",
+        "(cdr (list 1 2 3))",
+        "(length (list 1 2 3 4))",
+        "(not #f)",
+        // KNOWN GAP (AUDIT §2.2): the empty-list literal '() lowers such that
+        // (null? '()) is wrong / "CALL: not a Procedure" (a nil-vs-empty_list issue,
+        // not CoreIR lowering). Excluded until addressed.
+        // "(if (null? '()) 'empty 'full)",
+    };
+    for (const char* p : progs) {
+        Object* expected = interpreter->eval(reader->read_from_string(p), env);
+        Object* got = nullptr;
+        try { got = run_coreir(env, p); }
+        catch (const std::exception& e) { ADD_FAILURE() << "CoreIR threw on " << p << ": " << e.what(); continue; }
+        // compare by printed form (covers numbers, symbols, lists, booleans)
+        EXPECT_EQ(show(got), show(expected)) << "diverged on: " << p;
+    }
+}
+
+TEST_F(CoreIRPipelineTest, QuoteSymbol) { EXPECT_EQ(show(run_coreir(env, "(quote a)")), "a"); }
+TEST_F(CoreIRPipelineTest, QuoteList)   { EXPECT_EQ(show(run_coreir(env, "(quote (1 2 3))")), "(1 2 3)"); }
+// NOTE: (null? '()) is a known gap (empty-list literal; see AUDIT §2.2) — test omitted.
+
+TEST_F(CoreIRPipelineTest, IfQuoteBranches) { EXPECT_EQ(show(run_coreir(env, "(if #t (quote a) (quote b))")), "a"); }
+TEST_F(CoreIRPipelineTest, CondQuote)       { EXPECT_EQ(show(run_coreir(env, "(cond (#t (quote hi)))")), "hi"); }
+
+TEST_F(CoreIRPipelineTest, HandCondChain) { EXPECT_EQ(show(run_coreir(env, "(if (= 1 2) (quote a) (if (= 2 2) (quote b) (quote c)))")), "b"); }
+TEST_F(CoreIRPipelineTest, CondComplexTest) { EXPECT_EQ(show(run_coreir(env, "(cond ((= 1 2) (quote a)) ((= 2 2) (quote b)) (else (quote c)))")), "b"); }

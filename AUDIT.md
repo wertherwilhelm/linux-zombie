@@ -372,16 +372,27 @@ old "returns garbage / not enabled" symptom no longer reproduces — it was fixe
 original audit. The `enable_continuations=false` path (toy_vm.cpp throws "not enabled") is
 only hit if a VM is constructed with continuations disabled; the REPL/engine enable them.
 
-### 2.2 CoreIR (`ZombieCompilerIR`) — incomplete by design
-Per `docs/COREIR_ROADMAP.md` it is a "proof-of-concept"; confirmed in code:
-- `coreir.h:144` — "Lambda execution is TODO for Phase 1".
-- `scheme_to_coreir.cpp:789` — no `SetLocal`/local-variable lowering yet
-  ("once we track lexical scope").
-- `scheme_to_coreir.cpp:1449` — `throw … "Cannot inline stmt chain with If
-  statement (clone not implemented)"`.
-- No JIT backend (the roadmap's headline goal is unstarted).
-It is used as tooling/translation infra, not a user-facing evaluator — the engine
-exposes no CoreIR evaluator (README notes `--coreir` was removed).
+### 2.2 CoreIR (`ZombieCompilerIR`) — far more complete than the audit claimed
+Re-verified 2026-11-14 by building the first end-to-end harness
+(`LispTest/CoreIRTests.cpp`, 24 tests: Scheme → CoreIR → bytecode → BytecodeVM). The
+pipeline was previously **unreached and untested**; the old "lambda execution TODO"
+(coreir.h:144) and "no local lowering" (789) claims are **stale** — lambdas, closures,
+captures, recursion (incl. multi-arg + mutual), `set!`/local mutation, named `let`,
+`let*`, `letrec`, `begin`, `cond`, `and`/`or`, and list ops all work and match the
+tree-walk differentially.
+Bugs found + FIXED in this pass:
+- Named `let` threw "Let binding variable must be symbol" → desugar to letrec+lambda.
+- `quote` was mishandled in every atomic-lowering path (returned a literal of the whole
+  `(quote X)` form → "Unbound variable:") → centralized into one `atomic_to_atom` helper.
+- `if`/`cond` with **no else** dereferenced nil → now yield unspecified.
+- `cond` with an **atomic test** (`#t`, a symbol) produced an empty result var → use
+  `atomic_to_atom`.
+- Pre-existing leak: `SchemeToCoreirLowering` never freed its `Expander` → `unique_ptr`.
+Remaining known gaps (documented, excluded from tests): the empty-list literal `'()` /
+`null?` (a nil-vs-`empty_list` issue, likely in the bytecode VM, not lowering); and the
+`'` reader shorthand inside a cond branch via CoreIR (explicit `(quote X)` works). The
+`inline_stmt_chain` clone-not-implemented (1449) and a JIT backend remain unstarted.
+Still tooling-only: the engine exposes no `--coreir` evaluator.
 
 ---
 

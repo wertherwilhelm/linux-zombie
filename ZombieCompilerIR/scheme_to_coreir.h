@@ -83,6 +83,10 @@ private:
     std::unique_ptr<Expr> lower_call(Object* func, Object* args);
     std::unique_ptr<Expr> lower_expr_to_expr(Object* scheme_expr);
 
+    // Helper: convert an atomic Scheme expr (symbol, literal, or (quote X)) to an Atom.
+    // Single source of truth for atomic lowering so quote-stripping stays consistent.
+    Atom atomic_to_atom(Object* expr);
+
     // Helper: Normalize Primitive call with potentially complex arguments
     std::unique_ptr<Stmt> lower_primitive_call_stmt(const std::string& op, Object* args);
 
