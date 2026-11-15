@@ -1,4 +1,5 @@
 #include "zombie_runtime_types.h"
+#include <unordered_set>
 // Lisp.cpp: implementation of the Lisp class.
 //
 //////////////////////////////////////////////////////////////////////
@@ -452,6 +453,35 @@ eval_result Lisp::eval_step_list(Object* x, Environment* env) {
     // If fn is neither (e.g., a lambda expression), skip to Procedure application
     if (fn->is_atom() && (is_string(fn) || is_symbol(fn))) {
         std::string fn_val = get_identifier_name(fn);
+
+        // Unify derived-form desugaring through the shared Expander — the single
+        // source of truth used by every evaluator. These forms are desugared to
+        // core forms (if/let/lambda/begin/...) and tail-called, exactly as a
+        // macro use is expanded on encounter further below. This eliminates the
+        // tree-walk's parallel reimplementations (the recurring source of
+        // cross-evaluator divergences: named let, cond =>, let-values, ...).
+        // Pure derived forms desugared to core forms. NOT case-lambda: it is a
+        // procedure constructor (like lambda), kept native — delegating it to the
+        // Expander's dispatch desugaring is both unnecessary and far slower.
+        static const std::unordered_set<std::string> kExpanderForms = {
+            "when", "unless", "and", "or", "cond", "case", "do",
+            "let", "let*", "letrec", "letrec*", "let-values", "let*-values"
+        };
+        if (kExpanderForms.count(fn_val)) {
+            Expander expander(env);
+            Object* desugared = expander.expand(x);
+            // Displacement cache: the tree-walk re-evaluates the SAME AST on
+            // every call (e.g. a loop body), so re-expanding per encounter is
+            // quadratic. Rewrite this cons cell in place to its desugared form;
+            // the desugaring is deterministic, so this is a pure one-time cache
+            // and the next encounter dispatches directly on the core form.
+            if (!desugared->is_atom() && desugared != x) {
+                set_first(x, first(desugared));
+                set_rest(x, rest(desugared));
+                return eval_result::make_tailcall(x, env);
+            }
+            return eval_result::make_tailcall(desugared, env);
+        }
 
         // Special forms - some can be tail calls
         if (fn_val == "quote") {
