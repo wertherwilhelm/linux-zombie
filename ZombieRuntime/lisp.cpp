@@ -191,15 +191,24 @@ ConsCell* Lisp::eval_args(Object *List, Environment*env) {
 Object * Lisp::reduce_cond(Object *clauses, Environment*env) {
     Object *result = NULL;
     for (;;) {
-        if (clauses == NULL) {
-            return gc_new<a_bool>(false);
+        if (clauses == NULL || clauses->is_nil()) {
+            // No clause matched (exhausted, no else): result is unspecified.
+            // (clauses is nil, not NULL, when exhausted — the old == NULL check
+            // missed this and fell through to first(nil).) Use nil, the
+            // codebase's unspecified value, matching the Expander's cond
+            // desugaring (if #f #f) used by the other evaluators.
+            return nil;
         }
         Object *clause = first(clauses); clauses = rest(clauses);
-        if (get_identifier_name(first(clause)) == "else" || truth(result = eval_impl(first(clause), env))) {
-            if (rest(clause) == NULL) {
+        bool is_else = get_identifier_name(first(clause)) == "else";
+        if (is_else || truth(result = eval_impl(first(clause), env))) {
+            if (!is_else && (rest(clause) == NULL || rest(clause)->is_nil())) {
+                // (test) with no body: R7RS returns the test value. (rest(clause)
+                // is nil, not NULL, when the clause has no body — the old
+                // == NULL check missed this and fell through to (begin) => ().)
                 return list(gc_new<a_string>("quote"), result);
             }
-            else if (get_identifier_name(second(clause)) == "=>") {
+            else if (!is_else && get_identifier_name(second(clause)) == "=>") {
                 return list(third(clause), list(gc_new<a_string>("quote"), result));
             } else {
                 //char[] tag = "begin";

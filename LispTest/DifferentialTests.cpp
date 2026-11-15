@@ -70,6 +70,12 @@ const Case kCorpus[] = {
     // conditionals
     {"(if (< 1 2) 'yes 'no)", "yes", ALL},
     {"(cond ((= 1 2) 'a) ((= 2 2) 'b) (else 'c))", "b", ALL},
+    // cond edge cases: => arrow, no-body clause (returns the test value),
+    // exhausted no-else (unspecified -> ()).
+    {"(cond ((assv 2 '((1 . a) (2 . b))) => cdr) (else 'none))", "b", ALL},
+    {"(cond ((memv 3 '(1 2 3)) => car) (else 0))", "3", ALL},
+    {"(cond (#f 1) (42))", "42", ALL}, {"(cond (7))", "7", ALL},
+    {"(cond (#f 1))", "()", ALL}, {"(cond (#f 1) (#f 2) (else 9))", "9", ALL},
     {"(case 2 ((1) 'one) ((2) 'two) (else 'other))", "two", ALL},
     {"(if #f 'yes)", "()", ALL}, {"(if #t 'yes)", "yes", ALL},
     {"(when #t 1 2 3)", "3", ALL}, {"(when #f 1)", "()", ALL},

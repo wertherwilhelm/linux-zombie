@@ -46,6 +46,13 @@ public:
 
 private:
     Environment* env_;
+    int gensym_counter_ = 0;  // for hygienic temporaries (e.g. cond =>)
+
+    // Generate a fresh symbol unlikely to collide with user code.
+    Object* gensym(const char* prefix);
+
+    // Desugar (cond clause ...) to nested if/let (handles else, =>, no-body).
+    Object* expand_cond(Object* clauses);
 
     // -------------------------------------------------------------------------
     // Recursive expansion

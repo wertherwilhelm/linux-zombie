@@ -483,12 +483,29 @@ produced the punch-list (11 divergences). Status:
   (closure / primitive / continuation); registered and exported from
   `(scheme base)`. Covered in the differential suite.
 
-Outstanding gaps (masked in the differential suite): none at present — every
-divergence the initial sweep found is fixed. Minor follow-up still open:
-bytecode/CoreIR truncate the variable name in the "Unbound variable:" message
-(cosmetic); and the now-redundant per-evaluator named-let handling in the
-tree-walk and CoreIR lowering can be removed. Next: broaden the corpus to find
-more divergences (strings/chars, vectors, tail-call depth, error cases, etc.).
+A second, broader sweep (~77 programs: vectors, do, case/cond edges, values,
+variadic lambdas, strings/chars, assq/memq, nested quasiquote) found more:
+
+- **FIXED — `cond` with `=>`, no-body clause, and exhausted no-else.** Each
+  evaluator re-implemented `cond`, so they diverged: `=>` worked only in the
+  tree-walk; a no-body clause `(cond (42))` returned 42 only in CoreIR (tree-walk
+  returned `()` — a `== NULL` vs `nil` bug — bytecode `#t`, toy VM errored); an
+  exhausted no-else `(cond (#f 1))` crashed the tree-walk. Fixed by desugaring
+  `cond` -> `if`/`let` in the shared Expander (new `expand_cond`, with a `gensym`
+  for the `=>` temp) so bytecode/CoreIR/toy-VM get identical R7RS semantics, plus
+  a surgical fix to the tree-walk's own `reduce_cond` (no-body returns the test
+  value; exhausted returns nil). All four now agree; covered in the differential
+  corpus (=>, no-body, exhausted).
+
+Still outstanding from the second sweep (next up):
+- **CoreIR: variadic / dotted lambda params** — `(lambda args ...)` and
+  `(lambda (a . rest) ...)` error "car of an atom" in CoreIR only.
+- **CoreIR: `call-with-values` / `values`** — errors in CoreIR only.
+- **Missing features in most/all** (tree-walk also lacks them): `let-values`,
+  `letrec*`, `last-pair`, `boolean=?`. Lower priority (feature gaps, not
+  single-evaluator divergences).
+- Cosmetic: bytecode/CoreIR truncate the variable name in "Unbound variable:".
+- Redundant per-evaluator named-let handling (tree-walk + CoreIR) can be removed.
 
 ---
 

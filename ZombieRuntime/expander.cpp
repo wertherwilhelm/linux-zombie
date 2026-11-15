@@ -311,7 +311,16 @@ Object* Expander::expand_list(Object* list) {
         return expand_unless(test, body);
     }
 
-    if (name == "if" || name == "begin" || name == "cond") {
+    if (name == "cond") {
+        // Desugar cond -> if/let so every evaluator (bytecode, CoreIR, toy VM)
+        // gets identical, R7RS-correct semantics for =>, else, and no-body
+        // clauses, rather than each re-implementing cond with different gaps.
+        // expand_cond builds the raw if/let structure; expand it once more so the
+        // generated let/if/begin forms get fully desugared (let -> lambda, etc.).
+        return expand(expand_cond(args));
+    }
+
+    if (name == "if" || name == "begin") {
         // These forms need lazy evaluation in the VM
         // But we still need to expand their sub-expressions
         Object* expanded_args = nil;
@@ -576,6 +585,59 @@ Object* Expander::expand_letrec(Object* bindings, Object* body) {
 
     // Recursively expand the let form
     return expand(let_form);
+}
+
+Object* Expander::gensym(const char* prefix) {
+    // "%%" prefix + a monotone counter: effectively collision-free with user
+    // identifiers without embedding whitespace in the symbol name (some
+    // evaluators mishandle space-bearing symbol names in binding positions).
+    std::string name = std::string("%%") + prefix + std::to_string(gensym_counter_++);
+    return intern_symbol(name);
+}
+
+Object* Expander::expand_cond(Object* clauses) {
+    // Build the RAW if/let desugaring; the caller expands the whole result once
+    // so the generated let/if/begin forms are themselves fully desugared.
+    // Empty / exhausted cond -> unspecified value, via (if #f #f).
+    if (is_nil(clauses)) {
+        return cons(intern_symbol("if"), cons(false_obj, cons(false_obj, nil)));
+    }
+
+    Object* clause = first(clauses);
+    Object* test = first(clause);
+    Object* body = rest(clause);
+
+    // (else body...) -> (begin body...)   [else clause is terminal]
+    if (is_symbol(test) && ((a_symbol*)test)->value() == "else") {
+        return cons(intern_symbol("begin"), body);
+    }
+
+    Object* rest_form = expand_cond(rest(clauses));
+
+    // (test) with no body -> (let ((t test)) (if t t <rest>))
+    if (is_nil(body)) {
+        Object* tvar = gensym("cond");
+        Object* binding = cons(cons(tvar, cons(test, nil)), nil);
+        Object* if_form = cons(intern_symbol("if"),
+                               cons(tvar, cons(tvar, cons(rest_form, nil))));
+        return cons(intern_symbol("let"), cons(binding, cons(if_form, nil)));
+    }
+
+    // (test => proc) -> (let ((t test)) (if t (proc t) <rest>))
+    if (is_symbol(first(body)) && ((a_symbol*)first(body))->value() == "=>") {
+        Object* proc = second(body);
+        Object* tvar = gensym("cond");
+        Object* binding = cons(cons(tvar, cons(test, nil)), nil);
+        Object* call = cons(proc, cons(tvar, nil));
+        Object* if_form = cons(intern_symbol("if"),
+                               cons(tvar, cons(call, cons(rest_form, nil))));
+        return cons(intern_symbol("let"), cons(binding, cons(if_form, nil)));
+    }
+
+    // (test body...) -> (if test (begin body...) <rest>)
+    Object* then_form = cons(intern_symbol("begin"), body);
+    return cons(intern_symbol("if"),
+                cons(test, cons(then_form, cons(rest_form, nil))));
 }
 
 Object* Expander::expand_case(Object* key_expr, Object* clauses) {
