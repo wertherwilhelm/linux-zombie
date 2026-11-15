@@ -347,10 +347,22 @@ void VM::step_eval_if(Frame& frame) {
     }
 
     Object* then_expr = first(rest(frame.args));
-    Object* else_expr = first(rest(rest(frame.args)));
+    Object* else_tail = rest(rest(frame.args));  // () for a one-armed (if test then)
 
-    // Choose which branch to evaluate (lazy evaluation!)
-    Object* branch_to_eval = condition_is_true ? then_expr : else_expr;
+    Object* branch_to_eval;
+    if (condition_is_true) {
+        branch_to_eval = then_expr;
+    } else if (else_tail != nil && !else_tail->is_nil() && else_tail->pair()) {
+        branch_to_eval = first(else_tail);
+    } else {
+        // One-armed if with a false condition: the result is unspecified.
+        // (Previously the else branch was read unconditionally via first(nil),
+        // which threw "first: cannot take first of an atom!" — and did so even
+        // when the condition was true, breaking when/unless too.)
+        accumulator = nil;
+        stack.pop_back();
+        return;
+    }
 
     if (debug_mode) {
         std::cout << "  -> Taking " << (condition_is_true ? "THEN" : "ELSE")

@@ -470,9 +470,15 @@ produced the punch-list (11 divergences). Status:
   Unmasked in the differential suite. (The per-evaluator named-let handling in
   the tree-walk and CoreIR lowering is now redundant — safe future cleanup.)
 
+- **FIXED — toy VM one-armed `if` / `when` / `unless`.** `step_eval_if` read the
+  else branch unconditionally (`first(rest(rest(args)))`), so a two-element
+  `(if test then)` did `first(nil)` → "first: cannot take first of an atom!" —
+  and did so even when the condition was true, which also broke when/unless
+  (they desugar to a one-armed if). Now the else branch is read lazily and a
+  missing one yields the unspecified value (nil), matching the tree-walk.
+  Unmasked in the differential suite.
+
 Outstanding gaps (masked in the differential suite; prioritised):
-- **[P2] toy VM: one-armed `if` / `when` / `unless`** error ("first: cannot take
-  first of an atom!") — the no-else path. Masked out of V.
 - **[P3] `procedure?` unbound in all four** (missing primitive); bytecode/CoreIR
   also truncate the variable name in the "Unbound variable:" message.
 

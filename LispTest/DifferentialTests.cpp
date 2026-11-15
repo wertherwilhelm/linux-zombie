@@ -41,13 +41,14 @@ std::string run_in(EvaluatorType t, const std::string& code) {
 
 // -------------------------------------------------------------------------
 // KNOWN GAPS (masked out below; remove the mask when fixed):
-//   - One-armed `if` / `when` / `unless`: broken in toy VM (V).
 //   - `procedure?`: missing in every evaluator (not in the corpus).
 // FIXED (now covered on all four):
 //   - closure applied from inside a primitive (map/filter/for-each) — was a
 //     toy-VM re-entrant-eval hang/segfault.
 //   - named let `(let loop ...)` — was broken in bytecode and toy VM; the shared
 //     Expander now desugars it to letrec for every evaluator.
+//   - one-armed `if` / `when` / `unless` — toy VM read the (absent) else branch
+//     unconditionally; now returns unspecified when the else branch is missing.
 // -------------------------------------------------------------------------
 const Case kCorpus[] = {
     // arithmetic / comparison (incl. n-ary — the CoreIR drop-operand regression)
@@ -68,9 +69,9 @@ const Case kCorpus[] = {
     {"(if (< 1 2) 'yes 'no)", "yes", ALL},
     {"(cond ((= 1 2) 'a) ((= 2 2) 'b) (else 'c))", "b", ALL},
     {"(case 2 ((1) 'one) ((2) 'two) (else 'other))", "two", ALL},
-    {"(if #f 'yes)", "()", ALL & ~V},        // one-armed if: toy VM gap
-    {"(when #t 1 2 3)", "3", ALL & ~V},       // when: toy VM gap
-    {"(unless #f 9)", "9", ALL & ~V},         // unless: toy VM gap
+    {"(if #f 'yes)", "()", ALL}, {"(if #t 'yes)", "yes", ALL},
+    {"(when #t 1 2 3)", "3", ALL}, {"(when #f 1)", "()", ALL},
+    {"(unless #f 9)", "9", ALL}, {"(unless #t 9)", "()", ALL},
     // binding forms
     {"(let ((x 1) (y 2)) (+ x y))", "3", ALL},
     {"(let* ((x 1) (y (+ x 1))) (* x y))", "2", ALL},
