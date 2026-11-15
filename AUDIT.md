@@ -565,16 +565,22 @@ as harmless, never-instantiated infrastructure.)
   name (only the tree-walk's own atom path appended it); both now append
   `get_name(symbol)`, matching the tree-walk.
 
-Lower-priority follow-ups:
-- The toy VM does not error on an unbound variable — `step_eval_atom` falls back
-  to returning the symbol as a literal (the reason unbound names "worked" i.e.
-  returned garbage in the sweeps). Attempted to make it error (matching the
-  tree-walk oracle): it is **load-bearing for the toy VM's continuation
-  machinery** — restoring a captured continuation looks names up before they are
-  rebound, so erroring breaks `ContinuationInClosure` and
-  `MultipleContinuationsWithGC`. A real fix needs a dedicated look at the
-  continuation restore path (ContinuationSupport::try_invoke_continuation), not a
-  change to the atom lookup. Left as-is with an explanatory NOTE in the code.
+- **FIXED — toy VM now errors on unbound variables** (symbols), and string
+  literals self-evaluate, matching the tree-walk oracle. `step_eval_atom`
+  previously looked up strings AND symbols and fell back to returning the symbol
+  on failure, silently masking undefined names.
+  - Root cause of the earlier "it's load-bearing for continuations" scare: it was
+    NOT. The two continuation tests that broke (`ContinuationInClosure`,
+    `MultipleContinuationsWithGC`) were **vacuous** — their multi-form setups were
+    fed through `read_from_string`, which reads only the FIRST form, so the later
+    `define`s (escape, cont1..3, val1..3) were never evaluated. The tests
+    "passed" only because `(escape 99)` left 99 in the accumulator via the lenient
+    fallback. Fixed `ContinuationTests::eval_vm` to evaluate every top-level form
+    (read_program_from_string). With a genuine setup the toy VM's re-entrant
+    continuations work correctly AND unbound errors properly (22/22, ASan clean).
+  - Confirmed the toy VM genuinely supports re-entrant call/cc (the reason it
+    exists): the tree-walk only supports escape continuations and explicitly
+    errors ("use the toy VM or bytecode VM") on re-entrant invocation.
 
 ---
 

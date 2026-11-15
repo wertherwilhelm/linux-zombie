@@ -42,10 +42,14 @@ protected:
     }
     // Helper: Evaluate using the single toy_vm instance
     Object* eval_vm(const std::string& code) {
-        Object* expr = reader->read_from_string(code);
-        // Don't clear the stack - continuations may reference it!
-        // The VM naturally clears the stack when evaluation completes
-        vm->eval(expr, env);
+        // Evaluate ALL top-level forms in `code`. (read_from_string reads only the
+        // FIRST form, which silently left later definitions in multi-form setups
+        // unbound — so some tests passed only by accident via the old lenient
+        // unbound-variable fallback.)
+        Object* program = reader->read_program_from_string(code);
+        for (Object* f = program; f && !f->is_nil(); f = cdr(f)) {
+            vm->eval(car(f), env);
+        }
         return vm->accumulator;
     }
     // Helper: Evaluate and expect integer result
@@ -190,6 +194,27 @@ TEST_F(ContinuationTest, ContinuationInClosure) {
     // Calling escape should use the captured Continuation
     expectInt("(escape 99)", 99);
 }
+
+// The toy VM errors on an unbound variable (like the tree-walk), rather than
+// silently returning the symbol. This guards against the lenient-lookup
+// behaviour that previously made multi-form setups (and thus some continuation
+// tests) pass vacuously.
+TEST_F(ContinuationTest, UnboundVariableErrors) {
+    EXPECT_THROW(eval_vm("definitely-not-a-defined-variable"), std::exception);
+}
+
+// Regression for eval_vm: every top-level form in a setup must be evaluated
+// (read_from_string used to read only the first), so later definitions actually
+// exist and the continuation is genuinely exercised.
+TEST_F(ContinuationTest, MultiFormSetupDefinesEverything) {
+    eval_vm(R"(
+        (define a 1)
+        (define b 2)
+        (define c (+ a b))
+    )");
+    expectInt("c", 3);
+}
+
 TEST_F(ContinuationTest, ContinuationWithBegin) {
     // call/cc in a begin expression
     std::string code = R"(

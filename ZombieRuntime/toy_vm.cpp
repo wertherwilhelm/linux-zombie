@@ -181,21 +181,20 @@ void VM::step_eval_atom(Frame& frame) {
         if (::is_nil(frame.expr) || frame.expr == t ||
             is_double(frame.expr) || is_char(frame.expr)) {
             accumulator = frame.expr;
-        } else if (is_string(frame.expr) || is_symbol(frame.expr)) {
-            // Variable lookup for both strings and symbols.
-            // NOTE: an unbound name falls back to returning the symbol itself
-            // rather than erroring. This is non-standard, but the toy VM's
-            // continuation machinery currently depends on it (restoring a
-            // captured continuation looks up names before they are rebound);
-            // making this error breaks ContinuationInClosure /
-            // MultipleContinuationsWithGC. Fixing it needs a dedicated look at
-            // the continuation restore path (see AUDIT 2.3).
+        } else if (is_symbol(frame.expr)) {
+            // Symbol: variable reference. Unbound is an error (matching the
+            // tree-walk oracle) rather than silently returning the symbol, which
+            // used to mask undefined names (and made some continuation tests pass
+            // vacuously — see ContinuationTests eval_vm).
             try {
                 accumulator = frame.env->lookup(frame.expr);
             } catch (const std::exception&) {
-                // Not found, treat as literal
-                accumulator = frame.expr;
+                throw std::runtime_error("Unbound variable: " +
+                                         get_identifier_name(frame.expr));
             }
+        } else if (is_string(frame.expr)) {
+            // String literals are self-evaluating.
+            accumulator = frame.expr;
         } else {
             // Other atom types (bools, etc.) - self-evaluating
             accumulator = frame.expr;
