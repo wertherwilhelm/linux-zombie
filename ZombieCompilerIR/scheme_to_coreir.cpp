@@ -1068,17 +1068,12 @@ std::unique_ptr<Stmt> SchemeToCoreirLowering::lower_expr(Object* scheme_expr) {
             return lower_set(var, value);
         }
 
-        // Values (multiple return values)
-        if (op == "values") {
-            return lower_values(rest);
-        }
-
-        // Call-with-values (consume multiple return values)
-        if (op == "call-with-values") {
-            Object* producer = car(rest);
-            Object* consumer = car(cdr(rest));
-            return lower_call_with_values(producer, consumer);
-        }
+        // values / call-with-values are ordinary runtime primitives; lower them
+        // through the normal primitive-call path (OP_CALL) so multiple-value
+        // semantics match the other evaluators. (The dedicated Values /
+        // CallWithValues lowering passed the producer's values to the consumer
+        // as a single packed object — "too few arguments" / wrong types — so it
+        // is intentionally bypassed here.)
 
         // Lambda
         if (op == "lambda") {

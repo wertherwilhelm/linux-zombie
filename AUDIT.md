@@ -505,13 +505,25 @@ variadic lambdas, strings/chars, assq/memq, nested quasiquote) found more:
   extra args into a list (the bytecode VM already handled variadic closures).
   Covered in the differential corpus.
 
-Still outstanding from the second sweep (next up):
-- **CoreIR: `call-with-values` / `values`** — errors in CoreIR only.
-- **Missing features in most/all** (tree-walk also lacks them): `let-values`,
-  `letrec*`, `last-pair`, `boolean=?`. Lower priority (feature gaps, not
-  single-evaluator divergences).
+- **FIXED — CoreIR `call-with-values` / `values`.** CoreIR's dedicated
+  Values/CallWithValues lowering passed the producer's values to the consumer as
+  a single packed object ("too few arguments" / "requires numbers"). Both are
+  ordinary registered primitives the bytecode VM already handles, so the special
+  dispatch is bypassed and they lower through the normal OP_CALL path. Covered in
+  the differential corpus. (The now-dead lower_values / lower_call_with_values /
+  makeValues / makeCallWithValues / isCallWithValues paths are safe cleanup.)
+
+Every divergence from both sweeps is now fixed — the differential corpus (~90
+programs across arithmetic, predicates, binding forms, lambdas incl. variadic,
+lists, higher-order, quote/quasiquote, cond/case, strings, values) is green on
+all four evaluators with zero masks.
+
+Lower-priority follow-ups (feature gaps, not single-evaluator divergences):
+- **Missing in most/all** (tree-walk also lacks them): `let-values`, `letrec*`,
+  `last-pair`, `boolean=?`.
 - Cosmetic: bytecode/CoreIR truncate the variable name in "Unbound variable:".
-- Redundant per-evaluator named-let handling (tree-walk + CoreIR) can be removed.
+- Dead code to remove: redundant per-evaluator named-let handling (tree-walk +
+  CoreIR); CoreIR's Values/CallWithValues lowering.
 
 ---
 
