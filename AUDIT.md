@@ -582,6 +582,22 @@ as harmless, never-instantiated infrastructure.)
     exists): the tree-walk only supports escape continuations and explicitly
     errors ("use the toy VM or bytecode VM") on re-entrant invocation.
 
+- **FIXED — toy VM re-entrant continuations (was escape-only).** Probing showed
+  the toy VM did escape continuations correctly but a re-invoked (stored)
+  continuation did NOT resume the rest of its computation: a counter/generator
+  `(begin ... (define start (call/cc ...)) (set! count ..) (if (< start 3) (k0 ..)
+  count))` returned 1 instead of 4 (the bytecode VM returns 4). Root cause:
+  `step_eval_args`/`step_eval_begin` short-circuited on a `m_continuation_invoked`
+  flag — escape-ONLY behaviour. But `restore_continuation` already replaces the
+  whole frame stack with the captured one, so the abandoned frames are gone and
+  the remaining (captured) frames must simply resume. Removed both flag checks;
+  restored frames now resume via the normal path. Re-entrant continuations work
+  (counter -> 4), escape still works (10/11/0/1099), and all three evaluators now
+  agree that `(begin (+ 1 2) (call/cc (lambda (k) (k 42))) (+ 3 4))` = 7 (the old
+  toy-VM 42 was wrong — begin discards the resumed value and runs the last form).
+  `ContinuationWithBegin` corrected to expect 7; added
+  `ReentrantCounterInSingleForm`. 23 continuation tests pass, ASan clean.
+
 ---
 
 ## 3. Garbage collector

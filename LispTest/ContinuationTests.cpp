@@ -223,8 +223,26 @@ TEST_F(ContinuationTest, ContinuationWithBegin) {
           (call/cc (lambda (k) (k 42)))
           (+ 3 4))
     )";
-    // The last expression should never execute because k escapes
-    expectInt(code, 42);
+    // k is the continuation of the call/cc's position (the 2nd begin expression).
+    // Invoking (k 42) resumes THERE, so begin discards the (now 42) value and
+    // continues to the last expression (+ 3 4) = 7. (This matches the tree-walk
+    // and bytecode evaluators; the toy VM previously returned 42 via escape-only
+    // behaviour that stopped the begin, which was incorrect.)
+    expectInt(code, 7);
+}
+
+// Re-entrant (not just escape) continuation: re-invoking a stored k re-runs the
+// rest of the enclosing begin, driving a counter loop. This is the capability
+// the toy VM exists for; escape-only continuations cannot do it.
+TEST_F(ContinuationTest, ReentrantCounterInSingleForm) {
+    expectInt(R"(
+        (begin
+          (define k0 #f)
+          (define count 0)
+          (define start (call/cc (lambda (k) (set! k0 k) 0)))
+          (set! count (+ count 1))
+          (if (< start 3) (k0 (+ start 1)) count))
+    )", 4);
 }
 // ============================================================================
 // Error Cases and Edge Cases

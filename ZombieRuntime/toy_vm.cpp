@@ -234,20 +234,16 @@ void VM::step_eval_call(Frame& frame) {
 }
 
 void VM::step_eval_args(Frame& frame) {
-    // We just got back a result in accumulator
-
-    // If a Continuation was just invoked, treat accumulator as final argument value
-    if (cont_support && cont_support->was_continuation_invoked()) {
-        if (debug_mode) {
-            std::cout << "  -> EVAL_ARGS: Continuation invoked, using accumulator as result" << std::endl;
-        }
-        cont_support->clear_continuation_flag();
-        // Treat the accumulator as the evaluated argument and skip remaining arguments
-        frame.evaled_args = append(frame.evaled_args, cons(accumulator, nil));
-        frame.args = nil;  // No more arguments to evaluate
-        frame.type = APPLY_PROC;  // Proceed to apply
-        return;
-    }
+    // We just got back a result in accumulator.
+    //
+    // NOTE: we do NOT special-case "a continuation was just invoked" here.
+    // restore_continuation() replaces the whole frame stack with the captured
+    // one, so any frames above the capture point are already gone and the frames
+    // that remain are exactly the continuation's — they simply resume via the
+    // normal path below (append the value, evaluate any remaining args, apply).
+    // The old flag-based short-circuit implemented escape-ONLY semantics and
+    // broke re-entrant continuations (re-invoking a stored k to resume a
+    // computation); see step_eval_begin.
 
     if (frame.proc == nullptr) {
         // This is the function we just evaluated
@@ -474,15 +470,12 @@ void VM::step_eval_begin(Frame& frame) {
         std::cout << std::endl;
     }
 
-    // If a Continuation was just invoked, don't continue with remaining expressions
-    if (cont_support && cont_support->was_continuation_invoked()) {
-        if (debug_mode) {
-            std::cout << "  -> BEGIN: Continuation invoked, stopping sequence" << std::endl;
-        }
-        cont_support->clear_continuation_flag();
-        stack.pop_back();
-        return;
-    }
+    // NOTE: no "continuation invoked -> stop" short-circuit here. When a
+    // continuation is re-invoked, restore_continuation() has already replaced the
+    // stack with the captured one, so this begin frame (if present in the capture)
+    // SHOULD resume with its remaining expressions. Stopping here was escape-only
+    // behaviour that broke re-entrant continuations (e.g. a counter/generator that
+    // re-invokes a stored k to re-run the rest of the begin).
 
     // Move to next expression
     frame.args = rest(frame.args);
