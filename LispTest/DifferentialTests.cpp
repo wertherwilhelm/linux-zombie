@@ -91,6 +91,11 @@ const Case kCorpus[] = {
     {"((lambda (a b c) (+ a b c)) 1 2 3)", "6", ALL},
     {"(((lambda (x) (lambda (y) (+ x y))) 3) 4)", "7", ALL},
     {"(apply + '(1 2 3 4))", "10", ALL},
+    // variadic / dotted lambda formals
+    {"((lambda args args) 1 2 3)", "(1 2 3)", ALL},
+    {"((lambda (a . rest) rest) 1 2 3)", "(2 3)", ALL},
+    {"((lambda (a b . rest) (list a b rest)) 1 2 3 4)", "(1 2 (3 4))", ALL},
+    {"((lambda args (apply + args)) 1 2 3 4)", "10", ALL},
     // list operations
     {"(car '(1 2 3))", "1", ALL}, {"(cdr '(1 2 3))", "(2 3)", ALL},
     {"(cons 1 '(2 3))", "(1 2 3)", ALL}, {"(cons 1 2)", "(1 . 2)", ALL},

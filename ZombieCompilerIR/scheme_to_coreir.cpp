@@ -371,11 +371,24 @@ std::unique_ptr<Stmt> SchemeToCoreirLowering::lower_primitive_call_stmt(const st
 // ============================================================================
 
 std::unique_ptr<Expr> SchemeToCoreirLowering::lower_lambda(Object* params, Object* body) {
-    // Extract parameter names
+    // Extract parameter names, supporting variadic forms:
+    //   (lambda (a b) ...)      fixed
+    //   (lambda (a . rest) ...) fixed + rest
+    //   (lambda args ...)       all args collected into `rest`
     std::vector<std::string> param_names;
+    std::string rest_name;
     Object* current = params;
 
     while (current && current != nil && current != empty_list) {
+        if (current->get_type() == static_cast<int>(Type::SYMBOL)) {
+            // A bare symbol here is the rest parameter: either the whole param
+            // list (lambda args ...) or the dotted tail (a . rest).
+            rest_name = get_symbol_name(current);
+            break;
+        }
+        if (!current->pair()) {
+            break;
+        }
         Object* param = car(current);
         if (param->get_type() != static_cast<int>(Type::SYMBOL)) {
             throw std::runtime_error("Lambda parameter must be symbol");
@@ -388,7 +401,7 @@ std::unique_ptr<Expr> SchemeToCoreirLowering::lower_lambda(Object* params, Objec
     auto body_stmt = lower_lambda_body(body);
 
     return std::make_unique<Expr>(
-        Expr::makeLambda(std::move(param_names), std::move(body_stmt))
+        Expr::makeLambda(std::move(param_names), std::move(body_stmt), std::move(rest_name))
     );
 }
 

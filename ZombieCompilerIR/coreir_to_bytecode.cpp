@@ -278,9 +278,15 @@ void CoreIRToBytecode::compile_expr(const Expr& expr) {
         // Lambda compilation: recursively compile body, create Closure template
         const auto& lambda = expr.asLambda();
 
-        // Create a Closure Object that will serve as template
-        // Convert params to Scheme list
-        Object* params_list = nil;
+        // Create a Closure Object that will serve as template.
+        // Convert params to a Scheme formals list. A variadic rest parameter
+        // becomes the improper tail so the Closure binds extra args into a list:
+        //   fixed            (a b)      -> (a b)
+        //   fixed + rest     (a . rest) -> (a . rest)
+        //   all-args variadic           -> rest   (a bare symbol)
+        Object* params_list = lambda.rest.empty()
+            ? nil
+            : static_cast<Object*>(gc_new<a_symbol>(lambda.rest));
         for (auto it = lambda.params.rbegin(); it != lambda.params.rend(); ++it) {
             Object* param_sym = gc_new<a_symbol>(*it);
             params_list = cons(param_sym, params_list);

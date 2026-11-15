@@ -497,9 +497,15 @@ variadic lambdas, strings/chars, assq/memq, nested quasiquote) found more:
   value; exhausted returns nil). All four now agree; covered in the differential
   corpus (=>, no-body, exhausted).
 
+- **FIXED — CoreIR variadic / dotted lambda params.** `(lambda args ...)` and
+  `(lambda (a . rest) ...)` errored "car of an atom" in CoreIR only (the lowering
+  assumed a proper symbol list). `lower_lambda` now parses a bare-symbol tail as
+  a rest parameter; the CoreIR `Lambda` carries a `rest` field; and the bytecode
+  emitter builds the matching improper/bare formals list so the Closure binds
+  extra args into a list (the bytecode VM already handled variadic closures).
+  Covered in the differential corpus.
+
 Still outstanding from the second sweep (next up):
-- **CoreIR: variadic / dotted lambda params** — `(lambda args ...)` and
-  `(lambda (a . rest) ...)` error "car of an atom" in CoreIR only.
 - **CoreIR: `call-with-values` / `values`** — errors in CoreIR only.
 - **Missing features in most/all** (tree-walk also lacks them): `let-values`,
   `letrec*`, `last-pair`, `boolean=?`. Lower priority (feature gaps, not

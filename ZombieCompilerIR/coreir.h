@@ -144,10 +144,13 @@ struct Expr {
     // NOTE: Lambda execution is TODO for Phase 1
     struct Lambda {
         std::vector<std::string> params;
+        std::string rest;  // variadic rest-parameter name; "" if the lambda is fixed-arity
         std::unique_ptr<Stmt> body;
 
         Lambda(std::vector<std::string> p, std::unique_ptr<Stmt> b)
             : params(std::move(p)), body(std::move(b)) {}
+        Lambda(std::vector<std::string> p, std::string r, std::unique_ptr<Stmt> b)
+            : params(std::move(p)), rest(std::move(r)), body(std::move(b)) {}
     };
 
     // Multiple values: values(val1, val2, ...)
@@ -211,9 +214,10 @@ struct Expr {
         return e;
     }
 
-    static Expr makeLambda(std::vector<std::string> params, std::unique_ptr<Stmt> body) {
+    static Expr makeLambda(std::vector<std::string> params, std::unique_ptr<Stmt> body,
+                           std::string rest = "") {
         Expr e;
-        e.data = Lambda(std::move(params), std::move(body));
+        e.data = Lambda(std::move(params), std::move(rest), std::move(body));
         e.inferred_type = TypeHint::CLOSURE;  // lambda creates Closure
         return e;
     }
