@@ -955,7 +955,9 @@ eval_result Lisp::eval_step_list(Object* x, Environment* env) {
             return eval_result::make_tailcall(call_expr, env);
         }
     }
-    else if (fn_val == "letrec") {
+    else if (fn_val == "letrec" || fn_val == "letrec*") {
+        // letrec* shares this handling: inits are evaluated in order below, which
+        // is exactly the sequential left-to-right guarantee letrec* adds.
         Object* bindings = first(args);
         Object* body = rest(args);
 
@@ -986,6 +988,31 @@ eval_result Lisp::eval_step_list(Object* x, Environment* env) {
 
         Object* begin_expr = cons(gc_new<a_string>("begin"), body);
         return eval_result::make_tailcall(begin_expr, letrec_env);
+    }
+    else if (fn_val == "let-values" || fn_val == "let*-values") {
+        // (let-values (((formals) expr) ...) body...) desugars to nested
+        // call-with-values; build right-to-left so earlier clauses enclose later
+        // ones (left-to-right scoping, which also covers let*-values).
+        Object* clauses = first(args);
+        Object* body = rest(args);
+
+        std::vector<Object*> clause_vec;
+        for (Object* c = clauses; !c->is_nil(); c = rest(c)) {
+            clause_vec.push_back(first(c));
+        }
+
+        Object* inner = cons(intern_symbol("begin"), body);
+        for (auto it = clause_vec.rbegin(); it != clause_vec.rend(); ++it) {
+            Object* formals = first(*it);
+            Object* value_expr = second(*it);
+            Object* producer = cons(intern_symbol("lambda"),
+                                    cons(nil, cons(value_expr, nil)));
+            Object* consumer = cons(intern_symbol("lambda"),
+                                    cons(formals, cons(inner, nil)));
+            inner = cons(intern_symbol("call-with-values"),
+                         cons(producer, cons(consumer, nil)));
+        }
+        return eval_result::make_tailcall(inner, env);
     }
     else if (fn_val == "let-syntax") {
         // let-syntax: (let-syntax ((name1 (syntax-rules ...)) ...) body...)

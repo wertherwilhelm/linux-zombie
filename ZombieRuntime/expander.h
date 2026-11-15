@@ -54,6 +54,10 @@ private:
     // Desugar (cond clause ...) to nested if/let (handles else, =>, no-body).
     Object* expand_cond(Object* clauses);
 
+    // Desugar (let-values ((formals expr) ...) body...) to nested
+    // call-with-values. Builds raw forms; caller expands the result.
+    Object* expand_let_values(Object* clauses, Object* body);
+
     // -------------------------------------------------------------------------
     // Recursive expansion
     // -------------------------------------------------------------------------

@@ -85,6 +85,9 @@ const Case kCorpus[] = {
     {"(let ((x 1) (y 2)) (+ x y))", "3", ALL},
     {"(let* ((x 1) (y (+ x 1))) (* x y))", "2", ALL},
     {"(letrec ((e? (lambda (n) (if (= n 0) #t (o? (- n 1))))) (o? (lambda (n) (if (= n 0) #f (e? (- n 1)))))) (e? 10))", "#t", ALL},
+    {"(letrec* ((a 1) (b (+ a 1))) (+ a b))", "3", ALL},
+    {"(let-values (((a b) (values 1 2))) (+ a b))", "3", ALL},
+    {"(let-values (((q r) (values 17 5)) ((s) (values 100))) (+ q r s))", "122", ALL},
     {"(let loop ((i 0) (s 0)) (if (< i 5) (loop (+ i 1) (+ s i)) s))", "10", ALL},
     {"(let loop ((i 0)) (if (< i 50) (loop (+ i 1)) i))", "50", ALL},
     // lambda / closures / apply

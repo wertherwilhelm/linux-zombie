@@ -154,14 +154,29 @@ Object* Expander::expand_list(Object* list) {
         return expand_let_star(bindings, body);
     }
 
-    if (name == "letrec") {
+    if (name == "letrec" || name == "letrec*") {
         // Validate args before destructuring
         if (is_nil(args) || !args->pair()) {
             throw std::runtime_error("letrec: malformed syntax - expected (letrec bindings body...)");
         }
+        // letrec* (sequential, left-to-right) shares this desugaring: it expands
+        // to (let ((v #f)...) (set! v init)... body), and the set! chain already
+        // evaluates the inits in order, which satisfies letrec* semantics.
         Object* bindings = first(args);
         Object* body = rest(args);
         return expand_letrec(bindings, body);
+    }
+
+    if (name == "let-values" || name == "let*-values") {
+        // (let-values (((formals) expr) ...) body...) -> nested call-with-values.
+        // let*-values shares the same nesting (later clauses see earlier
+        // bindings), which this left-to-right nesting already provides.
+        if (is_nil(args) || !args->pair()) {
+            throw std::runtime_error("let-values: malformed syntax");
+        }
+        Object* clauses = first(args);
+        Object* body = rest(args);
+        return expand(expand_let_values(clauses, body));
     }
 
     if (name == "case") {
@@ -638,6 +653,30 @@ Object* Expander::expand_cond(Object* clauses) {
     Object* then_form = cons(intern_symbol("begin"), body);
     return cons(intern_symbol("if"),
                 cons(test, cons(then_form, cons(rest_form, nil))));
+}
+
+Object* Expander::expand_let_values(Object* clauses, Object* body) {
+    // Base case: no more value clauses -> the body as (begin body...).
+    if (is_nil(clauses)) {
+        return cons(intern_symbol("begin"), body);
+    }
+
+    // (formals expr) : bind the values produced by expr to formals.
+    Object* clause = first(clauses);
+    Object* formals = first(clause);
+    Object* value_expr = second(clause);
+
+    // (lambda () value_expr) — the producer (0-arity thunk).
+    Object* producer = cons(intern_symbol("lambda"),
+                            cons(nil, cons(value_expr, nil)));
+    // (lambda formals <remaining clauses + body>) — the consumer; formals may be
+    // a proper or dotted list (dotted = rest of the produced values).
+    Object* inner = expand_let_values(rest(clauses), body);
+    Object* consumer = cons(intern_symbol("lambda"),
+                            cons(formals, cons(inner, nil)));
+    // (call-with-values producer consumer)
+    return cons(intern_symbol("call-with-values"),
+                cons(producer, cons(consumer, nil)));
 }
 
 Object* Expander::expand_case(Object* key_expr, Object* clauses) {

@@ -518,9 +518,21 @@ programs across arithmetic, predicates, binding forms, lambdas incl. variadic,
 lists, higher-order, quote/quasiquote, cond/case, strings, values) is green on
 all four evaluators with zero masks.
 
-Lower-priority follow-ups (feature gaps, not single-evaluator divergences):
-- **Missing in most/all** (tree-walk also lacks them): `let-values`, `letrec*`,
-  `last-pair`, `boolean=?`.
+Feature-gap backlog — being closed (each addition also joins the differential
+net, since primitives/derived forms are shared and the tree-walk is the oracle
+for "supported"):
+- **DONE `boolean=?`** — PrimitiveBooleans(BOOLEANEQ), two-arg; exported.
+- **DONE `last-pair`** — PrimitiveLists(LASTPAIR).
+- **DONE `letrec*`** — shares letrec's sequential set! desugaring (Expander +
+  tree-walk aliased to the letrec path).
+- **DONE `let-values` / `let*-values`** — desugar to nested call-with-values
+  (Expander `expand_let_values` + a parallel tree-walk branch).
+
+Note on method: primitives register once in the shared environment, so a missing
+primitive is absent in all four at once (the toy VM's apparent "support" was its
+unbound-name fallback returning garbage). Adding it fixes all four.
+
+Lower-priority follow-ups:
 - Cosmetic: bytecode/CoreIR truncate the variable name in "Unbound variable:".
 - Dead code to remove: redundant per-evaluator named-let handling (tree-walk +
   CoreIR); CoreIR's Values/CallWithValues lowering.
