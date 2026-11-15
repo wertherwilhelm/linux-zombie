@@ -461,10 +461,14 @@ eval_result Lisp::eval_step_list(Object* x, Environment* env) {
             gc_root<Object> lambda_expr(cons(lambda_sym.get(), inner_cons.get()));
 
             Object* result = eval_impl(lambda_expr.get(), env);
-            return eval_result::make_value(env->define(first(first(args)), result));
+            env->define(first(first(args)), result);
+            // R7RS: the value of a define is unspecified (nil is this codebase's
+            // unspecified value, as used by when/unless/import/one-armed if).
+            return eval_result::make_value(nil);
         } else {
             Object* result = eval_impl(second(args), env);
-            return eval_result::make_value(env->define(first(args), result));
+            env->define(first(args), result);
+            return eval_result::make_value(nil);  // R7RS: define is unspecified
         }
     }
     else if (fn_val == "define-syntax") {

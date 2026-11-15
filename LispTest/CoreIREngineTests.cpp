@@ -37,18 +37,15 @@ TEST_F(CoreIREngineTest, RecursionAndClosures) {
     EXPECT_EQ(7.0, eval_num(engine, "(((lambda (x) (lambda (y) (+ x y))) 3) 4)"));
 }
 
-TEST_F(CoreIREngineTest, DefineReturnsSymbolName) {
-    // define evaluates to the symbol it binds, matching the tree-walk and
-    // bytecode evaluators (the return-value inconsistency that prompted this).
+TEST_F(CoreIREngineTest, DefineReturnsUnspecified) {
+    // R7RS: the value of a define is unspecified (nil here), consistent with the
+    // tree-walk and bytecode evaluators (the inconsistency that prompted this).
     scheme_engine engine(EvaluatorType::COREIR);
-    auto defined_name = [&](const std::string& code) {
-        Object* r = static_cast<Object*>(engine.eval_string(code));
-        a_symbol* sym = dynamic_cast<a_symbol*>(r);
-        EXPECT_NE(sym, nullptr) << "define should return a symbol for: " << code;
-        return sym ? sym->value() : std::string("<not-symbol>");
-    };
-    EXPECT_EQ(defined_name("(define x 5)"), "x");
-    EXPECT_EQ(defined_name("(define (f y) (* y y))"), "f");
+    EXPECT_TRUE(static_cast<Object*>(engine.eval_string("(define x 5)"))->is_nil());
+    EXPECT_TRUE(static_cast<Object*>(engine.eval_string("(define (f y) (* y y))"))->is_nil());
+    // Bindings still take effect:
+    EXPECT_EQ(5.0, eval_num(engine, "x"));
+    EXPECT_EQ(36.0, eval_num(engine, "(f 6)"));
 }
 
 TEST_F(CoreIREngineTest, NamedLetLoop) {

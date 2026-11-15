@@ -286,11 +286,15 @@ TEST_F(BytecodeVMTest, BytecodeDefineVariable) {
     expectInt("x", 42);
 }
 
-TEST_F(BytecodeVMTest, DefineReturnsSymbolName) {
-    // define evaluates to the symbol it binds (consistent with the tree-walk
-    // and CoreIR evaluators); set! keeps value semantics.
-    expectSymbol(eval("(define x 5)"), "x");
-    expectSymbol(eval("(define (f y) (* y y))"), "f");
+TEST_F(BytecodeVMTest, DefineReturnsUnspecified) {
+    // R7RS: the value of a define is unspecified. This codebase's unspecified
+    // value is nil (same as one-armed if / when / unless), consistent across
+    // the tree-walk, bytecode, and CoreIR evaluators. set! keeps value semantics.
+    EXPECT_TRUE(eval("(define x 5)")->is_nil());
+    EXPECT_TRUE(eval("(define (f y) (* y y))")->is_nil());
+    // define still binds correctly despite the unspecified result:
+    expectInt("x", 5);
+    expectInt("(f 6)", 36);
     Object* set_result = eval("(set! x 9)");
     ASSERT_TRUE(numeric::is_number(set_result));
     EXPECT_EQ(numeric::to_int64(set_result), 9);  // set! still returns the value

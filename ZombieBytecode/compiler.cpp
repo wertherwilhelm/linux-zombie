@@ -402,12 +402,12 @@ void Compiler::compile_define(Object* args) {
         emit(OP_STORE_VAR);
         emit_u16(name_idx);
 
-        // define evaluates to the symbol being defined (matches the tree-walk
-        // evaluator); STORE_VAR leaves the stored value, so replace it with the
-        // name. (set! keeps value semantics and is unaffected.)
+        // R7RS: the value of a define is unspecified. STORE_VAR leaves the
+        // stored value on the stack, so replace it with nil (this codebase's
+        // unspecified value). set! keeps value semantics and is unaffected.
         emit(OP_POP);
         emit(OP_LOAD_CONST);
-        emit_u16(name_idx);
+        emit_u16(add_constant(nil));
     } else {
         // Simple define: (define name value)
         Object* value = first(rest_args);
@@ -420,10 +420,10 @@ void Compiler::compile_define(Object* args) {
         emit(OP_STORE_VAR);
         emit_u16(name_idx);
 
-        // define evaluates to the symbol being defined (see note above).
+        // R7RS: define is unspecified (see note above).
         emit(OP_POP);
         emit(OP_LOAD_CONST);
-        emit_u16(name_idx);
+        emit_u16(add_constant(nil));
     }
 
     tail_context_ = saved_tail;  // Restore

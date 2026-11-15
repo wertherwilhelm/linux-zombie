@@ -406,19 +406,25 @@ top-level `define`s persist across REPL lines). Selectable via
 `EvaluatorType::COREIR` and the REPL `--coreir`/`-c` flag; covered by
 `CoreIREngineTest` (engine-level tests).
 
-**define return value unified across evaluators.** Previously `define` evaluated
-to three different things: the tree-walk returned the bound symbol, the bytecode
-VM returned the stored value (and for function defines, the closure — which
-prints as its body, e.g. `(begin * y y)`), and CoreIR returned `begin`. All three
-now return the bound symbol (`x`, `f`), matching the tree-walk reference; `set!`
-keeps value semantics. Bytecode: `compile_define` appends `POP; LOAD_CONST name`
-after the shared `STORE_VAR`. CoreIR: both define branches return
-`makeLit(intern_symbol(name))` after forcing the `SetGlobal` side effect.
-`BytecodeVMTest.DynamicWindWithCallCCReentry` was updated: a continuation
-captured inside `(define result1 ...)` now yields the symbol `result1` on
-re-entry (define's value), so the test asserts on the recomputed binding
+**define return value unified across evaluators (R7RS: unspecified).**
+Previously `define` evaluated to three different things: the tree-walk returned
+the bound symbol, the bytecode VM returned the stored value (and for function
+defines, the closure — which prints as its body, e.g. `(begin * y y)`), and
+CoreIR returned `begin`. Per R7RS the value of a `define` is unspecified, so all
+three now return the codebase's unspecified value `nil` (prints as `()`, same as
+one-armed `if` / `when` / `unless` / `import`); `set!` keeps value semantics (a
+deliberate, documented choice — `Environment::set` returns the assigned value).
+- tree-walk: `lisp.cpp` performs `env->define(...)` for the side effect and
+  returns `nil`.
+- bytecode: `compile_define` appends `POP; LOAD_CONST nil` after the shared
+  `STORE_VAR` (set! keeps STORE_VAR's pushed value).
+- CoreIR: both define branches return `makeLit(nil, TypeHint::VOID)` after
+  forcing the `SetGlobal` side effect via a temp binding.
+`BytecodeVMTest.DynamicWindWithCallCCReentry` asserts on the recomputed binding
 (`result1` == 120) and the wind-thunk trace rather than the continuation's
-return value. Locked in by `*.DefineReturnsSymbolName` (bytecode + CoreIR).
+return value (a continuation captured inside `(define result1 ...)` now yields
+the unspecified value on re-entry). Locked in by `*.DefineReturnsUnspecified`
+(bytecode + CoreIR). Full suite 1284/1284; ASan clean on the affected suites.
 
 ---
 
