@@ -28,6 +28,10 @@ PrimitiveBooleans::PrimitiveBooleans(ID id)
         case BOOLEANQ:
             m_name = "boolean?";
             break;
+
+        case PROCEDUREQ:
+            m_name = "procedure?";
+            break;
     }
 }
 
@@ -60,6 +64,12 @@ Object* PrimitiveBooleans::apply(IEvaluator* eval, Object* args, Environment* en
             // Use helper function from constants.h
             return truth(is_boolean(x));
 
+        case PROCEDUREQ:
+            // (procedure? obj)
+            // Returns #t if obj is applicable: a closure, primitive, or
+            // continuation (all derive from Procedure).
+            return truth(dynamic_cast<zombie::runtime::Procedure*>(x) != nullptr);
+
         default:
             // Should never reach here
             return error("Unknown boolean Primitive");
@@ -78,4 +88,7 @@ void PrimitiveBooleans::install(Environment* env) {
 
     gc_root<a_string> name_boolq(gc_new<a_string>("boolean?"));
     env->define(name_boolq.get(), gc_new<PrimitiveBooleans>(BOOLEANQ));
+
+    gc_root<a_string> name_procq(gc_new<a_string>("procedure?"));
+    env->define(name_procq.get(), gc_new<PrimitiveBooleans>(PROCEDUREQ));
 }

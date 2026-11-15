@@ -40,8 +40,7 @@ std::string run_in(EvaluatorType t, const std::string& code) {
 }
 
 // -------------------------------------------------------------------------
-// KNOWN GAPS (masked out below; remove the mask when fixed):
-//   - `procedure?`: missing in every evaluator (not in the corpus).
+// KNOWN GAPS (masked out below; remove the mask when fixed): none currently.
 // FIXED (now covered on all four):
 //   - closure applied from inside a primitive (map/filter/for-each) — was a
 //     toy-VM re-entrant-eval hang/segfault.
@@ -49,6 +48,7 @@ std::string run_in(EvaluatorType t, const std::string& code) {
 //     Expander now desugars it to letrec for every evaluator.
 //   - one-armed `if` / `when` / `unless` — toy VM read the (absent) else branch
 //     unconditionally; now returns unspecified when the else branch is missing.
+//   - `procedure?` — was missing in every evaluator; now a registered primitive.
 // -------------------------------------------------------------------------
 const Case kCorpus[] = {
     // arithmetic / comparison (incl. n-ary — the CoreIR drop-operand regression)
@@ -62,6 +62,8 @@ const Case kCorpus[] = {
     {"(zero? 0)", "#t", ALL}, {"(even? 4)", "#t", ALL}, {"(odd? 3)", "#t", ALL},
     {"(number? 5)", "#t", ALL}, {"(null? '())", "#t", ALL}, {"(null? '(1))", "#f", ALL},
     {"(pair? '(1))", "#t", ALL}, {"(symbol? 'a)", "#t", ALL}, {"(boolean? #t)", "#t", ALL},
+    {"(procedure? car)", "#t", ALL}, {"(procedure? (lambda (x) x))", "#t", ALL},
+    {"(procedure? 5)", "#f", ALL},
     // booleans / equivalence
     {"(and 1 2 3)", "3", ALL}, {"(or #f #f 7)", "7", ALL}, {"(not #f)", "#t", ALL},
     {"(not 5)", "#f", ALL}, {"(eq? 'a 'a)", "#t", ALL}, {"(equal? '(1 2) '(1 2))", "#t", ALL},

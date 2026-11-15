@@ -478,9 +478,17 @@ produced the punch-list (11 divergences). Status:
   missing one yields the unspecified value (nil), matching the tree-walk.
   Unmasked in the differential suite.
 
-Outstanding gaps (masked in the differential suite; prioritised):
-- **[P3] `procedure?` unbound in all four** (missing primitive); bytecode/CoreIR
-  also truncate the variable name in the "Unbound variable:" message.
+- **FIXED — `procedure?` was unbound in all four** (missing primitive). Added as
+  `PrimitiveBooleans(PROCEDUREQ)` → `#t` for anything deriving from `Procedure`
+  (closure / primitive / continuation); registered and exported from
+  `(scheme base)`. Covered in the differential suite.
+
+Outstanding gaps (masked in the differential suite): none at present — every
+divergence the initial sweep found is fixed. Minor follow-up still open:
+bytecode/CoreIR truncate the variable name in the "Unbound variable:" message
+(cosmetic); and the now-redundant per-evaluator named-let handling in the
+tree-walk and CoreIR lowering can be removed. Next: broaden the corpus to find
+more divergences (strings/chars, vectors, tail-call depth, error cases, etc.).
 
 ---
 

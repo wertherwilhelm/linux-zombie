@@ -40,8 +40,9 @@ public:
      * @brief Primitive IDs for boolean operations
      */
     enum ID {
-        NOT = 0,      ///< Logical negation (not)
-        BOOLEANQ = 1  ///< Boolean type predicate (boolean?)
+        NOT = 0,       ///< Logical negation (not)
+        BOOLEANQ = 1,  ///< Boolean type predicate (boolean?)
+        PROCEDUREQ = 2 ///< Procedure type predicate (procedure?)
     };
 
     /**
