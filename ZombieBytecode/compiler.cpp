@@ -401,6 +401,13 @@ void Compiler::compile_define(Object* args) {
         uint16_t name_idx = add_constant(func_name);
         emit(OP_STORE_VAR);
         emit_u16(name_idx);
+
+        // define evaluates to the symbol being defined (matches the tree-walk
+        // evaluator); STORE_VAR leaves the stored value, so replace it with the
+        // name. (set! keeps value semantics and is unaffected.)
+        emit(OP_POP);
+        emit(OP_LOAD_CONST);
+        emit_u16(name_idx);
     } else {
         // Simple define: (define name value)
         Object* value = first(rest_args);
@@ -411,6 +418,11 @@ void Compiler::compile_define(Object* args) {
         // Store in environment
         uint16_t name_idx = add_constant(name);
         emit(OP_STORE_VAR);
+        emit_u16(name_idx);
+
+        // define evaluates to the symbol being defined (see note above).
+        emit(OP_POP);
+        emit(OP_LOAD_CONST);
         emit_u16(name_idx);
     }
 

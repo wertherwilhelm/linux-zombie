@@ -286,6 +286,16 @@ TEST_F(BytecodeVMTest, BytecodeDefineVariable) {
     expectInt("x", 42);
 }
 
+TEST_F(BytecodeVMTest, DefineReturnsSymbolName) {
+    // define evaluates to the symbol it binds (consistent with the tree-walk
+    // and CoreIR evaluators); set! keeps value semantics.
+    expectSymbol(eval("(define x 5)"), "x");
+    expectSymbol(eval("(define (f y) (* y y))"), "f");
+    Object* set_result = eval("(set! x 9)");
+    ASSERT_TRUE(numeric::is_number(set_result));
+    EXPECT_EQ(numeric::to_int64(set_result), 9);  // set! still returns the value
+}
+
 TEST_F(BytecodeVMTest, BytecodeDefineMultipleVariables) {
     eval("(define a 10)");
     eval("(define b 20)");
@@ -625,11 +635,17 @@ TEST_F(BytecodeVMTest, DynamicWindWithCallCCReentry) {
     // Clear trace to see re-entry behavior
     eval("(set! trace '())");
 
-    // Re-invoke Continuation - should run before thunk again
-    Object* result = eval("(saved-k 20)");
-    ASSERT_NE(result, nullptr);
-    ASSERT_TRUE(numeric::is_number(result));
-    EXPECT_EQ(numeric::to_int64(result), 120);  // 100 + 20
+    // Re-invoke the Continuation. It was captured inside (define result1 ...),
+    // so re-entry re-runs the whole define: the wind thunks fire again and
+    // result1 is recomputed as (+ 100 20) = 120. The continuation's own return
+    // value is the define's value, i.e. the symbol result1 (define evaluates to
+    // the name it binds, consistently across all evaluators), so we assert on
+    // the recomputed binding rather than on the continuation's return value.
+    eval("(saved-k 20)");
+    Object* recomputed = eval("result1");
+    ASSERT_NE(recomputed, nullptr);
+    ASSERT_TRUE(numeric::is_number(recomputed));
+    EXPECT_EQ(numeric::to_int64(recomputed), 120);  // 100 + 20
 
     // Trace should show before and after thunks were called on re-entry
     // Order: after is most recent (at head), then before

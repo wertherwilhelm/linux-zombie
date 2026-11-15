@@ -404,9 +404,21 @@ ops). Remaining unstarted: `inline_stmt_chain` clone (1449) and a JIT backend.
 lowering → `CoreIRToBytecode` → `BytecodeVM::execute` against the shared env (so
 top-level `define`s persist across REPL lines). Selectable via
 `EvaluatorType::COREIR` and the REPL `--coreir`/`-c` flag; covered by
-`CoreIREngineTest` (4 engine-level tests). Known cosmetic quirk (shared with the
-bytecode path): a top-level `(define (f ...) ...)` prints an odd return value
-(`begin`), but the binding itself is correct.
+`CoreIREngineTest` (engine-level tests).
+
+**define return value unified across evaluators.** Previously `define` evaluated
+to three different things: the tree-walk returned the bound symbol, the bytecode
+VM returned the stored value (and for function defines, the closure — which
+prints as its body, e.g. `(begin * y y)`), and CoreIR returned `begin`. All three
+now return the bound symbol (`x`, `f`), matching the tree-walk reference; `set!`
+keeps value semantics. Bytecode: `compile_define` appends `POP; LOAD_CONST name`
+after the shared `STORE_VAR`. CoreIR: both define branches return
+`makeLit(intern_symbol(name))` after forcing the `SetGlobal` side effect.
+`BytecodeVMTest.DynamicWindWithCallCCReentry` was updated: a continuation
+captured inside `(define result1 ...)` now yields the symbol `result1` on
+re-entry (define's value), so the test asserts on the recomputed binding
+(`result1` == 120) and the wind-thunk trace rather than the continuation's
+return value. Locked in by `*.DefineReturnsSymbolName` (bytecode + CoreIR).
 
 ---
 

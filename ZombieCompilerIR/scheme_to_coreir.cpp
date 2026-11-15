@@ -1119,9 +1119,12 @@ std::unique_ptr<Stmt> SchemeToCoreirLowering::lower_expr(Object* scheme_expr) {
                     Expr::makeSetGlobal(var_name, value_atom)
                 );
 
-                // Bind to temp and return it
+                // Execute the SetGlobal (bind to a temp to force evaluation),
+                // then return the symbol being defined. define evaluates to the
+                // defined name across all evaluators (matches the tree-walk).
                 std::string temp = gen_temp();
-                auto ret = Stmt::makeReturn(Atom::makeVar(temp));
+                auto ret = Stmt::makeReturn(
+                    Atom::makeLit(intern_symbol(var_name), TypeHint::UNKNOWN));
                 auto set_stmt = Stmt::makeLet(temp, std::move(set_global), std::move(ret));
 
                 // Chain value evaluation before the set (if needed)
@@ -1152,8 +1155,11 @@ std::unique_ptr<Stmt> SchemeToCoreirLowering::lower_expr(Object* scheme_expr) {
                     Expr::makeSetGlobal(func_name, Atom::makeVar(lambda_temp))
                 );
 
+                // Execute the SetGlobal side effect, then return the defined
+                // name (consistent with the simple-define and tree-walk forms).
                 std::string result_temp = gen_temp();
-                auto ret = Stmt::makeReturn(Atom::makeVar(result_temp));
+                auto ret = Stmt::makeReturn(
+                    Atom::makeLit(intern_symbol(func_name), TypeHint::UNKNOWN));
                 auto set_stmt = Stmt::makeLet(result_temp, std::move(set_global), std::move(ret));
 
                 // Chain: lambda creation, then set global

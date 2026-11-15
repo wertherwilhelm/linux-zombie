@@ -37,6 +37,20 @@ TEST_F(CoreIREngineTest, RecursionAndClosures) {
     EXPECT_EQ(7.0, eval_num(engine, "(((lambda (x) (lambda (y) (+ x y))) 3) 4)"));
 }
 
+TEST_F(CoreIREngineTest, DefineReturnsSymbolName) {
+    // define evaluates to the symbol it binds, matching the tree-walk and
+    // bytecode evaluators (the return-value inconsistency that prompted this).
+    scheme_engine engine(EvaluatorType::COREIR);
+    auto defined_name = [&](const std::string& code) {
+        Object* r = static_cast<Object*>(engine.eval_string(code));
+        a_symbol* sym = dynamic_cast<a_symbol*>(r);
+        EXPECT_NE(sym, nullptr) << "define should return a symbol for: " << code;
+        return sym ? sym->value() : std::string("<not-symbol>");
+    };
+    EXPECT_EQ(defined_name("(define x 5)"), "x");
+    EXPECT_EQ(defined_name("(define (f y) (* y y))"), "f");
+}
+
 TEST_F(CoreIREngineTest, NamedLetLoop) {
     scheme_engine engine(EvaluatorType::COREIR);
     EXPECT_EQ(10.0, eval_num(engine,
