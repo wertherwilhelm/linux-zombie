@@ -44,6 +44,7 @@ void bootstrap_scheme_base(Environment* base_env) {
     lib->add_export("exact?");
     lib->add_export("inexact?");
     lib->add_export("boolean?");
+    lib->add_export("boolean=?");
     lib->add_export("procedure?");
     lib->add_export("symbol?");
     lib->add_export("string?");

@@ -17,7 +17,8 @@
 // ============================================================================
 
 PrimitiveBooleans::PrimitiveBooleans(ID id)
-    : PrimitiveBase(1, 1),  // Both boolean primitives take exactly 1 argument
+    : PrimitiveBase(id == BOOLEANEQ ? 2 : 1,   // boolean=? takes two booleans;
+                    id == BOOLEANEQ ? 2 : 1),  // the others take exactly one
       m_id(id) {
     // Set Primitive name based on ID
     switch (id) {
@@ -31,6 +32,10 @@ PrimitiveBooleans::PrimitiveBooleans(ID id)
 
         case PROCEDUREQ:
             m_name = "procedure?";
+            break;
+
+        case BOOLEANEQ:
+            m_name = "boolean=?";
             break;
     }
 }
@@ -70,6 +75,14 @@ Object* PrimitiveBooleans::apply(IEvaluator* eval, Object* args, Environment* en
             // continuation (all derive from Procedure).
             return truth(dynamic_cast<zombie::runtime::Procedure*>(x) != nullptr);
 
+        case BOOLEANEQ: {
+            // (boolean=? b1 b2)
+            // Returns #t if both arguments are booleans with the same value.
+            // #t / #f are singletons, so identity compares their values.
+            Object* y = second(args);
+            return truth(is_boolean(x) && is_boolean(y) && x == y);
+        }
+
         default:
             // Should never reach here
             return error("Unknown boolean Primitive");
@@ -91,4 +104,7 @@ void PrimitiveBooleans::install(Environment* env) {
 
     gc_root<a_string> name_procq(gc_new<a_string>("procedure?"));
     env->define(name_procq.get(), gc_new<PrimitiveBooleans>(PROCEDUREQ));
+
+    gc_root<a_string> name_booleq(gc_new<a_string>("boolean=?"));
+    env->define(name_booleq.get(), gc_new<PrimitiveBooleans>(BOOLEANEQ));
 }

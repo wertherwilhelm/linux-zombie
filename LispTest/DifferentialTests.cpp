@@ -67,6 +67,7 @@ const Case kCorpus[] = {
     // booleans / equivalence
     {"(and 1 2 3)", "3", ALL}, {"(or #f #f 7)", "7", ALL}, {"(not #f)", "#t", ALL},
     {"(not 5)", "#f", ALL}, {"(eq? 'a 'a)", "#t", ALL}, {"(equal? '(1 2) '(1 2))", "#t", ALL},
+    {"(boolean=? #t #t)", "#t", ALL}, {"(boolean=? #t #f)", "#f", ALL},
     // conditionals
     {"(if (< 1 2) 'yes 'no)", "yes", ALL},
     {"(cond ((= 1 2) 'a) ((= 2 2) 'b) (else 'c))", "b", ALL},
@@ -106,6 +107,7 @@ const Case kCorpus[] = {
     {"(append '(1 2) '(3 4))", "(1 2 3 4)", ALL}, {"(reverse '(1 2 3))", "(3 2 1)", ALL},
     {"(member 2 '(1 2 3))", "(2 3)", ALL}, {"(assoc 'b '((a 1) (b 2)))", "(b 2)", ALL},
     {"(cadr '(1 2 3))", "2", ALL}, {"(caddr '(1 2 3))", "3", ALL},
+    {"(last-pair '(1 2 3))", "(3)", ALL}, {"(list-tail '(1 2 3 4) 2)", "(3 4)", ALL},
     // Closure applied from inside a primitive (map/filter/for-each) — exercises
     // re-entrant eval on every evaluator (was a toy-VM hang/segfault).
     {"(map (lambda (x) (* x x)) '(1 2 3))", "(1 4 9)", ALL},

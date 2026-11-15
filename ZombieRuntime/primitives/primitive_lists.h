@@ -67,7 +67,8 @@ public:
         ASSOC = 22,     ///< assoc search (equal? comparison)
         MAKELIST = 23,  ///< make-list function (R7RS)
         LISTCOPY = 24,  ///< list-copy function (R7RS)
-        LISTSET = 25    ///< list-set! function (R7RS)
+        LISTSET = 25,   ///< list-set! function (R7RS)
+        LASTPAIR = 26   ///< last-pair function (SRFI-1 / common extension)
     };
 
     /**

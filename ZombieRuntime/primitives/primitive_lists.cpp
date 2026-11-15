@@ -83,6 +83,7 @@ PrimitiveLists::PrimitiveLists(ID id, int minArgs, int maxArgs)
         case MAKELIST: m_name = "make-list"; break;
         case LISTCOPY: m_name = "list-copy"; break;
         case LISTSET:  m_name = "list-set!"; break;
+        case LASTPAIR: m_name = "last-pair"; break;
     }
 }
 
@@ -127,6 +128,18 @@ Object* PrimitiveLists::apply(IEvaluator* eval, Object* args, Environment* env) 
         case CONS:
             // (cons obj1 obj2) - construct a pair
             return cons(x, y);
+
+        case LASTPAIR:
+            // (last-pair list) - return the last pair (cons cell) of a non-empty
+            // list. Walks until the cdr is no longer a pair (handles improper
+            // lists too).
+            if (x == NULL || x->is_atom()) {
+                return error("last-pair: argument must be a pair");
+            }
+            while (!rest(x)->is_atom()) {
+                x = rest(x);
+            }
+            return x;
 
         case CAR:
             // (car pair) - return first element
@@ -397,6 +410,7 @@ void PrimitiveLists::install(Environment* env) {
     DEF("reverse", REVERSE, 1, 1);
     DEF("list-tail", ListTAIL, 2, 2);
     DEF("list-ref", ListREF, 2, 2);
+    DEF("last-pair", LASTPAIR, 1, 1);
 
     // Additional accessors
     DEF("second",  SECOND, 1, 1);
