@@ -41,11 +41,13 @@ std::string run_in(EvaluatorType t, const std::string& code) {
 
 // -------------------------------------------------------------------------
 // KNOWN GAPS (masked out below; remove the mask when fixed):
-//   - Named let `(let loop ...)`: broken in bytecode (B) and toy VM (V).
 //   - One-armed `if` / `when` / `unless`: broken in toy VM (V).
 //   - `procedure?`: missing in every evaluator (not in the corpus).
-// FIXED (now covered on all four): closure applied from inside a primitive
-//   (map/filter/for-each) — was a toy-VM re-entrant-eval hang/segfault.
+// FIXED (now covered on all four):
+//   - closure applied from inside a primitive (map/filter/for-each) — was a
+//     toy-VM re-entrant-eval hang/segfault.
+//   - named let `(let loop ...)` — was broken in bytecode and toy VM; the shared
+//     Expander now desugars it to letrec for every evaluator.
 // -------------------------------------------------------------------------
 const Case kCorpus[] = {
     // arithmetic / comparison (incl. n-ary — the CoreIR drop-operand regression)
@@ -73,7 +75,8 @@ const Case kCorpus[] = {
     {"(let ((x 1) (y 2)) (+ x y))", "3", ALL},
     {"(let* ((x 1) (y (+ x 1))) (* x y))", "2", ALL},
     {"(letrec ((e? (lambda (n) (if (= n 0) #t (o? (- n 1))))) (o? (lambda (n) (if (= n 0) #f (e? (- n 1)))))) (e? 10))", "#t", ALL},
-    {"(let loop ((i 0) (s 0)) (if (< i 5) (loop (+ i 1) (+ s i)) s))", "10", L | C}, // named let: B,V gap
+    {"(let loop ((i 0) (s 0)) (if (< i 5) (loop (+ i 1) (+ s i)) s))", "10", ALL},
+    {"(let loop ((i 0)) (if (< i 50) (loop (+ i 1)) i))", "50", ALL},
     // lambda / closures / apply
     {"((lambda (x) (* x x)) 6)", "36", ALL},
     {"((lambda (a b c) (+ a b c)) 1 2 3)", "6", ALL},

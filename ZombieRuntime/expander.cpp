@@ -94,16 +94,21 @@ Object* Expander::expand_list(Object* list) {
         // Named let has a symbol as first arg, regular let has a list
         // Note: nil is an atom, but (let () body) is regular let, not named let
         if (first(args)->is_atom() && !is_nil(first(args))) {
-            // Named let - don't desugar, but DO expand sub-expressions
-            // (let name ((var val) ...) body...) stays as named let
-            // but bindings values and body expressions get expanded
+            // Named let: desugar to letrec so EVERY evaluator handles it
+            // uniformly (previously it was left as a named-let form that only
+            // the tree-walk and CoreIR evaluators recognised; bytecode and the
+            // toy VM errored). Transform:
+            //   (let loop ((v i) ...) body...)
+            // => (letrec ((loop (lambda (v ...) body...))) (loop i ...))
+            // and re-expand (expand_letrec/expand_let handle the rest).
             Object* loop_name = first(args);
             Object* bindings = second(args);
             Object* body_exprs = rest(rest(args));
 
-            // Expand binding values
-            Object* expanded_bindings = nil;
-            Object* bindings_tail = nil;
+            // Split bindings into the parameter list (v ...) and the initial
+            // argument list (i ...).
+            Object* vars = nil, *vars_tail = nil;
+            Object* inits = nil, *inits_tail = nil;
             for (Object* b = bindings; !is_nil(b); b = rest(b)) {
                 if (!b->pair()) {
                     throw std::runtime_error("named let: bindings must be a proper list");
@@ -112,40 +117,25 @@ Object* Expander::expand_list(Object* list) {
                 if (!binding->pair()) {
                     throw std::runtime_error("named let: each binding must be a pair (var val)");
                 }
-                Object* var = first(binding);
-                Object* val = second(binding);
-                Object* expanded_val = expand(val);
-                Object* new_binding = cons(var, cons(expanded_val, nil));
-                Object* cell = cons(new_binding, nil);
-                if (expanded_bindings == nil) {
-                    expanded_bindings = cell;
-                    bindings_tail = cell;
-                } else {
-                    set_rest(bindings_tail, cell);
-                    bindings_tail = cell;
-                }
+                Object* vcell = cons(first(binding), nil);
+                Object* icell = cons(second(binding), nil);
+                if (vars == nil) { vars = vars_tail = vcell; }
+                else { set_rest(vars_tail, vcell); vars_tail = vcell; }
+                if (inits == nil) { inits = inits_tail = icell; }
+                else { set_rest(inits_tail, icell); inits_tail = icell; }
             }
 
-            // Expand body expressions
-            Object* expanded_body = nil;
-            Object* body_tail = nil;
-            for (Object* e = body_exprs; !is_nil(e); e = rest(e)) {
-                if (!e->pair()) {
-                    throw std::runtime_error("named let: body must be a proper list of expressions");
-                }
-                Object* expanded_expr = expand(first(e));
-                Object* cell = cons(expanded_expr, nil);
-                if (expanded_body == nil) {
-                    expanded_body = cell;
-                    body_tail = cell;
-                } else {
-                    set_rest(body_tail, cell);
-                    body_tail = cell;
-                }
-            }
-
-            // Reconstruct: (let name expanded-bindings expanded-body...)
-            return cons(first_elem, cons(loop_name, cons(expanded_bindings, expanded_body)));
+            // (lambda (v ...) body...)
+            Object* lambda_form = cons(intern_symbol("lambda"), cons(vars, body_exprs));
+            // ((loop (lambda ...)))
+            Object* letrec_bindings =
+                cons(cons(loop_name, cons(lambda_form, nil)), nil);
+            // (loop i ...)
+            Object* call_form = cons(loop_name, inits);
+            // (letrec ((loop ...)) (loop i ...))
+            Object* letrec_form = cons(intern_symbol("letrec"),
+                                       cons(letrec_bindings, cons(call_form, nil)));
+            return expand(letrec_form);
         }
 
         // Regular let

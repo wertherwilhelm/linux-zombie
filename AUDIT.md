@@ -461,10 +461,16 @@ produced the punch-list (11 divergences). Status:
   (map/filter with closures); 58 continuation/dynamic-wind tests still pass,
   ASan clean.
 
+- **FIXED — named `let` (`(let loop ...)`) broken in bytecode and toy VM.**
+  The shared Expander kept named let as a named-let form and relied on each
+  evaluator to implement it (only tree-walk + CoreIR did). The Expander now
+  desugars `(let loop ((v i)...) body...)` →
+  `(letrec ((loop (lambda (v...) body...))) (loop i...))` and re-expands, so all
+  four evaluators get it uniformly (regular letrec already worked everywhere).
+  Unmasked in the differential suite. (The per-evaluator named-let handling in
+  the tree-walk and CoreIR lowering is now redundant — safe future cleanup.)
+
 Outstanding gaps (masked in the differential suite; prioritised):
-- **[P2] named `let` (`(let loop ...)`) broken in bytecode and toy VM** —
-  bytecode errors "Unbound variable:" (empty name), toy VM "comparison requires
-  numbers". Works in tree-walk + CoreIR. Masked to L|C.
 - **[P2] toy VM: one-armed `if` / `when` / `unless`** error ("first: cannot take
   first of an atom!") — the no-else path. Masked out of V.
 - **[P3] `procedure?` unbound in all four** (missing primitive); bytecode/CoreIR
