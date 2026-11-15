@@ -406,16 +406,20 @@ TEST_F(ContinuationTest, DynamicWindContinuationReentry) {
                   'second-time))
             (lambda () (set! log (cons 'after log)))))
     )");
-    // First time: before, thunk returns 'first-time, after
-    // After calling (cont 'x): before is called again (reentry!)
+    // First pass: before, thunk returns 'first-time, after.
     expectInt("(length log)", 2);  // before, after
 
-    // Now invoke the continuation to reenter
+    // Re-enter the dynamic-wind extent via the captured continuation. R7RS 6.10:
+    // re-entering runs the before thunk, and completing the body then leaving runs
+    // the after thunk. So the full chronological trace is:
+    //   before after  (first pass) + before after  (re-entry) = before after before after
     eval_vm("(cont 'reentry)");
-    // Should have: after (exit), before (reentry), after (normal exit)
-    // Total log should be: before, after, before, after (4 entries)
-    // Wait, the rewind logic will call: after (unwinding), before (rewinding)
-    // So total should be at least 4 entries
+    expectInt("(length log)", 4);
+    Object* chron = eval_vm("(reverse log)");
+    ASSERT_NE(chron, nullptr);
+    std::ostringstream oss;
+    chron->print(oss);
+    EXPECT_EQ(oss.str(), "(before after before after)");
 }
 
 TEST_F(ContinuationTest, DynamicWindPreservesValue) {

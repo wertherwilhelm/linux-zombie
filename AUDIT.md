@@ -610,6 +610,32 @@ as harmless, never-instantiated infrastructure.)
   value to a temp that the escaping continuation bypasses — a deep
   lowering/continuation interaction, left for a dedicated CoreIR fix.
 
+### dynamic-wind + continuation: confirmed R7RS 6.10 traces (2026-11-15)
+
+Hand-derived expected traces, then verified per evaluator (log consed, reversed
+for chronological order). On a continuation jump: run the `after` thunks of
+winders being EXITED (inner->outer), then the `before` thunks of winders being
+ENTERED (outer->inner).
+
+| case | shape | expected | lisp | bytecode | toy VM |
+|------|-------|----------|------|----------|--------|
+| A normal | dynamic-wind, no jump | `(before during after)` | ok | ok | ok |
+| B escape | call/cc escapes out of body | `(before d1 after)` | ok | ok | ok |
+| C re-entry | re-invoke stored k back INTO extent | `(before after before after)` | errors (escape-only, by design) | `(before after before)` BUG | ok |
+| D nested escape | escape out of nested winders | `(b1 b2 a2 a1)` | ok | ok | ok |
+
+- The toy VM is correct for all four (it was purpose-built for this).
+- **Open bug [bytecode VM], Case C:** re-entering a dynamic-wind extent via a
+  stored continuation runs the `before` thunk (rewind_to) but NOT the trailing
+  `after` when the resumed body completes. Likely cause: dynamic-wind is a C++
+  primitive (PrimitiveControl) calling before/thunk/after sequentially; a
+  continuation captured inside the thunk, when re-invoked, resumes the VM frames
+  but there is no C++ dynamic-wind frame left to run the trailing `after` (the
+  eval() wind-cleanup fires only on top-level unwind, not on normal completion of
+  a re-entered body). Toy VM = reference. Locked in by
+  `ContinuationTest.DynamicWindContinuationReentry` (now asserts the full
+  `(before after before after)` trace; it previously had no post-re-entry check).
+
 ---
 
 ## 3. Garbage collector
