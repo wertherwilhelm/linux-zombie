@@ -3,7 +3,8 @@
  * @brief R7RS Parameter tests (Section 4.2.6)
  */
 
-#include "pch.h"
+#include "gtest/gtest.h"
+#include "zombie_runtime_types.h"
 #include "gtest/gtest.h"
 #include "TestFixture.h"
 #include "a_parameter.h"

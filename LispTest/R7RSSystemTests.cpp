@@ -3,7 +3,8 @@
  * @brief R7RS system interface tests (exit, emergency-exit, command-line)
  */
 
-#include "pch.h"
+#include "gtest/gtest.h"
+#include "zombie_runtime_types.h"
 #include "gtest/gtest.h"
 #include "TestFixture.h"
 

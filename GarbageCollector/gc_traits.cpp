@@ -1,4 +1,3 @@
-#include "pch.h"
 #include "gc_traits.h"
 #include "gc_object.h"
 #include "gc_tracer.h"

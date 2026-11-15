@@ -3,7 +3,7 @@
  * @brief Implementation of export/signature registry primitives
  */
 
-#include "../pch.h"
+#include "zombie_runtime_types.h"
 #include "primitives_export_registry.h"
 #include "../export_registry.h"
 #include "../signature_registry.h"

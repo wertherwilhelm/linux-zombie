@@ -1,4 +1,3 @@
-#include "pch.h"
 #include "gc_persistent_root.h"
 #include "gc_interface.h"
 #include "gc_context.h"

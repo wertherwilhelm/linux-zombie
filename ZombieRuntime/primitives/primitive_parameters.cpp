@@ -3,8 +3,8 @@
  * @brief Implementation of R7RS parameter primitives
  */
 
-#include "pch.h"
-#include "../pch.h"
+#include "zombie_runtime_types.h"
+#include "zombie_runtime_types.h"
 #include "primitive_parameters.h"
 #include "../a_parameter.h"
 #include "../atom.h"

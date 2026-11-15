@@ -10,7 +10,8 @@
 //
 // ============================================================================
 
-#include "pch.h"
+#include "gtest/gtest.h"
+#include "zombie_runtime_types.h"
 #include "TestFixture.h"
 #include "gc_tracer.h"
 #include "mark_sweep_strategy.h"

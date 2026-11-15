@@ -1,4 +1,3 @@
-#include "pch.h"
 #include "generational_gc_strategy.h"
 #include "gc_box.h"
 #include "gc_interface.h"

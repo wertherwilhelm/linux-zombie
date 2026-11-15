@@ -1,5 +1,6 @@
 #pragma once
-#include "pch.h"
+#include "gtest/gtest.h"
+#include "zombie_runtime_types.h"
 #include <string>
 #include <sstream>
 #include <vector>

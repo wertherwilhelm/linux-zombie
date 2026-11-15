@@ -3,7 +3,8 @@
  * @brief R7RS I/O Primitive tests
  */
 
-#include "pch.h"
+#include "gtest/gtest.h"
+#include "zombie_runtime_types.h"
 #include "gtest/gtest.h"
 #include "TestFixture.h"
 #include <fstream>

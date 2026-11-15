@@ -3,7 +3,8 @@
  * @brief R7RS bytevector I/O tests (read-u8, write-u8, peek-u8, u8-ready?)
  */
 
-#include "pch.h"
+#include "gtest/gtest.h"
+#include "zombie_runtime_types.h"
 #include "gtest/gtest.h"
 #include "TestFixture.h"
 #include <fstream>

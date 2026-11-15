@@ -3,7 +3,7 @@
  * @brief Implementation of R7RS case-lambda
  */
 
-#include "pch.h"
+#include "zombie_runtime_types.h"
 #include "a_case_lambda.h"
 #include "i_evaluator.h"
 #include "Environment.h"

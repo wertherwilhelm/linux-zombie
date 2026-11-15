@@ -1,4 +1,5 @@
-#include "pch.h"
+#include "gtest/gtest.h"
+#include "zombie_runtime_types.h"
 #include "gtest/gtest.h"
 #include "gc_manager_template.h"
 #include "mark_sweep_strategy.h"

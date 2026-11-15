@@ -1,4 +1,3 @@
-#include "pch.h"
 #include "gc_manager.h"
 #include "gc_context.h"
 #include "mark_sweep_strategy.h"

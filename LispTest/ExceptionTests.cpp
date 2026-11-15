@@ -3,7 +3,8 @@
  * @brief R7RS Exception handling tests (Section 6.11)
  */
 
-#include "pch.h"
+#include "gtest/gtest.h"
+#include "zombie_runtime_types.h"
 #include "gtest/gtest.h"
 #include "TestFixture.h"
 #include "a_exception.h"

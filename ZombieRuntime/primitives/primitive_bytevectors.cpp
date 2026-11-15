@@ -3,8 +3,8 @@
  * @brief Implementation of R7RS bytevector primitives
  */
 
-#include "pch.h"
-#include "../pch.h"
+#include "zombie_runtime_types.h"
+#include "zombie_runtime_types.h"
 #include "primitive_bytevectors.h"
 #include "../a_bytevector.h"
 #include "../atom.h"

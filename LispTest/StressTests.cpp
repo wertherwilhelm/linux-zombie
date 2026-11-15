@@ -1,4 +1,5 @@
-#include "pch.h"
+#include "gtest/gtest.h"
+#include "zombie_runtime_types.h"
 #include "TestFixture.h"
 #include "a_rational.h"
 #include "a_complex.h"

@@ -11,7 +11,7 @@
  *
  * @see primitive_registry class in Primitive.h
  */
-#include "pch.h"
+#include "zombie_runtime_types.h"
 #include "primitive.h"
 #include "Environment.h"
 #include <stdexcept>

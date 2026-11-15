@@ -3,7 +3,8 @@
  * @brief R7RS string port tests (open-input-string, open-output-string, get-output-string)
  */
 
-#include "pch.h"
+#include "gtest/gtest.h"
+#include "zombie_runtime_types.h"
 #include "gtest/gtest.h"
 #include "TestFixture.h"
 

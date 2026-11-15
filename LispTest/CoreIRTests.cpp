@@ -1,4 +1,5 @@
-#include "pch.h"
+#include "gtest/gtest.h"
+#include "zombie_runtime_types.h"
 #include "TestFixture.h"
 #include "scheme_to_coreir.h"
 #include "coreir_to_bytecode.h"

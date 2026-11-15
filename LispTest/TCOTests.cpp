@@ -1,5 +1,6 @@
 // TCOTests.cpp - Tail-Call Optimization Tests for BytecodeVM
-#include "pch.h"
+#include "gtest/gtest.h"
+#include "zombie_runtime_types.h"
 #include "gtest/gtest.h"
 #include "scheme_engine.h"
 #include "constants.h"

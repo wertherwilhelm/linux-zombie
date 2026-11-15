@@ -9,7 +9,8 @@
  * - Standard libraries ((scheme base), (scheme read), etc.)
  */
 
-#include "pch.h"
+#include "gtest/gtest.h"
+#include "zombie_runtime_types.h"
 #include "TestFixture.h"
 #include "library.h"
 #include "library_registry.h"

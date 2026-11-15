@@ -1,4 +1,3 @@
-#include "pch.h"
 #include "gc_box.h"
 #include "gc_object.h"
 #include "gc_allocator.h"

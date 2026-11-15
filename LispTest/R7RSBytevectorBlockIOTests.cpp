@@ -3,7 +3,8 @@
  * @brief R7RS bytevector block I/O tests (read-bytevector, write-bytevector, read-bytevector!)
  */
 
-#include "pch.h"
+#include "gtest/gtest.h"
+#include "zombie_runtime_types.h"
 #include "gtest/gtest.h"
 #include "TestFixture.h"
 #include <fstream>

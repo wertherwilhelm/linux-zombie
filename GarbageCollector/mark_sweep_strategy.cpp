@@ -1,4 +1,3 @@
-#include "pch.h"
 #include "mark_sweep_strategy.h"
 #include "gc_persistent_root.h"
 #include "gc_box.h"

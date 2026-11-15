@@ -3,7 +3,8 @@
  * @brief R7RS case-lambda tests (Section 4.2.9)
  */
 
-#include "pch.h"
+#include "gtest/gtest.h"
+#include "zombie_runtime_types.h"
 #include "gtest/gtest.h"
 #include "TestFixture.h"
 

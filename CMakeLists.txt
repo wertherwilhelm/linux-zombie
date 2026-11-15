@@ -27,14 +27,10 @@ option(ZOMBIE_BUILD_TESTS "Build the LispTest GoogleTest suite" ON)
 
 # The original code uses quoted cross-project includes such as
 # "gc_manager.h", "scheme_engine.h", "../ZombieBytecode/bytecode_opcodes.h".
-# Make every project directory (and the repo root) visible to all targets.
-#
-# Ordering matters: every per-project pch.h shares the same `#ifndef PCH_H`
-# guard. Top-level .cpp files resolve "pch.h" from their own directory first,
-# but files in the ZombieRuntime/primitives/ subdirectory have no local pch.h
-# and fall through to the search path. ZombieRuntime must therefore precede
-# GarbageCollector, so those files pick up ZombieRuntime/pch.h (which pulls in
-# the zombie::runtime namespace bridging) rather than GarbageCollector/pch.h.
+# Make every project directory (and the repo root) visible to all targets, so
+# the quoted cross-project includes resolve regardless of which target is being
+# built. Runtime-layer sources include "zombie_runtime_types.h" directly for the
+# zombie::runtime namespace bridging (ZombieRuntime is on the search path).
 set(ZOMBIE_INCLUDE_DIRS
   ${CMAKE_CURRENT_SOURCE_DIR}
   ${CMAKE_CURRENT_SOURCE_DIR}/ZombieRuntime
