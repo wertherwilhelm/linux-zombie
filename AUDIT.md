@@ -598,6 +598,18 @@ as harmless, never-instantiated infrastructure.)
   `ContinuationWithBegin` corrected to expect 7; added
   `ReentrantCounterInSingleForm`. 23 continuation tests pass, ASan clean.
 
+- **Differential continuation coverage added.** `DifferentialTests.cpp` now has
+  escape continuations in the main corpus (all evaluators agree) and a
+  `ReentrantContinuations` test comparing bytecode vs toy VM against known values
+  (the tree-walk is excluded — it is escape-only and is asserted NOT to produce
+  the re-entrant result). This immediately surfaced a **CoreIR gap**: a call/cc
+  escaping through a `begin` in *operand* position leaves a CoreIR ANF temp
+  unbound (`Unbound variable: $tmpN`) — e.g. `(+ 100 (begin (call/cc (lambda (k)
+  (k 5))) 999))`. Masked out of CoreIR in the corpus; it works on tree-walk,
+  bytecode, and toy VM. Root cause is CoreIR's ANF lowering binding the begin's
+  value to a temp that the escaping continuation bypasses — a deep
+  lowering/continuation interaction, left for a dedicated CoreIR fix.
+
 ---
 
 ## 3. Garbage collector

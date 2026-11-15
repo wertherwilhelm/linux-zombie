@@ -131,6 +131,27 @@ const Case kCorpus[] = {
     // recursion
     {"(letrec ((fact (lambda (n) (if (< n 2) 1 (* n (fact (- n 1))))))) (fact 6))", "720", ALL},
     {"(letrec ((fib (lambda (n) (if (< n 2) n (+ (fib (- n 1)) (fib (- n 2))))))) (fib 10))", "55", ALL},
+    // Escape continuations — supported by all three (the tree-walk's only mode).
+    {"(+ 1 (call/cc (lambda (k) (k 10))))", "11", ALL},
+    {"(* 2 (call/cc (lambda (k) (+ 1 (k 5)))))", "10", ALL},
+    // NOTE: masked out of CoreIR (C) — a call/cc escaping through a begin in
+    // operand position leaves a CoreIR ANF temp unbound ("Unbound variable:
+    // $tmpN"). A deep CoreIR lowering/continuation interaction; see AUDIT 2.3.
+    {"(+ 100 (begin (call/cc (lambda (k) (k 5))) 999))", "1099", ALL & ~C},
+    {"(begin (+ 1 2) (call/cc (lambda (k) (k 42))) (+ 3 4))", "7", ALL},
+    {"((lambda (ls) (call/cc (lambda (break) (let loop ((l ls) (acc 1)) (cond ((null? l) acc) ((= (car l) 0) (break 0)) (else (loop (cdr l) (* acc (car l))))))))) '(1 2 0 4))", "0", ALL},
+};
+
+// Re-entrant continuations (re-invoking a stored k to resume a computation) are
+// supported only by the two real VMs; the tree-walk is escape-only and errors on
+// re-invocation, so these cannot use it as the oracle — compare bytecode vs toy
+// VM against a known value, and to each other.
+const Case kReentrantCorpus[] = {
+    // counter driven by re-invoking a stored continuation
+    {"(begin (define k0 #f) (define count 0) (define start (call/cc (lambda (k) (set! k0 k) 0))) (set! count (+ count 1)) (if (< start 3) (k0 (+ start 1)) count))", "4", B | V},
+    {"(begin (define ks '()) (define i (call/cc (lambda (k) (set! ks k) 1))) (if (<= i 3) (ks (+ i 1)) i))", "4", B | V},
+    // sum 1..5 by re-invoking the captured continuation
+    {"(begin (define k #f) (define i 0) (define acc 0) (define j (call/cc (lambda (c) (set! k c) 1))) (set! acc (+ acc j)) (if (< j 5) (k (+ j 1)) acc))", "15", B | V},
 };
 
 } // namespace
@@ -153,5 +174,29 @@ TEST_F(DifferentialTest, AllEvaluatorsMatchTreeWalk) {
             }
             EXPECT_EQ(got, c.expect) << ev.name << " diverged on: " << c.code;
         }
+    }
+}
+
+TEST_F(DifferentialTest, ReentrantContinuations) {
+    // Each masked (B/V) evaluator must produce the expected value — so they also
+    // agree with each other. The tree-walk is excluded (escape-only; it errors on
+    // re-invocation), which is itself verified below.
+    for (const auto& c : kReentrantCorpus) {
+        for (const auto& ev : kEvs) {
+            if (!(c.mask & ev.bit)) continue;
+            std::string got;
+            try {
+                got = run_in(ev.type, c.code);
+            } catch (const std::exception& e) {
+                ADD_FAILURE() << ev.name << " threw on  " << c.code << " : " << e.what();
+                continue;
+            }
+            EXPECT_EQ(got, c.expect) << ev.name << " diverged on: " << c.code;
+        }
+        // The tree-walk only supports escape continuations: re-invoking a stored
+        // continuation is rejected (eval_string reports the error and returns
+        // null -> "<null>"), so it must NOT produce the re-entrant result.
+        EXPECT_NE(run_in(EvaluatorType::LISP, c.code), c.expect)
+            << "tree-walk unexpectedly produced the re-entrant result: " << c.code;
     }
 }
