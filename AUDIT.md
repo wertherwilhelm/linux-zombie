@@ -397,8 +397,16 @@ Bugs found + FIXED in this pass:
   lowering, each doing `makeLit(arg)` on `(quote X)`): `(null? '())` saw a pair → `#f`,
   `(car '(1 2))` returned the symbol `quote`. All five now route through `atomic_to_atom`.
 Now **30 CoreIR tests pass** (incl. differential vs tree-walk over quote/cond/null?/list
-ops). Remaining unstarted: `inline_stmt_chain` clone (1449) and a JIT backend; and the
-engine still exposes no `--coreir` evaluator (wiring is the next step).
+ops). Remaining unstarted: `inline_stmt_chain` clone (1449) and a JIT backend.
+
+**CoreIR is now wired as a user-facing evaluator.** `coreir::CoreIrEvaluator`
+(ZombieCompilerIR/coreir_evaluator.{h,cpp}) implements `IEvaluator` by running
+lowering → `CoreIRToBytecode` → `BytecodeVM::execute` against the shared env (so
+top-level `define`s persist across REPL lines). Selectable via
+`EvaluatorType::COREIR` and the REPL `--coreir`/`-c` flag; covered by
+`CoreIREngineTest` (4 engine-level tests). Known cosmetic quirk (shared with the
+bytecode path): a top-level `(define (f ...) ...)` prints an odd return value
+(`begin`), but the binding itself is correct.
 
 ---
 

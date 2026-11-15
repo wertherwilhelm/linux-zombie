@@ -4,6 +4,7 @@
 #include "Lisp.h"
 #include "toy_vm.h"
 #include "bytecode_vm.h"
+#include "coreir_evaluator.h"
 #include "primitive_base.h"
 #include "primitive.h"  // For Primitive::install_primitives()
 #include "Base.h"
@@ -224,6 +225,11 @@ IEvaluator* scheme_engine::create_evaluator(EvaluatorType type) {
         case EvaluatorType::BYTECODE: {
             zombie::bytecode::BytecodeVM* bc_eval = new zombie::bytecode::BytecodeVM(global_env_, false);  // false = no debug
             eval = bc_eval;
+            break;
+        }
+        case EvaluatorType::COREIR: {
+            coreir::CoreIrEvaluator* ir_eval = new coreir::CoreIrEvaluator(global_env_, false);  // false = no debug
+            eval = ir_eval;
             break;
         }
         default:

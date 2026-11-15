@@ -49,7 +49,8 @@ class RuntimeContext;
 enum class EvaluatorType {
     LISP,       ///< Traditional recursive tree-walking interpreter (default)
     TOY_VM,     ///< Stack-based VM with explicit continuations (call/cc support)
-    BYTECODE    ///< Bytecode compiler and virtual machine (high performance)
+    BYTECODE,   ///< Bytecode compiler and virtual machine (high performance)
+    COREIR      ///< CoreIR lowering -> bytecode -> VM (typed IR pipeline)
 };
 
 /**

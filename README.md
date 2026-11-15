@@ -17,11 +17,13 @@ Key goals:
 ## At a glance
 
 - R5RS/R7RS-inspired Scheme with macros (`define-syntax` / `syntax-rules`).
-- Three execution paths — tree-walk (`--lisp`), bytecode VM (`--bytecode`), and an
-  experimental toy VM (`--vm`) — all behind one `IEvaluator` interface and sharing one
-  value model, environment, reader, and primitive set.
-- CoreIR (`ZombieCompilerIR`) is compiler/tooling infrastructure that lowers Scheme to
-  bytecode (proof-of-concept; not yet wired as a REPL evaluator).
+- Four execution paths — tree-walk (`--lisp`), bytecode VM (`--bytecode`), the CoreIR
+  pipeline (`--coreir`), and an experimental toy VM (`--vm`) — all behind one
+  `IEvaluator` interface and sharing one value model, environment, reader, and
+  primitive set.
+- CoreIR (`ZombieCompilerIR`) is a typed intermediate representation that lowers Scheme
+  to bytecode; it is selectable as an evaluator (`--coreir`) and executes on the
+  bytecode VM backend.
 - Mark-sweep GC with pluggable allocators; the process-wide runtime GC conservatively
   scans the C++ stack, isolated instances stay precise.
 - REPL with editing and (bytecode) debugger hooks; extensive GoogleTest suite.
@@ -35,8 +37,8 @@ Scheme source
    -> one of:
         - Lisp interpreter (tree-walk)          [--lisp, default]
         - Bytecode compiler -> Bytecode VM      [--bytecode]
+        - CoreIR lowering -> bytecode -> VM     [--coreir]
         - Toy VM (experimental)                 [--vm]
-        - CoreIR lowering -> bytecode           [tooling/PoC]
 ```
 
 `eval` (the `IEvaluator` entry) is the single public evaluation call; each evaluator
@@ -74,6 +76,7 @@ configured in a separate directory (e.g. `build-asan`).
 ```bash
 ./build/repl              # tree-walk evaluator (default)
 ./build/repl --bytecode   # bytecode compiler + VM
+./build/repl --coreir     # CoreIR lowering -> bytecode -> VM
 ./build/repl --vm         # toy VM (experimental)
 ```
 

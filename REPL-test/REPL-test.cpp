@@ -59,6 +59,8 @@ int main(int argc, char** argv) {
             eval_type = EvaluatorType::LISP;
         } else if (arg == "--bytecode" || arg == "-b") {
             eval_type = EvaluatorType::BYTECODE;
+        } else if (arg == "--coreir" || arg == "-c") {
+            eval_type = EvaluatorType::COREIR;
         } else if (arg == "--debug" || arg == "-d") {
             enable_debugger = true;
         } else if (arg == "--help" || arg == "-h") {
@@ -75,6 +77,7 @@ int main(int argc, char** argv) {
         std::cout << "  -l, --Lisp       Use traditional Lisp evaluator (default)\n";
         std::cout << "  -v, --vm         Use toy VM evaluator (experimental)\n";
         std::cout << "  -b, --bytecode   Use bytecode compiler/VM evaluator\n";
+        std::cout << "  -c, --coreir     Use CoreIR -> bytecode pipeline evaluator\n";
         std::cout << "  -d, --debug      Enable debugger (requires --bytecode)\n";
         std::cout << "  -h, --help       Show this help message\n";
         std::cout << "\nExit commands:\n";
@@ -108,6 +111,7 @@ int main(int argc, char** argv) {
         case EvaluatorType::LISP:     eval_name = "Lisp"; break;
         case EvaluatorType::TOY_VM:   eval_name = "Toy VM"; break;
         case EvaluatorType::BYTECODE: eval_name = "Bytecode VM"; break;
+        case EvaluatorType::COREIR:   eval_name = "CoreIR"; break;
     }
     std::cout << "Zombie Scheme REPL v0.0.1 - Using " << eval_name << " evaluator";
     if (enable_debugger) {
