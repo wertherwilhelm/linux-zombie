@@ -288,7 +288,6 @@ private:
      * @note Evaluates test expressions until one is true
      * @note Returns result of corresponding body expressions
      */
-    Object * reduce_cond(Object *clauses, Environment* env);
 
 private:
     // ========================================================================
@@ -322,7 +321,6 @@ private:
      * (letrec ((loop (lambda (var ...) (if test (begin expr ...) (begin body ... (loop step ...)))))) (loop init ...))
      * @endcode
      */
-    Object* transform_do_to_letrec(Object* args);
 
     /**
      * @brief Expand quasiquote template (recursive helper)

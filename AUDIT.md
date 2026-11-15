@@ -532,10 +532,30 @@ Note on method: primitives register once in the shared environment, so a missing
 primitive is absent in all four at once (the toy VM's apparent "support" was its
 unbound-name fallback returning garbage). Adding it fixes all four.
 
+## 2.4 Tree-walk / Expander unification (2026-11-15)
+
+The tree-walk (default evaluator) used to reimplement every derived form in
+parallel with the shared Expander that the other three evaluators run — the
+structural root of the whole divergence class (named let, cond =>, let-values
+all drifted because of it). It now desugars those forms (when, unless, and, or,
+cond, case, do, let, let*, letrec, letrec*, let-values, let*-values) through the
+Expander on encounter and tail-calls the result, exactly as a macro use is
+expanded. The Expander is now the single source of truth for derived-form
+semantics across ALL evaluators.
+
+- Displacement cache: the tree-walk re-evaluates the same AST repeatedly (loop
+  bodies), so naive per-encounter expansion is quadratic. The desugared form is
+  cached by rewriting the cons cell in place (deterministic desugaring => pure
+  cache); each form expands at most once. Full suite stays at baseline (~28s).
+- case-lambda is kept native (procedure constructor like lambda; delegating it
+  was ~1000x slower in CaseLambdaTest).
+- Removed the ~277 lines of now-dead per-form branches plus the orphaned
+  reduce_cond / transform_do_to_letrec helpers.
+
 Lower-priority follow-ups:
 - Cosmetic: bytecode/CoreIR truncate the variable name in "Unbound variable:".
-- Dead code to remove: redundant per-evaluator named-let handling (tree-walk +
-  CoreIR); CoreIR's Values/CallWithValues lowering.
+- Dead code to remove: CoreIR's now-unused Values/CallWithValues lowering; the
+  CoreIR lowering's own named-let desugar (now redundant with the Expander).
 
 ---
 
