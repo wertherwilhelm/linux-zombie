@@ -552,10 +552,16 @@ semantics across ALL evaluators.
 - Removed the ~277 lines of now-dead per-form branches plus the orphaned
   reduce_cond / transform_do_to_letrec helpers.
 
+CoreIR cleanup (2026-11-15): `lower_expr` expands via the shared Expander before
+dispatch, so CoreIR's own derived-form handling was redundant too. Removed the
+dead named-let desugar from the `let` dispatch, the orphaned `lower_values` /
+`lower_call_with_values` (no callers after call-with-values was routed through
+the runtime primitive), and the dead CallWithValues tail-call marking. (The
+`Values`/`CallWithValues` IR structs + their print/compile/verify handling remain
+as harmless, never-instantiated infrastructure.)
+
 Lower-priority follow-ups:
 - Cosmetic: bytecode/CoreIR truncate the variable name in "Unbound variable:".
-- Dead code to remove: CoreIR's now-unused Values/CallWithValues lowering; the
-  CoreIR lowering's own named-let desugar (now redundant with the Expander).
 
 ---
 

@@ -75,8 +75,6 @@ private:
     std::unique_ptr<Stmt> lower_let_star(Object* bindings, Object* body);
     std::unique_ptr<Stmt> lower_letrec(Object* bindings, Object* body);
     std::unique_ptr<Stmt> lower_set(Object* var, Object* value);
-    std::unique_ptr<Stmt> lower_values(Object* args);
-    std::unique_ptr<Stmt> lower_call_with_values(Object* producer, Object* consumer);
     std::unique_ptr<Stmt> lower_lambda_body(Object* body);
     std::unique_ptr<Expr> lower_lambda(Object* params, Object* body);
     std::unique_ptr<Expr> lower_primitive_call(const std::string& op, Object* args);

@@ -847,117 +847,6 @@ std::unique_ptr<Stmt> SchemeToCoreirLowering::lower_set(Object* var, Object* val
 }
 
 // ============================================================================
-// Lower values - Multiple return values
-// ============================================================================
-
-std::unique_ptr<Stmt> SchemeToCoreirLowering::lower_values(Object* args) {
-    // (values arg1 arg2 ...)
-    // Normalize all arguments to atoms
-
-    std::vector<Atom> atom_args;
-    std::vector<std::unique_ptr<Stmt>> arg_stmt_chains;
-
-    Object* current = args;
-    while (current && current != nil && current != empty_list) {
-        Object* arg = car(current);
-
-        if (is_atomic(arg)) {
-            // Atomic argument: use directly (atomic_to_atom strips quote consistently)
-            atom_args.push_back(atomic_to_atom(arg));
-        } else {
-            // Complex argument: lower to full Stmt chain
-            auto arg_stmt = lower_expr(arg);
-
-            // Extract the variable that holds the result
-            std::string result_var = extract_result_var(arg_stmt.get());
-
-            atom_args.push_back(Atom::makeVar(result_var));
-            arg_stmt_chains.push_back(std::move(arg_stmt));
-        }
-
-        current = cdr(current);
-    }
-
-    // Build Values expression
-    std::string result_temp = gen_temp();
-    auto values_expr = std::make_unique<Expr>(Expr::makeValues(std::move(atom_args)));
-    auto final_stmt = Stmt::makeReturn(Atom::makeVar(result_temp));
-    auto result_let = Stmt::makeLet(result_temp, std::move(values_expr), std::move(final_stmt));
-
-    // Chain all argument statements before the values expression
-    std::unique_ptr<Stmt> stmt = std::move(result_let);
-    for (auto it = arg_stmt_chains.rbegin(); it != arg_stmt_chains.rend(); ++it) {
-        stmt = inline_stmt_chain(std::move(*it), std::move(stmt));
-    }
-
-    return stmt;
-}
-
-// ============================================================================
-// Lower call-with-values - Consume multiple return values
-// ============================================================================
-
-std::unique_ptr<Stmt> SchemeToCoreirLowering::lower_call_with_values(Object* producer, Object* consumer) {
-    // (call-with-values producer consumer)
-    // Normalize producer and consumer to atoms
-
-    // Normalize producer
-    Atom producer_atom;
-    std::unique_ptr<Stmt> producer_stmts = nullptr;
-
-    if (is_atomic(producer)) {
-        if (producer->get_type() == static_cast<int>(Type::SYMBOL)) {
-            producer_atom = Atom::makeVar(get_symbol_name(producer));
-        } else {
-            producer_atom = Atom::makeLit(producer);
-        }
-    } else {
-        // Complex producer expression - normalize it
-        producer_stmts = lower_expr(producer);
-        std::string result_var = extract_result_var(producer_stmts.get());
-        producer_atom = Atom::makeVar(result_var);
-    }
-
-    // Normalize consumer
-    Atom consumer_atom;
-    std::unique_ptr<Stmt> consumer_stmts = nullptr;
-
-    if (is_atomic(consumer)) {
-        if (consumer->get_type() == static_cast<int>(Type::SYMBOL)) {
-            consumer_atom = Atom::makeVar(get_symbol_name(consumer));
-        } else {
-            consumer_atom = Atom::makeLit(consumer);
-        }
-    } else {
-        // Complex consumer expression - normalize it
-        consumer_stmts = lower_expr(consumer);
-        std::string result_var = extract_result_var(consumer_stmts.get());
-        consumer_atom = Atom::makeVar(result_var);
-    }
-
-    // Build CallWithValues expression
-    std::string result_temp = gen_temp();
-    auto cwv_expr = std::make_unique<Expr>(
-        Expr::makeCallWithValues(std::move(producer_atom), std::move(consumer_atom))
-    );
-    auto final_stmt = Stmt::makeReturn(Atom::makeVar(result_temp));
-    auto result_let = Stmt::makeLet(result_temp, std::move(cwv_expr), std::move(final_stmt));
-
-    // Chain producer and consumer statements if present
-    std::unique_ptr<Stmt> stmt = std::move(result_let);
-
-    if (consumer_stmts) {
-        stmt = inline_stmt_chain(std::move(consumer_stmts), std::move(stmt));
-    }
-
-    if (producer_stmts) {
-        stmt = inline_stmt_chain(std::move(producer_stmts), std::move(stmt));
-    }
-
-    return stmt;
-}
-
-// ============================================================================
 // Lower Expression to Statement
 // ============================================================================
 
@@ -994,41 +883,12 @@ std::unique_ptr<Stmt> SchemeToCoreirLowering::lower_expr(Object* scheme_expr) {
             return lower_if(cond, then_expr, else_expr);
         }
 
-        // Let
+        // Let. Named let (and every other derived form) is already desugared by
+        // the Expander in expand() above — named let -> letrec, let -> lambda
+        // application, cond/case/do/when/unless/let*/let-values/... -> core forms
+        // — so the dedicated handling that used to live here is redundant.
         if (op == "let") {
-            Object* head = car(rest);
-            // Named let: (let name ((v init) ...) body ...) desugars to
-            //   (letrec ((name (lambda (v ...) body ...))) (name init ...))
-            // which reuses the (working) letrec + lambda lowering.
-            if (head && head->get_type() == static_cast<int>(Type::SYMBOL)) {
-                Object* name = head;
-                Object* bindings = car(cdr(rest));
-                Object* body = cdr(cdr(rest));
-                std::vector<Object*> vars, inits;
-                for (Object* b = bindings; b && b != nil && b != empty_list; b = cdr(b)) {
-                    Object* binding = car(b);
-                    vars.push_back(car(binding));
-                    inits.push_back(car(cdr(binding)));
-                }
-                Object* params = nil;
-                Object* init_list = nil;
-                for (int i = static_cast<int>(vars.size()) - 1; i >= 0; --i) {
-                    params = cons(vars[i], params);
-                    init_list = cons(inits[i], init_list);
-                }
-                Object* lambda_form = cons(intern_symbol("lambda"), cons(params, body));
-                Object* lr_binding = cons(name, cons(lambda_form, nil));
-                Object* lr_bindings = cons(lr_binding, nil);
-                Object* call_form = cons(name, init_list);  // (name init ...)
-                // (letrec ((name (lambda ...))) (name init ...)) — route through lower_expr
-                // so it follows the same (working) path as a hand-written letrec.
-                Object* letrec_form = cons(intern_symbol("letrec"),
-                                           cons(lr_bindings, cons(call_form, nil)));
-                return lower_expr(letrec_form);
-            }
-            Object* bindings = car(rest);
-            Object* body = cdr(rest);
-            return lower_let(bindings, body);
+            return lower_let(car(rest), cdr(rest));
         }
 
         // Let* (sequential bindings)
@@ -1265,19 +1125,6 @@ void SchemeToCoreirLowering::mark_tail_calls(Stmt* stmt) {
                 auto& call = let.expr->data;
                 if (std::holds_alternative<Expr::Call>(call)) {
                     std::get<Expr::Call>(call).is_tail_call = true;
-                }
-            }
-        }
-
-        // Check if the let binds a call-with-values, and if the Continuation is a Return of that binding
-        if (let.expr && let.expr->isCallWithValues() && let.next && let.next->isReturn()) {
-            const auto& ret = let.next->asReturn();
-            // If we're returning the variable we just bound, this is a tail call
-            if (ret.value.isVar() && ret.value.asVar().name == let.name) {
-                // Mark the call-with-values as a tail call
-                auto& cwv = let.expr->data;
-                if (std::holds_alternative<Expr::CallWithValues>(cwv)) {
-                    std::get<Expr::CallWithValues>(cwv).is_tail_call = true;
                 }
             }
         }
