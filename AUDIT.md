@@ -448,8 +448,20 @@ produced the punch-list (11 divergences). Status:
   ≠2 routes through the runtime primitive (`OP_LOAD_VAR`+`OP_CALL`); 2 operands
   keep the fast opcode. Regression tests in `CoreIRPipelineTest`.
 
+- **FIXED — toy VM hung/segfaulted applying a closure from inside a primitive.**
+  Surfaced as `(map (lambda ...) ...)` but the real cause was `VM::eval` doing
+  `stack.clear()` on entry: a primitive (map/filter/for-each) calling back into
+  `eval()` via `Closure::apply` wiped the VM's in-progress frame stack, so the
+  step machine spun forever (SIGSEGV via stack overflow at -O0, hang under ASan).
+  `eval()` is now re-entrant — it runs the nested expression on top of the
+  existing frames down to a depth floor (`run_to`) instead of clearing, keeping
+  the outer frames GC-reachable; a re-entrancy guard preserves the top-level
+  "clear leftover frames after an exception" behaviour and restores the outer
+  accumulator only for nested calls. Covered in the differential suite
+  (map/filter with closures); 58 continuation/dynamic-wind tests still pass,
+  ASan clean.
+
 Outstanding gaps (masked in the differential suite; prioritised):
-- **[P1] toy VM segfaults on `map`** (hard crash, rc=139) — masked out of V.
 - **[P2] named `let` (`(let loop ...)`) broken in bytecode and toy VM** —
   bytecode errors "Unbound variable:" (empty name), toy VM "comparison requires
   numbers". Works in tree-walk + CoreIR. Masked to L|C.

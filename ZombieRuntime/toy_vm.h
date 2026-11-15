@@ -110,6 +110,7 @@ public:
     Environment* global_env;
     bool debug_mode;
     int step_count;
+    bool executing_ = false;  // true while run()/run_to() is active (eval re-entrancy guard)
 
     // Continuation support (optional module)
     std::unique_ptr<ContinuationSupport> cont_support;
@@ -129,7 +130,14 @@ public:
 
     // Run until we're done
     void run() {
-        while (!stack.empty()) {
+        run_to(0);
+    }
+
+    // Step until the frame stack shrinks back to `floor`. Used to run a nested
+    // (re-entrant) evaluation on top of the existing frames without disturbing
+    // the outer, in-progress computation below `floor`.
+    void run_to(size_t floor) {
+        while (stack.size() > floor) {
             step();
         }
     }

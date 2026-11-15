@@ -43,8 +43,9 @@ std::string run_in(EvaluatorType t, const std::string& code) {
 // KNOWN GAPS (masked out below; remove the mask when fixed):
 //   - Named let `(let loop ...)`: broken in bytecode (B) and toy VM (V).
 //   - One-armed `if` / `when` / `unless`: broken in toy VM (V).
-//   - `map`: HARD CRASH (segfault) in toy VM (V) — must not be executed there.
 //   - `procedure?`: missing in every evaluator (not in the corpus).
+// FIXED (now covered on all four): closure applied from inside a primitive
+//   (map/filter/for-each) — was a toy-VM re-entrant-eval hang/segfault.
 // -------------------------------------------------------------------------
 const Case kCorpus[] = {
     // arithmetic / comparison (incl. n-ary — the CoreIR drop-operand regression)
@@ -85,7 +86,11 @@ const Case kCorpus[] = {
     {"(append '(1 2) '(3 4))", "(1 2 3 4)", ALL}, {"(reverse '(1 2 3))", "(3 2 1)", ALL},
     {"(member 2 '(1 2 3))", "(2 3)", ALL}, {"(assoc 'b '((a 1) (b 2)))", "(b 2)", ALL},
     {"(cadr '(1 2 3))", "2", ALL}, {"(caddr '(1 2 3))", "3", ALL},
-    {"(map (lambda (x) (* x x)) '(1 2 3))", "(1 4 9)", ALL & ~V}, // map: toy VM SEGFAULT
+    // Closure applied from inside a primitive (map/filter/for-each) — exercises
+    // re-entrant eval on every evaluator (was a toy-VM hang/segfault).
+    {"(map (lambda (x) (* x x)) '(1 2 3))", "(1 4 9)", ALL},
+    {"(map + '(1 2 3) '(10 20 30))", "(11 22 33)", ALL},
+    {"(filter (lambda (x) (> x 2)) '(1 2 3 4))", "(3 4)", ALL},
     // quote / quasiquote
     {"(quote (a b c))", "(a b c)", ALL}, {"'(1 2 3)", "(1 2 3)", ALL},
     {"`(1 ,(+ 1 1) 3)", "(1 2 3)", ALL}, {"`(1 ,@(list 2 3) 4)", "(1 2 3 4)", ALL},

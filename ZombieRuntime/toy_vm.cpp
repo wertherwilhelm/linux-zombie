@@ -36,21 +36,52 @@ VM::~VM() = default;
 // ============================================================================
 
 Object* VM::eval(Object* expr, Environment* env) {
-    // Clear any leftover state from previous evaluations (e.g., from exceptions)
-    stack.clear();
-    if (cont_support) {
-        cont_support->clear_continuation_flag();
+    // eval() must be RE-ENTRANT. A primitive such as map / for-each / apply can
+    // call back into eval() (via Closure::apply) to run a closure body while the
+    // VM is still mid-execution. The VM's working state lives in the shared
+    // `stack`, so a nested eval cannot clear it — doing so discards the outer,
+    // in-progress computation and the step machine spins forever (this was the
+    // `(map (lambda ...) ...)` hang/segfault). Instead, run the nested
+    // expression ON TOP of the current frames and stop once the stack returns to
+    // its original depth. Leaving the outer frames in `stack` also keeps them
+    // reachable for GC (trace_references scans `stack`).
+    const bool reentrant = executing_;
+    if (!reentrant) {
+        // Genuine top-level entry: drop any frames left over from a previous
+        // eval that unwound via exception, and reset continuation state.
+        stack.clear();
+        if (cont_support) {
+            cont_support->clear_continuation_flag();
+        }
     }
 
-    // Expand macros and desugar BEFORE evaluation
-    // This transforms let, let*, letrec, case into core forms
-    // and expands all macros (syntax-rules)
+    const size_t floor = stack.size();
+    Object* saved_acc = accumulator;
+
+    // Expand macros and desugar BEFORE evaluation (let/let*/letrec/case -> core
+    // forms, syntax-rules expansion).
     Expander expander(env);
     Object* expanded = expander.expand(expr);
 
     stack.push_back(Frame(EVAL_ATOM, expanded, env));
-    run();
-    return accumulator;
+
+    const bool prev_executing = executing_;
+    executing_ = true;
+    try {
+        run_to(floor);
+    } catch (...) {
+        executing_ = prev_executing;
+        if (reentrant) accumulator = saved_acc;
+        throw;
+    }
+    executing_ = prev_executing;
+
+    Object* result = accumulator;
+    // Restore the outer computation's accumulator ONLY for a nested (re-entrant)
+    // call. At top level, callers rely on `accumulator` holding the result after
+    // eval() returns (e.g. the continuation-test fixture reads vm->accumulator).
+    if (reentrant) accumulator = saved_acc;
+    return result;
 }
 
 // ============================================================================
