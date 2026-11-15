@@ -567,9 +567,14 @@ as harmless, never-instantiated infrastructure.)
 
 Lower-priority follow-ups:
 - The toy VM does not error on an unbound variable — `step_eval_atom` falls back
-  to returning the symbol as a literal. This is the deeper reason unbound names
-  "worked" (returned garbage) in the toy VM during the sweeps. Behavioral, not
-  cosmetic; left for a dedicated fix.
+  to returning the symbol as a literal (the reason unbound names "worked" i.e.
+  returned garbage in the sweeps). Attempted to make it error (matching the
+  tree-walk oracle): it is **load-bearing for the toy VM's continuation
+  machinery** — restoring a captured continuation looks names up before they are
+  rebound, so erroring breaks `ContinuationInClosure` and
+  `MultipleContinuationsWithGC`. A real fix needs a dedicated look at the
+  continuation restore path (ContinuationSupport::try_invoke_continuation), not a
+  change to the atom lookup. Left as-is with an explanatory NOTE in the code.
 
 ---
 

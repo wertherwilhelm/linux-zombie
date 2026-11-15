@@ -182,7 +182,14 @@ void VM::step_eval_atom(Frame& frame) {
             is_double(frame.expr) || is_char(frame.expr)) {
             accumulator = frame.expr;
         } else if (is_string(frame.expr) || is_symbol(frame.expr)) {
-            // Variable lookup for both strings and symbols
+            // Variable lookup for both strings and symbols.
+            // NOTE: an unbound name falls back to returning the symbol itself
+            // rather than erroring. This is non-standard, but the toy VM's
+            // continuation machinery currently depends on it (restoring a
+            // captured continuation looks up names before they are rebound);
+            // making this error breaks ContinuationInClosure /
+            // MultipleContinuationsWithGC. Fixing it needs a dedicated look at
+            // the continuation restore path (see AUDIT 2.3).
             try {
                 accumulator = frame.env->lookup(frame.expr);
             } catch (const std::exception&) {
