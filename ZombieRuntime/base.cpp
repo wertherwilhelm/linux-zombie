@@ -306,7 +306,6 @@ a_string* error(std::string message) {
 
 a_string* warn(std::string message) {
     a_string* lo = gc_new<a_string>(message);
-    //AfxMessageBox("**** WARNING: " + CString(message));
     return lo;
 }
 
