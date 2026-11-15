@@ -560,8 +560,16 @@ the runtime primitive), and the dead CallWithValues tail-call marking. (The
 `Values`/`CallWithValues` IR structs + their print/compile/verify handling remain
 as harmless, never-instantiated infrastructure.)
 
+- **FIXED — "Unbound variable:" now names the variable** on every evaluator that
+  errors. `Environment::lookup`/`set` threw `"Unbound variable: "` with an empty
+  name (only the tree-walk's own atom path appended it); both now append
+  `get_name(symbol)`, matching the tree-walk.
+
 Lower-priority follow-ups:
-- Cosmetic: bytecode/CoreIR truncate the variable name in "Unbound variable:".
+- The toy VM does not error on an unbound variable — `step_eval_atom` falls back
+  to returning the symbol as a literal. This is the deeper reason unbound names
+  "worked" (returned garbage) in the toy VM during the sweeps. Behavioral, not
+  cosmetic; left for a dedicated fix.
 
 ---
 

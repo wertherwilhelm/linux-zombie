@@ -98,7 +98,7 @@ Object* Environment::lookup(Object * symbol)
     if (m_parent != NULL) {
         return m_parent->lookup(symbol);
     } else {
-        return error("Unbound variable: ");
+        return error("Unbound variable: " + get_name(symbol));
     }
 }
 
@@ -165,7 +165,7 @@ Object* Environment::set(Object *var, Object* val)
     }
     else
     {
-        return error("Unbound variable: ");
+        return error("Unbound variable: " + get_name(symbol));
     }
 }
 
