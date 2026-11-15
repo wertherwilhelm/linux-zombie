@@ -428,6 +428,38 @@ the unspecified value on re-entry). Locked in by `*.DefineReturnsUnspecified`
 
 ---
 
+## 2.3 Differential conformance across evaluators (2026-11-14)
+
+The bulk of the ~1290 tests exercise only the tree-walk evaluator (via
+`TestFixture.h`); bytecode / CoreIR / toy-VM were thinly covered, which is why
+evaluators silently disagreed (set! return, null?/'(), define return were all
+found by hand). Added `LispTest/DifferentialTests.cpp`: one corpus run through
+all four evaluators, asserting each matches the tree-walk reference. Each case
+carries an evaluator **mask**; evaluators with a known gap are masked out (not
+executed — important because some gaps are hard crashes). The mask is the living
+gap list: fix a gap, flip the bit to ALL, and that evaluator is guarded too.
+
+A one-off subprocess sweep (repl binary, timeout-isolated) over ~85 programs
+produced the punch-list (11 divergences). Status:
+
+- **FIXED — CoreIR n-ary primitives dropped operands.** `(+ 1 2 3)`→5,
+  `(* 2 3 4)`→12, `(- 10 3 2)`→1: `compile_primitive` pushed all operands then
+  emitted one binary opcode (pops two), using only the last two. Now any arity
+  ≠2 routes through the runtime primitive (`OP_LOAD_VAR`+`OP_CALL`); 2 operands
+  keep the fast opcode. Regression tests in `CoreIRPipelineTest`.
+
+Outstanding gaps (masked in the differential suite; prioritised):
+- **[P1] toy VM segfaults on `map`** (hard crash, rc=139) — masked out of V.
+- **[P2] named `let` (`(let loop ...)`) broken in bytecode and toy VM** —
+  bytecode errors "Unbound variable:" (empty name), toy VM "comparison requires
+  numbers". Works in tree-walk + CoreIR. Masked to L|C.
+- **[P2] toy VM: one-armed `if` / `when` / `unless`** error ("first: cannot take
+  first of an atom!") — the no-else path. Masked out of V.
+- **[P3] `procedure?` unbound in all four** (missing primitive); bytecode/CoreIR
+  also truncate the variable name in the "Unbound variable:" message.
+
+---
+
 ## 3. Garbage collector
 
 ### 3.1 HIGH — experimental template GC crashes on Linux ("pure virtual method called")  ✅ FIXED
