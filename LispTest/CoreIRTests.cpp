@@ -47,6 +47,18 @@ TEST_F(CoreIRPipelineTest, Begin)           { EXPECT_EQ(as_int(run_coreir(env, "
 TEST_F(CoreIRPipelineTest, Cond)            { EXPECT_EQ(as_int(run_coreir(env, "(cond ((= 1 2) 10) (else 20))")), 20); }
 TEST_F(CoreIRPipelineTest, LambdaApply)     { EXPECT_EQ(as_int(run_coreir(env, "((lambda (x) (* x x)) 5)")), 25); }
 
+// --- N-ary primitives: a binary opcode must not silently drop operands.
+// Regression for the "uses only the last two args" bug (e.g. (+ 1 2 3) => 5).
+TEST_F(CoreIRPipelineTest, VariadicAdd)      { EXPECT_EQ(as_int(run_coreir(env, "(+ 1 2 3 4)")), 10); }
+TEST_F(CoreIRPipelineTest, VariadicMul)      { EXPECT_EQ(as_int(run_coreir(env, "(* 2 3 4)")), 24); }
+TEST_F(CoreIRPipelineTest, VariadicSub)      { EXPECT_EQ(as_int(run_coreir(env, "(- 100 1 2 3)")), 94); }
+TEST_F(CoreIRPipelineTest, VariadicDiv)      { EXPECT_EQ(as_int(run_coreir(env, "(/ 24 2 3)")), 4); }
+TEST_F(CoreIRPipelineTest, UnaryAddIdentity) { EXPECT_EQ(as_int(run_coreir(env, "(+ 5)")), 5); }
+TEST_F(CoreIRPipelineTest, NaryLambdaArgs)   { EXPECT_EQ(as_int(run_coreir(env, "((lambda (a b c) (+ a b c)) 1 2 3)")), 6); }
+TEST_F(CoreIRPipelineTest, ChainedLessThan)  { EXPECT_EQ(show(run_coreir(env, "(< 1 2 3)")), "#t"); }
+TEST_F(CoreIRPipelineTest, ChainedLessFalse) { EXPECT_EQ(show(run_coreir(env, "(< 3 2 1)")), "#f"); }
+TEST_F(CoreIRPipelineTest, ChainedNumEq)     { EXPECT_EQ(show(run_coreir(env, "(= 2 2 2)")), "#t"); }
+
 // --- Harder cases: probe the real gaps (local mutation, closures, recursion) ---
 TEST_F(CoreIRPipelineTest, SetLocalMutation) { EXPECT_EQ(as_int(run_coreir(env, "(let ((x 1)) (set! x 2) x)")), 2); }
 TEST_F(CoreIRPipelineTest, ClosureCapture)   { EXPECT_EQ(as_int(run_coreir(env, "(((lambda (x) (lambda (y) (+ x y))) 3) 4)")), 7); }

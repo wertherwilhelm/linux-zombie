@@ -190,29 +190,29 @@ void CoreIRToBytecode::compile_primitive(const std::string& op,
     // Check if this Primitive has a bytecode opcode
     uint8_t opcode = get_primitive_opcode(op);
 
-    if (opcode == 0xFF) {
-        // No bytecode opcode - compile as function call instead
-        // Load the Primitive function from global environment
+    // The binary opcodes (OP_ADD, OP_LT, ...) pop exactly two operands. For any
+    // other arity — variadic (+ 1 2 3), chained (< 1 2 3), unary (+ 5), or the
+    // 0-arg identity — the fast opcode would silently use only the top two
+    // operands (dropping the rest) or underflow the stack. Fall back to calling
+    // the real runtime primitive so n-ary semantics exactly match the tree-walk
+    // evaluator. (Unary minus is special-cased above as (- 0 x).)
+    if (opcode == 0xFF || args.size() != 2) {
+        // Compile as a function call: load the Primitive from the global
+        // environment and CALL it with all arguments.
         uint16_t name_idx = add_symbol_constant(op);
         emit_byte(OP_LOAD_VAR);
         emit_u16(name_idx);
 
-        // Load arguments onto stack
         for (const auto& arg : args) {
             compile_atom(arg);
         }
 
-        // Emit CALL instruction
         emit_byte(OP_CALL);
         emit_byte(static_cast<uint8_t>(args.size()));
     } else {
-        // Has bytecode opcode - compile as Primitive instruction
-        // Load arguments onto stack
-        for (const auto& arg : args) {
-            compile_atom(arg);
-        }
-
-        // Emit Primitive instruction
+        // Exactly two operands with a binary opcode: fast path.
+        compile_atom(args[0]);
+        compile_atom(args[1]);
         emit_byte(opcode);
     }
 }
