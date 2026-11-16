@@ -48,6 +48,7 @@ public:
         TYPE_OBJECT,                    ///< Meta-Object Protocol: First-class types
         SYNTAX_RULES_TRANSFORMER,       ///< R5RS hygienic Macro transformer
         VALUES,                         ///< R5RS multiple return values
+        HASHTABLE,                      ///< Hash table (SRFI-69 subset)
     };
 
 public:
