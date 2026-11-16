@@ -89,3 +89,26 @@ TEST_F(ReaderPrimitiveFixTest, LoadSkipsComments) {
     expectInt("(char->integer semi)", 59);
     std::remove(path);
 }
+
+// (6) #(...) vector literals: the reader rejected them ("expected '\\' after
+//     '#'"), yet vectors print as #(...) and exist as values. Added to the reader.
+TEST_F(ReaderPrimitiveFixTest, VectorLiterals) {
+    expectInt("(vector-ref '#(10 20 30) 1)", 20);
+    expectInt("(vector-length '#(1 2 3 4))", 4);
+    expectInt("(vector-length '#())", 0);
+    expectString("(symbol->string (vector-ref '#(a b c) 2))", "c");
+}
+
+// (7) vector literals self-evaluate (R7RS) — an unquoted #(...) used to throw
+//     "Unexpected atomic type".
+TEST_F(ReaderPrimitiveFixTest, VectorSelfEvaluates) {
+    expectInt("(vector-ref #(5 6 7) 0)", 5);
+}
+
+// (8) equal? does element-wise vector comparison (was pointer-only -> #f).
+TEST_F(ReaderPrimitiveFixTest, EqualOnVectors) {
+    expectBool("(equal? '#(1 2 3) (vector 1 2 3))", true);
+    expectBool("(equal? #(1 2) #(1 3))", false);
+    expectBool("(equal? #(1 2) #(1 2 3))", false);
+    expectBool("(equal? (vector 1 (vector 2 3)) (vector 1 (vector 2 3)))", true);
+}

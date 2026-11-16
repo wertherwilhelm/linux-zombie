@@ -99,6 +99,18 @@ bool equal(Object *x, Object *y) {
         return ((a_char*)x)->value() == ((a_char*)y)->value();
     }
 
+    // Vectors - element-wise structural comparison (R7RS equal?)
+    if (x->get_type() == static_cast<int>(Type::VECTOR) &&
+        y->get_type() == static_cast<int>(Type::VECTOR)) {
+        a_vector* vx = (a_vector*)x;
+        a_vector* vy = (a_vector*)y;
+        if (vx->length() != vy->length()) return false;
+        for (int i = 0; i < vx->length(); ++i) {
+            if (!equal(vx->get(i), vy->get(i))) return false;
+        }
+        return true;
+    }
+
     // Everything else - pointer equality
     return x == y;
 }

@@ -116,7 +116,8 @@ if(ZOMBIE_BUILD_TESTS)
   # process CWD (e.g. running ./LispTest from the build dir, not just via ctest's
   # WORKING_DIRECTORY). Replaces the old hardcoded Windows paths in the tests.
   target_compile_definitions(LispTest PRIVATE
-    "ZOMBIE_TEST_LIBS_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/test-libs\"")
+    "ZOMBIE_TEST_LIBS_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/test-libs\""
+    "ZOMBIE_CORPUS_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/corpus\"")
   if(TARGET gtest)
     target_link_libraries(LispTest PRIVATE gtest gtest_main)
   else()

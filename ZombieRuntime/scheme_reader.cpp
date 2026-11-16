@@ -541,6 +541,23 @@ Object* scheme_reader::read_char() {
 
     char next = peek();
 
+    // Handle vector literals: #(elem ...)
+    if (next == '(') {
+        Object* lst = read_list();  // consumes '(' ... ')', returns a cons list
+        // Propagate a nested parse error.
+        if (a_string* e = dynamic_cast<a_string*>(lst)) {
+            if (e->value().rfind("ERROR:", 0) == 0) return lst;
+        }
+        // Root the list while we copy its elements into the vector (gc_new below
+        // allocates and may collect; elements stay reachable via lst).
+        gc_root<Object> guard(lst);
+        std::vector<Object*> elems;
+        for (Object* p = lst; p && !p->is_nil() && p->pair(); p = cdr(p)) {
+            elems.push_back(car(p));
+        }
+        return gc_new<a_vector>(elems);
+    }
+
     // Handle boolean literals #t and #f
     if (next == 't' || next == 'f') {
         consume();  // consume 't' or 'f'

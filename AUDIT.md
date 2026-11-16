@@ -50,6 +50,36 @@ separate improvement.
 
 ---
 
+## Corpus test runner (2026-11-16) + gaps it discovered
+
+Added a data-driven corpus runner (`LispTest/CorpusTests.cpp`, dir
+`corpus/<name>/{source.scm,cases.scm}`, path via `ZOMBIE_CORPUS_DIR`). Each
+`cases.scm` defines `corpus-cases` = list of `(label form expected [status])`;
+the runner loads source+cases into a fresh `scheme_engine`, evaluates each form,
+and compares printed result to `expected`. A 4th element `'gap` marks a known
+missing area: reported (`[gap] ...`) but not a failure, and flagged if it starts
+passing (so the tag gets dropped). Adding a test = editing data, no recompile.
+Entries: `algol-msweet` (the reader, 8 cases, all pass) and `r7rs-core` (42
+feature probes).
+
+Three real bugs FIXED while building it (vector support), with regression tests
+in `ReaderPrimitiveFixTests.cpp`:
+- `#(...)` **vector literals** were rejected by the reader (yet vectors exist as
+  values and print as `#(...)`). Added to `read_char`.
+- **vector/bytevector constants now self-evaluate** (unquoted `#(1 2 3)` threw
+  "Unexpected atomic type" in the tree-walk `eval_atom`). NOTE: only fixed in the
+  tree-walk; bytecode/CoreIR/toy-VM self-eval of `#(...)` not yet checked.
+- **`equal?` now compares vectors element-wise** (was pointer-only -> `#f`).
+
+Gaps the `r7rs-core` corpus flagged (tagged `'gap`, tracked not failing):
+- Missing procedures: `reduce`, `list-sort`, `sort`, `string-split`,
+  `string-contains` (SRFI/R6RS/extensions), `make-hash-table`/`hash-table-*`
+  (R7RS-large — notable).
+- `floor/` returns only the quotient, and `exact-integer-sqrt` returns a single
+  list — both should return **two values** (R7RS). Multi-value conformance gap.
+
+---
+
 ## Evaluator architecture audit (2026-11-13)
 
 Four execution paths, one shared value/runtime core.

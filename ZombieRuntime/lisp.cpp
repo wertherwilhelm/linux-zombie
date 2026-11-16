@@ -242,6 +242,10 @@ Object* Lisp::eval_atom(Object* x, Environment*env) {
     } else if (is_string(x)) {
         // Strings are self-evaluating literals
         return x;
+    } else if (x->get_type() == static_cast<int>(Type::VECTOR) ||
+               x->get_type() == static_cast<int>(Type::BYTEVECTOR)) {
+        // R7RS: vector and bytevector constants are self-evaluating.
+        return x;
     } else {
         throw std::runtime_error("Unexpected atomic type");
     }
