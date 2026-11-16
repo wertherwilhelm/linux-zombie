@@ -21,7 +21,9 @@ public:
         SIZE = 7,          ///< hash-table-size
         KEYS = 8,          ///< hash-table-keys
         VALUES_ = 9,       ///< hash-table-values
-        TOALIST = 10       ///< hash-table->alist
+        TOALIST = 10,      ///< hash-table->alist
+        UPDATE = 11,       ///< hash-table-update! h key proc [failure-thunk]
+        UPDATEDEFAULT = 12 ///< hash-table-update!/default h key proc default
     };
 
     PrimitiveHashTables(ID id, int minArgs, int maxArgs);

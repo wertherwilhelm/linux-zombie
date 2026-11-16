@@ -265,11 +265,25 @@ differential entries. Full suite 1322/1322, ASan-clean.
 All on every evaluator. Corpus `corpus/r7rs-inexact-print` (17 cases) +
 differential entries. Full suite 1322/1322, ASan-clean.
 
-Corpus now has 12 entries: algol-msweet, r7rs-core, r7rs-extra, r7rs-syntax,
+### Corpus batch 10 (`corpus/r7rs-case-hashupdate`, 2026-11-16)
+- **`case` with `=>`** errored — `expand_case` now recognises a
+  `(datums => proc)` / `(else => proc)` clause and rewrites the body to
+  `(proc key)` (R7RS 4.2.1).
+- **`hash-table-update!`** and **`hash-table-update!/default`** were missing —
+  added to `primitive_hashtables` (`new = (proc current)`, where current is the
+  existing value or the failure-thunk's result / default when absent; SRFI-69).
+All on every evaluator. Corpus `corpus/r7rs-case-hashupdate` (8 cases) +
+differential entries. Full suite 1322/1322, ASan-clean.
+- Note: at the **CoreIR REPL top level** a bare `if`/`cond`/`case` errors with
+  "if in operand position not supported" — a pre-existing REPL-path limitation
+  (plain `(list (if #t 1 2))` fails too); the differential harness and
+  in-`define` uses lower it fine, so this is orthogonal to `case =>`.
+
+Corpus now has 13 entries: algol-msweet, r7rs-core, r7rs-extra, r7rs-syntax,
 r7rs-io, r7rs-records, r7rs-bytevectors, r7rs-numeric-strings, r7rs-seq-ops,
-r7rs-comparisons, r7rs-inexact-print. Only `'gap`: `rationalize` (inexact),
-`with-output-to-string`. Known still-open: `#x`/`#b`/`#o`/`#e`/`#i` number
-prefixes aren't read; `case` with `=>` errors; `hash-table-update!` missing.
+r7rs-comparisons, r7rs-inexact-print, r7rs-case-hashupdate. Only `'gap`:
+`rationalize` (inexact), `with-output-to-string`. Known still-open:
+`#x`/`#b`/`#o`/`#e`/`#i` number prefixes aren't read; CoreIR REPL if-in-operand.
 
 ---
 

@@ -157,6 +157,10 @@ const Case kCorpus[] = {
     {"(number->string 2.0)", "2.0", ALL}, {"1.0", "1.0", ALL},
     {"(expt 2 10)", "1024", ALL}, {"(expt 2 -2)", "1/4", ALL},
     {"(exact? (expt 2 10))", "#t", ALL}, {"(exact? (expt 2.0 3))", "#f", ALL},
+    // case with => (receiver applied to key); hash-table-update!
+    {"(case 5 ((5) => (lambda (x) (* x x))) (else 0))", "25", ALL},
+    {"(case 9 ((1 2) 'low) (else => (lambda (x) (+ x 1))))", "10", ALL},
+    {"(let ((h (make-hash-table))) (hash-table-update!/default h 'x (lambda (v) (+ v 5)) 0) (hash-table-ref/default h 'x -1))", "5", ALL},
     // strings / symbols (display-style printing: no quotes)
     {"(string-length \"hello\")", "5", ALL},
     {"(string-append \"a\" \"b\" \"c\")", "abc", ALL},

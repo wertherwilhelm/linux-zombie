@@ -707,6 +707,16 @@ Object* Expander::expand_case(Object* key_expr, Object* clauses) {
         Object* datums = first(clause);
         Object* results = rest(clause);
 
+        // R7RS: a clause may be (datums => proc) / (else => proc); proc is
+        // applied to the key. Rewrite the body to (proc key).
+        bool arrow = (!is_nil(results) && results->pair() &&
+                      is_keyword(first(results), "=>"));
+        if (arrow) {
+            Object* proc = first(rest(results));
+            Object* apply_form = cons(proc, cons(expanded_key, nil));
+            results = cons(apply_form, nil);
+        }
+
         Object* cond_clause;
         if (is_keyword(datums, "else")) {
             // (else result...)
