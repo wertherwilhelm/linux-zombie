@@ -16,6 +16,7 @@
 #include "../a_bytevector.h"
 #include "../../GarbageCollector/gc_ptr.h"
 #include <fstream>
+#include "../a_vector.h"
 #include <sstream>
 #include <cctype>
 
@@ -25,6 +26,85 @@
  * @author Inheritance-based refactoring 2026-01
  * @date 2026-01-09
  */
+
+namespace {
+
+using zombie::runtime::Object;
+using zombie::runtime::a_string;
+using zombie::runtime::a_char;
+using zombie::runtime::a_vector;
+using zombie::runtime::is_string;
+using zombie::runtime::is_char;
+using zombie::runtime::is_vector;
+using zombie::runtime::is_pair;
+using zombie::runtime::first;
+using zombie::runtime::rest;
+
+// Serialize a datum in `write` (machine-readable) form: strings are quoted and
+// escaped, characters use #\ notation, and these rules apply recursively
+// through pairs and vectors. All other datums fall back to their display form.
+// This is what distinguishes `write` from `display` (R7RS 6.13.3).
+void write_datum(std::ostream& os, Object* o);
+
+void write_string_literal(std::ostream& os, const std::string& s) {
+    os << '"';
+    for (char c : s) {
+        switch (c) {
+            case '"':  os << "\\\""; break;
+            case '\\': os << "\\\\"; break;
+            case '\n': os << "\\n";  break;
+            case '\r': os << "\\r";  break;
+            case '\t': os << "\\t";  break;
+            default:   os << c;      break;
+        }
+    }
+    os << '"';
+}
+
+void write_char_literal(std::ostream& os, char c) {
+    os << "#\\";
+    switch (c) {
+        case ' ':  os << "space";   break;
+        case '\n': os << "newline"; break;
+        case '\t': os << "tab";     break;
+        case '\r': os << "return";  break;
+        case '\0': os << "null";    break;
+        default:   os << c;         break;
+    }
+}
+
+void write_datum(std::ostream& os, Object* o) {
+    if (o == nullptr) { os << "#<eof>"; return; }
+    if (is_string(o)) { write_string_literal(os, ((a_string*)o)->value()); return; }
+    if (is_char(o))   { write_char_literal(os, ((a_char*)o)->value()); return; }
+    if (is_vector(o)) {
+        a_vector* v = (a_vector*)o;
+        os << "#(";
+        for (int i = 0; i < v->length(); ++i) {
+            if (i) os << ' ';
+            write_datum(os, v->get(i));
+        }
+        os << ')';
+        return;
+    }
+    if (is_pair(o)) {
+        os << '(';
+        Object* cur = o;
+        bool firstp = true;
+        while (is_pair(cur)) {
+            if (!firstp) os << ' ';
+            firstp = false;
+            write_datum(os, first(cur));
+            cur = rest(cur);
+        }
+        if (!cur->is_nil()) { os << " . "; write_datum(os, cur); }
+        os << ')';
+        return;
+    }
+    o->print(os);
+}
+
+} // anonymous namespace
 
 // ============================================================================
 // Constructor
@@ -350,7 +430,9 @@ Object* PrimitiveIO::apply(IEvaluator* evaluator, Object* args, Environment* env
                 }
             }
 
-            port->write(x);
+            std::ostringstream oss;
+            write_datum(oss, x);
+            port->write(oss.str());
             return x;
         }
 

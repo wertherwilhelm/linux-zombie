@@ -19,6 +19,12 @@ scheme_reader::scheme_reader()
 }
 
 Object* scheme_reader::read_from_string(const std::string& source) {
+    size_t consumed = 0;
+    Object* result = read_from_string(source, consumed);
+    return result ? result : make_error("read: unexpected end of input");
+}
+
+Object* scheme_reader::read_from_string(const std::string& source, size_t& consumed) {
     m_pos = source.c_str();
     m_end = m_pos + source.length();
     m_line = 1;
@@ -27,10 +33,13 @@ Object* scheme_reader::read_from_string(const std::string& source) {
     skip_whitespace();
 
     if (at_end()) {
-        return make_error("read: unexpected end of input");
+        consumed = source.length();
+        return nullptr;  // end of input -> EOF
     }
 
-    return read_expr();
+    Object* result = read_expr();
+    consumed = static_cast<size_t>(m_pos - source.c_str());
+    return result;
 }
 
 Object* scheme_reader::read_program_from_string(const std::string& source) {

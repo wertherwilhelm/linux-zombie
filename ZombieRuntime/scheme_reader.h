@@ -35,6 +35,14 @@ public:
     Object* read_from_string(const std::string& source);
 
     /**
+     * Parse a single expression, reporting how many characters were consumed
+     * (including leading whitespace/comments). Returns nullptr at end of input
+     * so callers can treat it as EOF. Used by ports to read one datum at a time
+     * while leaving the remainder available for the next read.
+     */
+    Object* read_from_string(const std::string& source, size_t& consumed);
+
+    /**
      * Parse multiple expressions (program).
      * Returns: list of expressions, or ERROR
      */

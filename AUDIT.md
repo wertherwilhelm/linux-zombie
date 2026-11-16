@@ -113,6 +113,30 @@ inexact — a numeric-runtime fix, not a prelude one).
   If the corpus/differential grow, cache the parsed prelude or add a no-prelude
   engine mode for the differential (it uses only primitives).
 
+### Corpus batch 3 (`corpus/r7rs-syntax` 21 cases, `corpus/r7rs-io` 19 cases, 2026-11-16)
+Probed macros/derived-syntax/control forms and ports/IO. Confirmed working:
+syntax-rules (incl. ellipsis, let-syntax, letrec-syntax), case-lambda, do/case/
+cond=>/when/unless/and/or/named-let/let*/letrec, quasiquote unquote+splice,
+string input ports (read/read-char/peek-char/read-line/read-string), port
+predicates. Gaps it discovered and their disposition:
+- **`write` used display semantics even to a port** (real bug, FIXED). `write`
+  now serializes in machine-readable form — strings quoted+escaped, chars as
+  `#\name`/`#\c`, applied recursively through pairs and vectors — via a
+  file-local `write_datum` in `primitive_io.cpp`; `display` is unchanged. Fixes
+  out-string-write, write-string-quoted, write-char-literal, read-write-roundtrip.
+- **`read` used a second, inferior line-based tokenizer/parser** (`InputPort::
+  tokenize`/`parse`) that couldn't handle `#(` vectors, `#\` chars, quote
+  shorthand, dotted pairs, or multi-line/multi-datum input (real bug, FIXED).
+  `InputPort::read()` now routes through the real `scheme_reader`: for a seekable
+  stream it slurps the remaining content, parses one datum via a new
+  `read_from_string(src, consumed)` overload, and `seekg`s back to just past it
+  so sequential reads advance correctly. Legacy tokenizer kept only as the
+  non-seekable (interactive stdin) fallback. Regression tests in
+  `ReaderPrimitiveFixTests.cpp` (WriteVsDisplaySemantics, ReadPrimitiveFullGrammar).
+- Still `'gap` (tagged, non-trivial): `with-output-to-string` (needs
+  current-output-port parameterization), quasiquote into vector literals
+  (`` `#(... ,x ...) ``), and nested-quasiquote depth handling.
+
 ---
 
 ## Evaluator architecture audit (2026-11-13)

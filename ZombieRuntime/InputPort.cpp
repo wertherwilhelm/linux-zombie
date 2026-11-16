@@ -5,10 +5,12 @@
 
 #include "InputPort.h"
 #include "cons_cell.h"
+#include "scheme_reader.h"
 #include "gc_manager.h"
 #include "gc_ptr.h"
 #include "gc_context.h"
 #include <algorithm>
+#include <iterator>
 
 namespace zombie { namespace runtime {
 
@@ -88,6 +90,31 @@ std::string InputPort::get_line()
 
 Object* InputPort::read()
 {
+    // Route through the real scheme_reader so `read` handles the full datum
+    // grammar (#( vectors, #\ chars, quote/quasiquote shorthand, dotted pairs,
+    // multi-line data) identically to the top-level reader. For a seekable
+    // stream (string ports, file ports) we slurp the remaining content, parse a
+    // single datum, then seek back to just past it so the next read continues.
+    std::streampos start = m_port.tellg();
+    if (start != std::streampos(-1)) {
+        std::string buf((std::istreambuf_iterator<char>(m_port)),
+                        std::istreambuf_iterator<char>());
+        if (buf.empty()) {
+            return nullptr;  // EOF
+        }
+
+        scheme_reader reader;
+        size_t consumed = 0;
+        Object* result = reader.read_from_string(buf, consumed);
+
+        // Reposition so unconsumed input remains available for later reads.
+        m_port.clear();
+        m_port.seekg(start + static_cast<std::streamoff>(consumed));
+        return result;  // nullptr here means we only saw trailing whitespace -> EOF
+    }
+
+    // Non-seekable stream (e.g. interactive stdin): fall back to the legacy
+    // line-based tokenizer/parser.
     std::string line = get_line();
     if (line.empty() && is_eof()) {
         return nullptr;

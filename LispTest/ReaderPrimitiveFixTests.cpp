@@ -112,3 +112,43 @@ TEST_F(ReaderPrimitiveFixTest, EqualOnVectors) {
     expectBool("(equal? #(1 2) #(1 2 3))", false);
     expectBool("(equal? (vector 1 (vector 2 3)) (vector 1 (vector 2 3)))", true);
 }
+
+// (9) write uses machine-readable form (quotes strings, #\ chars) while display
+//     does not — previously both were identical (display form) even to a port.
+TEST_F(ReaderPrimitiveFixTest, WriteVsDisplaySemantics) {
+    expectString("(let ((p (open-output-string))) (write \"hi\" p) (get-output-string p))", "\"hi\"");
+    expectString("(let ((p (open-output-string))) (display \"hi\" p) (get-output-string p))", "hi");
+    expectString("(let ((p (open-output-string))) (write #\\a p) (get-output-string p))", "#\\a");
+    expectString("(let ((p (open-output-string))) (write #\\space p) (get-output-string p))", "#\\space");
+    // escapes inside a written string: a"b  ->  "a\"b"
+    expectString("(let ((p (open-output-string))) (write \"a\\\"b\" p) (get-output-string p))", "\"a\\\"b\"");
+    // write recurses: strings/chars inside lists and vectors are quoted too
+    expectString("(let ((p (open-output-string))) (write '(1 \"x\" #\\y) p) (get-output-string p))", "(1 \"x\" #\\y)");
+    expectString("(let ((p (open-output-string))) (write '#(\"x\" 2) p) (get-output-string p))", "#(\"x\" 2)");
+}
+
+// (10) the `read` primitive routes through the real scheme_reader, so it handles
+//      #( vectors, dotted pairs, quote shorthand, and multiple datums per port —
+//      the old line-based tokenizer/parser could not.
+TEST_F(ReaderPrimitiveFixTest, ReadPrimitiveFullGrammar) {
+    expectBool("(equal? (read (open-input-string \"#(4 5)\")) #(4 5))", true);
+    expectBool("(equal? (read (open-input-string \"(1 (2 . 3) #(4 5))\")) '(1 (2 . 3) #(4 5)))", true);
+    expectBool("(equal? (read (open-input-string \"'x\")) '(quote x))", true);
+    // sequential reads from one port advance past each datum
+    evalMulti({
+        "(define p (open-input-string \"1 two (3 4)\"))",
+        "(define d1 (read p))",
+        "(define d2 (read p))",
+        "(define d3 (read p))"
+    });
+    expectInt("d1", 1);
+    expectSymbol("d2", "two");
+    expectBool("(equal? d3 '(3 4))", true);
+    expectBool("(eof-object? (read p))", true);
+    // round-trip: write then read yields an equal datum
+    expectBool(
+        "(equal? (read (open-input-string "
+        "  (let ((p (open-output-string))) (write '(1 (2 . 3) #(4 5)) p) (get-output-string p))))"
+        "        '(1 (2 . 3) #(4 5)))",
+        true);
+}
