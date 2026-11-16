@@ -508,6 +508,41 @@ public:
 };
 
 // ============================================================================
+// ENTER_WIND / EXIT_WIND - trampolined dynamic-wind
+// ============================================================================
+//
+// dynamic-wind is compiled as:
+//   <before> <after> ENTER_WIND <thunk> CALL 0 EXIT_WIND
+// ENTER_WIND pops [before, after], calls the before thunk, and pushes a wind
+// frame. The thunk is then called via a normal (trampolined) CALL, so when a
+// continuation is captured inside it the pending EXIT_WIND is part of the
+// captured frame — re-entering the continuation re-runs EXIT_WIND at the correct
+// point (fixing re-entrant dynamic-wind, which the old synchronous DYNAMIC_WIND
+// instruction got wrong by calling the after thunk from a C++ frame that no
+// longer exists on re-entry). EXIT_WIND pops the wind frame, calls the after
+// thunk, and leaves the thunk's result on the stack.
+
+class EnterWindInsn : public Instruction {
+public:
+    explicit EnterWindInsn(const uint8_t* /*bc*/) {}
+    bool execute(ExecutionContext& ctx) override;  // Implementation at end of file
+    std::string name() const override { return "ENTER_WIND"; }
+    uint8_t opcode() const override { return OP_ENTER_WIND; }
+    size_t size() const override { return 1; }
+    std::string disassemble(size_t /*ip*/) const override { return "ENTER_WIND"; }
+};
+
+class ExitWindInsn : public Instruction {
+public:
+    explicit ExitWindInsn(const uint8_t* /*bc*/) {}
+    bool execute(ExecutionContext& ctx) override;  // Implementation at end of file
+    std::string name() const override { return "EXIT_WIND"; }
+    uint8_t opcode() const override { return OP_EXIT_WIND; }
+    size_t size() const override { return 1; }
+    std::string disassemble(size_t /*ip*/) const override { return "EXIT_WIND"; }
+};
+
+// ============================================================================
 // ADD - Add two numbers
 // ============================================================================
 
@@ -921,6 +956,8 @@ REGISTER_INSTRUCTION(OP_TAIL_CALL, TailCallInsn, "TAIL_CALL")
 REGISTER_INSTRUCTION(OP_MAKE_CLOSURE, MakeClosureInsn, "MAKE_CLOSURE")
 REGISTER_INSTRUCTION(OP_CALLCC, CallCCInsn, "CALLCC")
 REGISTER_INSTRUCTION(OP_DYNAMIC_WIND, DynamicWindInsn, "DYNAMIC_WIND")
+REGISTER_INSTRUCTION(OP_ENTER_WIND, EnterWindInsn, "ENTER_WIND")
+REGISTER_INSTRUCTION(OP_EXIT_WIND, ExitWindInsn, "EXIT_WIND")
 
 // Arithmetic operations
 REGISTER_INSTRUCTION(OP_ADD, AddInsn, "ADD")
@@ -1137,6 +1174,39 @@ inline bool DynamicWindInsn::execute(ExecutionContext& ctx) {
     ctx.push(result);
 
     // IP already advanced above
+    return true;
+}
+
+// ENTER_WIND: [before after] -> call before thunk, push wind frame. Advance IP
+// first so a continuation captured inside the (subsequently called) thunk does
+// not re-enter here.
+inline bool EnterWindInsn::execute(ExecutionContext& ctx) {
+    Object* after = ctx.pop();
+    Object* before = ctx.pop();
+
+    Procedure* before_proc = dynamic_cast<Procedure*>(before);
+    Procedure* after_proc = dynamic_cast<Procedure*>(after);
+    if (!before_proc) throw std::runtime_error("dynamic-wind: 'before' must be a Procedure");
+    if (!after_proc) throw std::runtime_error("dynamic-wind: 'after' must be a Procedure");
+
+    BytecodeVM* vm = dynamic_cast<BytecodeVM*>(ctx.vm);
+    if (!vm) throw std::runtime_error("dynamic-wind: not a BytecodeVM");
+
+    ctx.ip += size();
+    vm->enter_wind(before_proc, after_proc);  // calls before thunk, pushes wind frame
+    return true;
+}
+
+// EXIT_WIND: pop the wind frame and call its after thunk. The thunk's result is
+// already on the stack (left by the preceding CALL) and is preserved. Because
+// this runs as a bytecode step AFTER the trampolined thunk call, a continuation
+// captured inside the thunk re-runs it on re-entry, at the correct point.
+inline bool ExitWindInsn::execute(ExecutionContext& ctx) {
+    BytecodeVM* vm = dynamic_cast<BytecodeVM*>(ctx.vm);
+    if (!vm) throw std::runtime_error("dynamic-wind: not a BytecodeVM");
+
+    ctx.ip += size();
+    vm->exit_wind();  // pops wind frame, calls after thunk
     return true;
 }
 

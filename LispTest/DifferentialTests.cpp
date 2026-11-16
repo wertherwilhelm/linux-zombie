@@ -152,6 +152,9 @@ const Case kReentrantCorpus[] = {
     {"(begin (define ks '()) (define i (call/cc (lambda (k) (set! ks k) 1))) (if (<= i 3) (ks (+ i 1)) i))", "4", B | V},
     // sum 1..5 by re-invoking the captured continuation
     {"(begin (define k #f) (define i 0) (define acc 0) (define j (call/cc (lambda (c) (set! k c) 1))) (set! acc (+ acc j)) (if (< j 5) (k (+ j 1)) acc))", "15", B | V},
+    // re-entry back INTO a dynamic-wind extent runs before (entering) then after
+    // (leaving) again -> (before after before after). R7RS 6.10; both VMs agree.
+    {"(begin (define log '()) (define k0 #f) (define n 0) (dynamic-wind (lambda () (set! log (cons 'before log))) (lambda () (call/cc (lambda (k) (set! k0 k)))) (lambda () (set! log (cons 'after log)))) (set! n (+ n 1)) (if (< n 2) (k0 #f) (reverse log)))", "(before after before after)", B | V},
 };
 
 } // namespace

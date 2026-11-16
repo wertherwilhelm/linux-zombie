@@ -586,14 +586,31 @@ void Compiler::compile_dynamic_wind(Object* args) {
 
     Object* after_expr = first(after_args);
 
-    // Compile the three thunks (pushed onto stack in order: before, thunk, after)
-    compile_expr(before_expr);
-    compile_expr(thunk_expr);
-    compile_expr(after_expr);
+    // Trampolined dynamic-wind:
+    //   <before> <after> ENTER_WIND <thunk> CALL 0 EXIT_WIND
+    // ENTER_WIND calls the before thunk and pushes the wind frame; the thunk is
+    // then invoked via a normal (trampolined) CALL so that a continuation
+    // captured inside it includes the pending EXIT_WIND — re-entering the
+    // continuation re-runs the after thunk at the correct point. EXIT_WIND calls
+    // the after thunk and leaves the thunk's result on the stack. (The old
+    // synchronous OP_DYNAMIC_WIND ran the after thunk from a C++ frame that no
+    // longer existed on re-entry, so re-entrant dynamic-wind dropped it.)
+    //
+    // NOTE: the three argument expressions evaluate in the order before, after,
+    // thunk (R7RS leaves this order unspecified); the thunks themselves still run
+    // before -> thunk -> after.
+    bool saved_tail = tail_context_;
+    tail_context_ = false;  // nothing here is in tail position
 
-    // Emit DYNAMIC_WIND instruction
-    // The instruction will pop them in reverse order: after, thunk, before
-    emit(OP_DYNAMIC_WIND);
+    compile_expr(before_expr);   // stack: [before]
+    compile_expr(after_expr);    // stack: [before after]
+    emit(OP_ENTER_WIND);         // calls before, pushes wind frame; stack: []
+    compile_expr(thunk_expr);    // stack: [thunk]
+    emit(OP_CALL);               // call thunk with 0 args; stack: [result]
+    emit(static_cast<uint8_t>(0));
+    emit(OP_EXIT_WIND);          // pops wind frame, calls after; stack: [result]
+
+    tail_context_ = saved_tail;
 }
 
 void Compiler::compile_cond(Object* clauses) {

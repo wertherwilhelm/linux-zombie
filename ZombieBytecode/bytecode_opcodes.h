@@ -44,7 +44,9 @@ enum Opcode : uint8_t {
     OP_TAIL_CALL      = 0x31,  // Tail call [u8 nargs]
     OP_MAKE_CLOSURE   = 0x32,  // Create Closure [u16 code_idx]
     OP_CALLCC         = 0x33,  // Call with current Continuation
-    OP_DYNAMIC_WIND   = 0x34,  // Dynamic-wind (before thunk after)
+    OP_DYNAMIC_WIND   = 0x34,  // Dynamic-wind (before thunk after) [legacy, unused]
+    OP_ENTER_WIND     = 0x35,  // Enter dynamic-wind: [before after] -> call before, push wind frame
+    OP_EXIT_WIND      = 0x36,  // Exit dynamic-wind: pop wind frame, call after (keeps thunk result)
 
     // Primitive operations
     OP_ADD            = 0x40,  // Add two numbers

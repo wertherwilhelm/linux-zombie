@@ -625,16 +625,21 @@ ENTERED (outer->inner).
 | D nested escape | escape out of nested winders | `(b1 b2 a2 a1)` | ok | ok | ok |
 
 - The toy VM is correct for all four (it was purpose-built for this).
-- **Open bug [bytecode VM], Case C:** re-entering a dynamic-wind extent via a
-  stored continuation runs the `before` thunk (rewind_to) but NOT the trailing
-  `after` when the resumed body completes. Likely cause: dynamic-wind is a C++
-  primitive (PrimitiveControl) calling before/thunk/after sequentially; a
-  continuation captured inside the thunk, when re-invoked, resumes the VM frames
-  but there is no C++ dynamic-wind frame left to run the trailing `after` (the
-  eval() wind-cleanup fires only on top-level unwind, not on normal completion of
-  a re-entered body). Toy VM = reference. Locked in by
-  `ContinuationTest.DynamicWindContinuationReentry` (now asserts the full
-  `(before after before after)` trace; it previously had no post-re-entry check).
+- **FIXED [bytecode VM], Case C** — re-entering a dynamic-wind extent now runs
+  the trailing `after` at the correct point (`(before after before after)`,
+  matching the toy VM and R7RS). Root cause: the old `OP_DYNAMIC_WIND` instruction
+  ran the thunk via a *synchronous* C++ call and then called `exit_wind` from that
+  C++ frame; on re-entry the continuation resumes the thunk's bytecode frames
+  directly, with no C++ dynamic-wind frame left to run `after` (so it fired too
+  late, in the eval() wind-cleanup — after the program's final expression already
+  observed the log). Fix: **trampolined dynamic-wind**. New `OP_ENTER_WIND` /
+  `OP_EXIT_WIND` opcodes; `compile_dynamic_wind` now emits
+  `<before> <after> ENTER_WIND <thunk> CALL 0 EXIT_WIND`, so `EXIT_WIND` is a
+  bytecode step after a trampolined thunk call — captured by the continuation and
+  re-run at the right point on re-entry. `OP_DYNAMIC_WIND`/`DynamicWindInsn` left
+  registered but unused. Confirmed traces A/B/C/D all pass on bytecode; return
+  value preserved. Added to the differential `ReentrantContinuations` corpus
+  (bytecode vs toy VM agree). Full suite 1298/1298, ASan clean.
 
 ---
 
