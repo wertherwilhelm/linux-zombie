@@ -49,13 +49,13 @@ TEST_F(R7RSStringPortTest, InputStringEOF) {
     eval("(define line1 (read-line port))");
     eval("(define line2 (read-line port))");
     expectString("line1", "test");
-    expectBool("(eof-Object? line2)", true);
+    expectBool("(eof-object? line2)", true);
 }
 
 TEST_F(R7RSStringPortTest, EmptyInputString) {
     eval("(define port (open-input-string \"\"))");
     eval("(define result (read-line port))");
-    expectBool("(eof-Object? result)", true);
+    expectBool("(eof-object? result)", true);
 }
 
 // ============================================================================
@@ -163,7 +163,7 @@ TEST_F(R7RSStringPortTest, ProcessLinesFromString) {
         (define lines '())
         (define (read-all-lines)
             (define line (read-line port))
-            (if (eof-Object? line)
+            (if (eof-object? line)
                 (reverse lines)
                 (begin
                     (set! lines (cons line lines))

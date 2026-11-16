@@ -34,7 +34,8 @@ PrimitiveIO::PrimitiveIO(ID id, int minArgs, int maxArgs)
     : PrimitiveBase(minArgs, maxArgs), m_id(id) {
     // Set Primitive name based on ID
     switch (id) {
-        case EOFOBJECTQ:       m_name = "eof-Object?"; break;
+        case EOFOBJECTQ:       m_name = "eof-object?"; break;
+        case EOFOBJECT:        m_name = "eof-object"; break;
         case INPUTPORTQ:       m_name = "input-port?"; break;
         case CURRENTINPUTPORT: m_name = "current-input-port"; break;
         case OPENINPUTFILE:    m_name = "open-input-file"; break;
@@ -100,6 +101,12 @@ Object* PrimitiveIO::apply(IEvaluator* evaluator, Object* args, Environment* env
             // Check if Object is the EOF Object
             // In C++, we check if it's nullptr (EOF indicator)
             return truth(x == nullptr);
+        }
+
+        case EOFOBJECT: {
+            // (eof-object) -> the EOF sentinel (represented as nullptr here, the
+            // same value peek-char/read-char return at end of input).
+            return nullptr;
         }
 
         case INPUTPORTQ: {
@@ -213,8 +220,11 @@ Object* PrimitiveIO::apply(IEvaluator* evaluator, Object* args, Environment* env
             if (port->is_eof()) {
                 return nullptr;  // EOF
             }
-            // Consume the character by reading a line (simplified)
-            port->get_line();
+            // Consume exactly ONE character. (This previously called get_line(),
+            // which consumed the whole rest of the line — so read-char returned
+            // the first char and then reported EOF, breaking all char-by-char
+            // reading.)
+            port->get();
             return gc_new<a_char>(c);
         }
 
@@ -299,82 +309,26 @@ Object* PrimitiveIO::apply(IEvaluator* evaluator, Object* args, Environment* env
                 return nil;
             }
 
-            // Use scheme_reader to parse the file contents
+            // Parse the whole file with the real reader and evaluate each
+            // top-level form. (The previous hand-rolled paren-scanner did not
+            // understand ';' comments, #\( char literals, or block comments, so
+            // comment text was mis-read as code — "Unbound variable: <word>".)
             scheme_reader reader;
+            Object* program = reader.read_program_from_string(contents);
+
+            // Surface a parse error (reader returns an "ERROR:" a_string).
+            a_string* perr = dynamic_cast<a_string*>(program);
+            if (perr && perr->value().rfind("ERROR:", 0) == 0) {
+                return error("load: " + perr->value());
+            }
+
+            // GC SAFETY: root the parsed program for the whole evaluation; a
+            // collection mid-eval would otherwise free the AST we are walking.
+            gc_root<Object> guard_program(program);
+
             Object* result = nil;
-
-            // Parse and evaluate each top-level expression
-            size_t pos = 0;
-            while (pos < contents.length()) {
-                // Skip whitespace
-                while (pos < contents.length() && std::isspace(contents[pos])) {
-                    pos++;
-                }
-
-                if (pos >= contents.length()) {
-                    break;
-                }
-
-                // Extract one S-expression
-                // We need to read one complete S-expression at a time
-                size_t start = pos;
-                int paren_depth = 0;
-                bool in_string = false;
-                bool escape = false;
-
-                while (pos < contents.length()) {
-                    char c = contents[pos];
-
-                    if (escape) {
-                        escape = false;
-                        pos++;
-                        continue;
-                    }
-
-                    if (c == '\\' && in_string) {
-                        escape = true;
-                        pos++;
-                        continue;
-                    }
-
-                    if (c == '"') {
-                        in_string = !in_string;
-                    }
-
-                    if (!in_string) {
-                        if (c == '(') paren_depth++;
-                        if (c == ')') paren_depth--;
-
-                        // If this is an atom (not starting with '('), read until whitespace
-                        if (start == pos && c != '(' && c != ')') {
-                            while (pos < contents.length() &&
-                                   !std::isspace(contents[pos]) &&
-                                   contents[pos] != '(' &&
-                                   contents[pos] != ')') {
-                                pos++;
-                            }
-                            break;
-                        }
-                    }
-
-                    pos++;
-
-                    // Complete S-expression found
-                    if (!in_string && paren_depth == 0 && pos > start) {
-                        break;
-                    }
-                }
-
-                std::string expr_str = contents.substr(start, pos - start);
-                if (expr_str.empty()) {
-                    continue;
-                }
-
-                // Parse and evaluate this expression
-                Object* expr = reader.read_from_string(expr_str);
-                if (expr) {
-                    result = evaluator->eval(expr, env);
-                }
+            for (Object* f = program; f && !f->is_nil(); f = cdr(f)) {
+                result = evaluator->eval(car(f), env);
             }
 
             return result;
@@ -933,7 +887,8 @@ void PrimitiveIO::install(Environment* env) {
     } while(0)
 
     // Port predicates
-    DEF("eof-Object?",  EOFOBJECTQ, 1, 1);
+    DEF("eof-object?",  EOFOBJECTQ, 1, 1);
+    DEF("eof-object",   EOFOBJECT, 0, 0);
     DEF("input-port?",  INPUTPORTQ, 1, 1);
     DEF("output-port?", OUTPUTPORTQ, 1, 1);
 

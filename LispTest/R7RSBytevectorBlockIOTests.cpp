@@ -83,7 +83,7 @@ TEST_F(R7RSBytevectorBlockIOTest, ReadBytevectorEOF) {
     )");
 
     expectInt("(bytevector-length bv1)", 1);
-    expectBool("(eof-Object? bv2)", true);
+    expectBool("(eof-object? bv2)", true);
 }
 
 TEST_F(R7RSBytevectorBlockIOTest, ReadBytevectorEmpty) {
@@ -94,7 +94,7 @@ TEST_F(R7RSBytevectorBlockIOTest, ReadBytevectorEmpty) {
         (close-input-port port)
     )");
 
-    expectBool("(eof-Object? bv)", true);
+    expectBool("(eof-object? bv)", true);
 }
 
 TEST_F(R7RSBytevectorBlockIOTest, ReadBytevectorZero) {
@@ -232,7 +232,7 @@ TEST_F(R7RSBytevectorBlockIOTest, ReadBytevectorBangEOF) {
     )");
 
     expectInt("n1", 1);
-    expectBool("(eof-Object? n2)", true);
+    expectBool("(eof-object? n2)", true);
 }
 
 // ============================================================================

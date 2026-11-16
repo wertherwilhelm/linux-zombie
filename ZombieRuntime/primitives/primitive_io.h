@@ -80,7 +80,8 @@ public:
         WRITEU8 = 29,          ///< write-u8 (R7RS)
         READBYTEVECTOR = 30,   ///< read-bytevector (R7RS)
         READBYTEVECTORBANG = 31, ///< read-bytevector! (R7RS)
-        WRITEBYTEVECTOR = 32   ///< write-bytevector (R7RS)
+        WRITEBYTEVECTOR = 32,  ///< write-bytevector (R7RS)
+        EOFOBJECT = 33         ///< eof-object (R7RS) - returns the EOF sentinel
     };
 
     /**

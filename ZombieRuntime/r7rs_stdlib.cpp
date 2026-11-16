@@ -197,7 +197,8 @@ void bootstrap_scheme_read(Environment* base_env) {
     lib->add_export("read-char");
     lib->add_export("peek-char");
     lib->add_export("char-ready?");
-    lib->add_export("eof-Object?");
+    lib->add_export("eof-object?");
+    lib->add_export("eof-object");
 
     std::string error;
     if (!lib->initialize(base_env, error)) {

@@ -66,7 +66,7 @@ TEST_F(R7RSIOTest, ReadLineEOF) {
     eval("(define line1 (read-line port))");
     eval("(define line2 (read-line port))");  // Should return EOF
     expectString("line1", "single line");
-    expectBool("(eof-Object? line2)", true);
+    expectBool("(eof-object? line2)", true);
     eval("(close-input-port port)");
 }
 
@@ -140,7 +140,7 @@ TEST_F(R7RSIOTest, ReadStringEOF) {
     eval("(define s1 (read-string 4 port))");  // Read all
     eval("(define s2 (read-string 1 port))");  // Should return EOF
     expectString("s1", "test");
-    expectBool("(eof-Object? s2)", true);
+    expectBool("(eof-object? s2)", true);
     eval("(close-input-port port)");
 }
 
@@ -230,7 +230,7 @@ TEST_F(R7RSIOTest, ReadLineAndProcess) {
         (define lines '())
         (define (read-all-lines)
             (define line (read-line port))
-            (if (eof-Object? line)
+            (if (eof-object? line)
                 (reverse lines)
                 (begin
                     (set! lines (cons line lines))
@@ -265,7 +265,7 @@ TEST_F(R7RSIOTest, ReadStringChunks) {
         (define chunks '())
         (define (read-chunks)
             (define chunk (read-string 3 port))
-            (if (eof-Object? chunk)
+            (if (eof-object? chunk)
                 (reverse chunks)
                 (begin
                     (set! chunks (cons chunk chunks))
@@ -288,7 +288,7 @@ TEST_F(R7RSIOTest, ReadLineFromEmptyFile) {
     createTestFile("test_io_read.txt", "");
     eval("(define port (open-input-file \"test_io_read.txt\"))");
     eval("(define line (read-line port))");
-    expectBool("(eof-Object? line)", true);
+    expectBool("(eof-object? line)", true);
     eval("(close-input-port port)");
 }
 
@@ -296,7 +296,7 @@ TEST_F(R7RSIOTest, ReadStringFromEmptyFile) {
     createTestFile("test_io_read.txt", "");
     eval("(define port (open-input-file \"test_io_read.txt\"))");
     eval("(define str (read-string 10 port))");
-    expectBool("(eof-Object? str)", true);
+    expectBool("(eof-object? str)", true);
     eval("(close-input-port port)");
 }
 

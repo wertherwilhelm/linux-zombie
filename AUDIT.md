@@ -12,6 +12,44 @@ this as a working Scheme.
 
 ---
 
+## Reader / IO / number primitive bugs (2026-11-15, found by running a real program)
+
+Running a non-trivial user program (`experiments/algol-msweet.scm`, an
+ALGOL/M-expression reader that drives the tokenizer char-by-char over string
+ports) surfaced five real interpreter bugs — all now FIXED, with regression tests
+in `LispTest/ReaderPrimitiveFixTests.cpp`. The program now runs end-to-end
+(`square[x] = {x * x}` parses to `(define (square x) (* x x))` and evaluates;
+`(square 9)` => 81).
+
+1. **`read-char` consumed the whole line**, not one character — it called
+   `get_line()` to "consume the character" (`primitive_io.cpp`). So the first
+   `read-char` returned a char and every subsequent one returned EOF. Now uses
+   `InputPort::get()` (one char). This single bug breaks all char-by-char input.
+2. **`string->number` returned `nil`, not `#f`**, for non-numbers
+   (`primitive_numbers.cpp` stringToNumber) — and `nil` is TRUTHY here, so the
+   ubiquitous idiom `(or (string->number s) default)` always took the number
+   branch and yielded `()`. Now returns `false_obj`.
+3. **`#\;` / `#\(` / `#\)` char literals mis-read** — `read_char` stopped the
+   char name at any delimiter, so these read an empty name ("empty character
+   literal", or `;` treated as a comment). Now always takes the first char
+   literally; only a letter starts a multi-char name (`space`, `newline`, ...).
+4. **`eof-object?` was registered as `eof-Object?`** (mis-cased) and `eof-object`
+   was missing. Renamed to the R7RS names, added `eof-object`, exported both from
+   `(scheme base)`; updated ~18 test usages of the old name.
+5. **`load` ignored `;` comments** — it used a hand-rolled paren-scanner that read
+   comment text as code ("Unbound variable: <word>"), and also mishandled `#\(`
+   char literals. Now parses via `scheme_reader::read_program_from_string` (the
+   same comment-aware reader the REPL uses) and evaluates each form.
+
+Known remaining (REPL smart-edit, not the reader): typing `#\;` or `#\(`
+interactively still triggers the line-continuation prompt because the REPL's
+smart-edit plugin does its own (comment/paren-naive) completeness check; `load`
+and programmatic reading are unaffected. Minor: `string->number` parses integers
+as inexact (`"7"` -> 7.0 via stod); R7RS-exactness for integer strings is a
+separate improvement.
+
+---
+
 ## Evaluator architecture audit (2026-11-13)
 
 Four execution paths, one shared value/runtime core.

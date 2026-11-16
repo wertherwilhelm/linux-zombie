@@ -214,12 +214,14 @@ static Object* stringToNumber(Object* x, Object* y) {
             }
         }
     } catch (...) {
-        // Return #f for invalid conversion
-        return nil;  // R5RS: string->number returns #f on failure
+        // R7RS: string->number returns #f (not nil!) when the string is not a
+        // number. nil is the empty list, which is TRUTHY here, so returning it
+        // broke the idiom (or (string->number s) default).
+        return false_obj;
     }
 
-    // Return #f if parsing failed
-    return nil;
+    // Parsing did not consume the whole string -> not a number.
+    return false_obj;
 }
 
 /**

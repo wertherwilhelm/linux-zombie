@@ -564,14 +564,19 @@ Object* scheme_reader::read_char() {
         return make_error("read: unexpected end after '#\\'");
     }
 
-    // Check for named characters
+    // Always take the FIRST character literally, even if it is itself a
+    // delimiter: #\; #\( #\) #\" #\space-as-#\<space> are all valid single-char
+    // literals. (The old code stopped at any delimiter, so #\; #\( #\) read an
+    // empty name -> "empty character literal" / mis-parsed as comment/paren.)
     std::string name;
-    while (!at_end() && !is_delimiter(peek())) {
-        name += consume();
-    }
+    name += consume();
 
-    if (name.empty()) {
-        return make_error("read: empty character literal");
+    // Only a letter can begin a multi-character name (space, newline, tab,
+    // return). For a punctuation/delimiter first char it is always single-char.
+    if (std::isalpha(static_cast<unsigned char>(name[0]))) {
+        while (!at_end() && !is_delimiter(peek())) {
+            name += consume();
+        }
     }
 
     // Handle named characters

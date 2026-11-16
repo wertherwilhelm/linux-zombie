@@ -161,7 +161,7 @@ TEST_F(ZombieSchemeTest, FileWriteAndRead) {
           (define val (read in))
           (define eof-val (read in))
           (close-input-port in)
-          (eof-Object? eof-val)))");
+          (eof-object? eof-val)))");
 
     EXPECT_EQ(result, truth(true));
 }
@@ -177,7 +177,7 @@ TEST_F(ZombieSchemeTest, FileEofDetection) {
           (define val (read in))
           (define eof-val (read in))
           (close-input-port in)
-          (eof-Object? eof-val)))");
+          (eof-object? eof-val)))");
 
     EXPECT_EQ(result, truth(true));
 }

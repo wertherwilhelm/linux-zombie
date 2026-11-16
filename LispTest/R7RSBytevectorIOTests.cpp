@@ -59,7 +59,7 @@ TEST_F(R7RSBytevectorIOTest, ReadU8EOF) {
     eval("(define byte1 (read-u8 port))");
     eval("(define byte2 (read-u8 port))");
     expectInt("byte1", 42);
-    expectBool("(eof-Object? byte2)", true);
+    expectBool("(eof-object? byte2)", true);
     eval("(close-input-port port)");
 }
 
@@ -67,7 +67,7 @@ TEST_F(R7RSBytevectorIOTest, ReadU8EmptyFile) {
     createBinaryFile("test_bytevector_io.bin", {});
     eval("(define port (open-input-file \"test_bytevector_io.bin\"))");
     eval("(define byte (read-u8 port))");
-    expectBool("(eof-Object? byte)", true);
+    expectBool("(eof-object? byte)", true);
     eval("(close-input-port port)");
 }
 
@@ -108,7 +108,7 @@ TEST_F(R7RSBytevectorIOTest, PeekU8EOF) {
     createBinaryFile("test_bytevector_io.bin", {});
     eval("(define port (open-input-file \"test_bytevector_io.bin\"))");
     eval("(define byte (peek-u8 port))");
-    expectBool("(eof-Object? byte)", true);
+    expectBool("(eof-object? byte)", true);
     eval("(close-input-port port)");
 }
 
@@ -271,7 +271,7 @@ TEST_F(R7RSBytevectorIOTest, CopyFileByte) {
 
         (define (copy-bytes)
             (define byte (read-u8 in))
-            (if (eof-Object? byte)
+            (if (eof-object? byte)
                 #t
                 (begin
                     (write-u8 byte out)
