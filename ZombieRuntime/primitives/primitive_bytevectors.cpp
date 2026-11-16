@@ -47,10 +47,15 @@ Object* PrimitiveBytevectors::apply(IEvaluator* eval, Object* args, Environment*
         return arity_error("");
     }
 
-    // Extract common arguments
-    Object* x = first(args);
-    Object* y = (rest(args) && !rest(args)->is_nil()) ? second(args) : nil;
-    Object* z = (rest(args) && rest(rest(args)) && !rest(rest(args))->is_nil()) ? third(args) : nil;
+    // Extract common arguments. Walk the list pair-by-pair rather than calling
+    // rest()/second()/third() blindly: rest() on a non-pair (e.g. the nil tail
+    // of a 1-arg call) prints a spurious "cannot take rest of an atom!" to
+    // stderr, which polluted every bytevector? / bytevector-length call.
+    Object* rest1 = (args && args->pair()) ? rest(args) : nil;
+    Object* rest2 = (rest1 && rest1->pair()) ? rest(rest1) : nil;
+    Object* x = (args  && args->pair())  ? first(args)  : nil;
+    Object* y = (rest1 && rest1->pair()) ? first(rest1) : nil;
+    Object* z = (rest2 && rest2->pair()) ? first(rest2) : nil;
 
     // Dispatch based on Primitive ID
     switch (m_id) {

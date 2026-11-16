@@ -111,6 +111,18 @@ bool equal(Object *x, Object *y) {
         return true;
     }
 
+    // Bytevectors - element-wise byte comparison (R7RS equal?)
+    if (x->get_type() == static_cast<int>(Type::BYTEVECTOR) &&
+        y->get_type() == static_cast<int>(Type::BYTEVECTOR)) {
+        a_bytevector* bx = (a_bytevector*)x;
+        a_bytevector* by = (a_bytevector*)y;
+        if (bx->length() != by->length()) return false;
+        for (int i = 0; i < bx->length(); ++i) {
+            if (bx->get(i) != by->get(i)) return false;
+        }
+        return true;
+    }
+
     // Everything else - pointer equality
     return x == y;
 }

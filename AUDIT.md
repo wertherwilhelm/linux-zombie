@@ -179,8 +179,22 @@ lists. Gaps found and closed:
   `scheme_to_coreir.cpp` omitted VECTOR/BYTEVECTOR, so a bare vector literal was
   neither atomic nor a pair and fell through. Added them. (`'#(...)` and
   `(vector ...)` already worked.) Differential entries added.
-- Still open: `#u8(...)` bytevector literal is rejected at the **reader** level
-  ("expected '\\' after '#'"); `(bytevector ...)` works. Candidate next gap.
+### Corpus batch 5 (`corpus/r7rs-bytevectors`, 2026-11-16)
+Closed the `#u8(...)` reader gap and two related bugs it exposed:
+- **Reader**: `scheme_reader::read_char()` (the `#`-dispatch) now handles
+  `#u8(byte ...)` → `a_bytevector`, validating each element is an exact integer
+  in [0,255]. Mirrors the `#(` vector-literal path.
+- **`equal?`** gained a bytevector branch in `base.cpp` (byte-wise compare) —
+  it was pointer-only like vectors used to be, so `(equal? #u8(1 2 3)
+  (bytevector 1 2 3))` was #f.
+- **Noisy diagnostic**: the shared argument extraction in
+  `primitive_bytevectors.cpp` computed `y`/`z` via `rest(rest(args))` even for
+  1-arg calls, so `rest(nil)` printed "cannot take rest of an atom!" to stderr
+  on every `bytevector?` / `bytevector-length` call (benign — right answer still
+  returned, which is why tests never caught it). Rewrote it to walk pair-by-pair.
+Works on all four evaluators (CoreIR already lowered bytevector literals after
+the batch-4 `is_atomic` fix). Corpus `corpus/r7rs-bytevectors` (11 cases) +
+`ReaderPrimitiveFixTest.BytevectorLiterals` + differential entries. 1322/1322.
 
 ---
 

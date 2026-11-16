@@ -7,6 +7,8 @@
 #include "numeric_runtime.h"
 #include "a_rational.h"
 #include "a_complex.h"
+#include "a_vector.h"
+#include "a_bytevector.h"
 #include "gc_manager.h"
 #include "gc_ptr.h"
 #include <cctype>
@@ -565,6 +567,36 @@ Object* scheme_reader::read_char() {
             elems.push_back(car(p));
         }
         return gc_new<a_vector>(elems);
+    }
+
+    // Handle bytevector literals: #u8(byte ...)
+    if (next == 'u') {
+        consume();  // 'u'
+        if (at_end() || peek() != '8') {
+            return make_error("read: expected '8' after '#u' (bytevector literal)");
+        }
+        consume();  // '8'
+        if (at_end() || peek() != '(') {
+            return make_error("read: expected '(' after '#u8' (bytevector literal)");
+        }
+        Object* lst = read_list();  // consumes '(' ... ')', returns a cons list
+        if (a_string* e = dynamic_cast<a_string*>(lst)) {
+            if (e->value().rfind("ERROR:", 0) == 0) return lst;
+        }
+        gc_root<Object> guard(lst);
+        std::vector<uint8_t> bytes;
+        for (Object* p = lst; p && !p->is_nil() && p->pair(); p = cdr(p)) {
+            Object* elem = car(p);
+            if (!numeric::is_integer_value(elem)) {
+                return make_error("read: bytevector elements must be exact integers in [0,255]");
+            }
+            int64_t v = numeric::to_int64(elem);
+            if (v < 0 || v > 255) {
+                return make_error("read: bytevector byte out of range [0,255]");
+            }
+            bytes.push_back(static_cast<uint8_t>(v));
+        }
+        return gc_new<a_bytevector>(bytes);
     }
 
     // Handle boolean literals #t and #f

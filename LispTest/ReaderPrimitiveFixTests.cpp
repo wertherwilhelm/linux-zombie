@@ -127,6 +127,21 @@ TEST_F(ReaderPrimitiveFixTest, WriteVsDisplaySemantics) {
     expectString("(let ((p (open-output-string))) (write '#(\"x\" 2) p) (get-output-string p))", "#(\"x\" 2)");
 }
 
+// (9b) #u8(...) bytevector literals are read as self-evaluating bytevectors
+//      (the reader used to reject '#u' as an invalid '#' dispatch). The common
+//      argument extraction in the bytevector primitives also no longer calls
+//      rest() on a nil tail (which printed a spurious diagnostic to stderr).
+TEST_F(ReaderPrimitiveFixTest, BytevectorLiterals) {
+    expectBool("(bytevector? #u8(1 2 3))", true);
+    expectInt("(bytevector-length #u8(10 20 30))", 3);
+    expectInt("(bytevector-length #u8())", 0);
+    expectInt("(bytevector-u8-ref #u8(10 20 30) 1)", 20);
+    expectInt("(bytevector-u8-ref #u8(0 255) 1)", 255);
+    expectBool("(equal? #u8(1 2 3) (bytevector 1 2 3))", true);
+    // self-evaluating, and usable inside other structures
+    expectInt("(bytevector-length (car (list #u8(5 6))))", 2);
+}
+
 // (10) the `read` primitive routes through the real scheme_reader, so it handles
 //      #( vectors, dotted pairs, quote shorthand, and multiple datums per port —
 //      the old line-based tokenizer/parser could not.

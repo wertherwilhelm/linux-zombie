@@ -126,6 +126,10 @@ const Case kCorpus[] = {
     // self-evaluating vector literal (was a CoreIR lowering gap)
     {"(vector-ref #(10 20 30) 1)", "20", ALL},
     {"(vector? #(1 2 3))", "#t", ALL},
+    // self-evaluating bytevector literal #u8(...) (reader + lowering gap)
+    {"(bytevector-u8-ref #u8(10 20 30) 1)", "20", ALL},
+    {"(bytevector-length #u8(1 2 3))", "3", ALL},
+    {"(bytevector? #u8(0 255))", "#t", ALL},
     // define-record-type desugars to a tagged vector; works on every evaluator
     {"(begin (define-record-type pt (mk x y) pt? (x gx) (y gy)) (gx (mk 7 8)))", "7", ALL},
     {"(begin (define-record-type pt (mk x y) pt? (x gx) (y gy)) (pt? (mk 1 2)))", "#t", ALL},
