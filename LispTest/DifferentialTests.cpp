@@ -123,6 +123,14 @@ const Case kCorpus[] = {
     {"(vector-ref `#(1 ,(+ 1 1) 3) 1)", "2", ALL},
     {"`(x . ,(+ 2 3))", "(x . 5)", ALL},
     {"(equal? `(1 `(2 ,(+ 1 2))) '(1 (quasiquote (2 (unquote (+ 1 2))))))", "#t", ALL},
+    // self-evaluating vector literal (was a CoreIR lowering gap)
+    {"(vector-ref #(10 20 30) 1)", "20", ALL},
+    {"(vector? #(1 2 3))", "#t", ALL},
+    // define-record-type desugars to a tagged vector; works on every evaluator
+    {"(begin (define-record-type pt (mk x y) pt? (x gx) (y gy)) (gx (mk 7 8)))", "7", ALL},
+    {"(begin (define-record-type pt (mk x y) pt? (x gx) (y gy)) (pt? (mk 1 2)))", "#t", ALL},
+    {"(begin (define-record-type c (mk v) c? (v gv sv!)) (let ((o (mk 1))) (sv! o 9) (gv o)))", "9", ALL},
+    {"(begin (define-record-type pt (mk x) pt? (x gx)) (pt? 5))", "#f", ALL},
     // strings / symbols (display-style printing: no quotes)
     {"(string-length \"hello\")", "5", ALL},
     {"(string-append \"a\" \"b\" \"c\")", "abc", ALL},

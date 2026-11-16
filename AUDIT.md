@@ -159,6 +159,29 @@ Full suite now ASan-clean (1321/1321). Note the "robust safety check" in `mark()
 validates the root *value* but still dereferences the *slot* first, so it could
 not have caught this — the slot lifetime is the real invariant.
 
+### Corpus batch 4 (`corpus/r7rs-records`, 2026-11-16)
+Probed records, exceptions, parameters, and higher-order ops. Working:
+`parameterize`/`make-parameter`, `dynamic-wind`, `guard`/`raise`/
+`raise-continuable`/`error`/`error-object?`/`-message`/`-irritants`,
+`vector-map`/`vector-for-each`/`string-map`, and `map`/`for-each` over multiple
+lists. Gaps found and closed:
+- **`define-record-type` was entirely missing** (unbound on every evaluator).
+  Implemented as a derived form in the shared Expander
+  (`expand_define_record_type`): desugars to a `begin` of defines over a
+  tagged-vector representation — `(define <tag> (list '<name>))` for a unique
+  per-type identity, a `(vector <tag> slot...)` constructor (unset slots → #f),
+  a `(and (vector? o) (= (vector-length o) N+1) (eq? (vector-ref o 0) <tag>))`
+  predicate, and `vector-ref`/`vector-set!` accessors/modifiers. Uses only core
+  primitives, so all four evaluators get it; tree-walk delegates it via
+  `kExpanderForms`. Corpus `corpus/r7rs-records` (6 cases) + differential entries.
+- **CoreIR couldn't lower self-evaluating vector literals** (`#(...)` → "Expected
+  list expression"); surfaced while testing records. `is_atomic()` in
+  `scheme_to_coreir.cpp` omitted VECTOR/BYTEVECTOR, so a bare vector literal was
+  neither atomic nor a pair and fell through. Added them. (`'#(...)` and
+  `(vector ...)` already worked.) Differential entries added.
+- Still open: `#u8(...)` bytevector literal is rejected at the **reader** level
+  ("expected '\\' after '#'"); `(bytevector ...)` works. Candidate next gap.
+
 ---
 
 ## Evaluator architecture audit (2026-11-13)

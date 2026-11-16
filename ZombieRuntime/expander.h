@@ -189,6 +189,13 @@ private:
      */
     Object* expand_case_lambda(Object* clauses);
 
+    /**
+     * @brief Desugar (define-record-type ...) to a tagged-vector representation
+     * built from core primitives (R7RS 5.5). Produces a (begin ...) of defines
+     * for the type tag, constructor, predicate, accessors and modifiers.
+     */
+    Object* expand_define_record_type(Object* args);
+
     // -------------------------------------------------------------------------
     // Local Macro handling (let-syntax, letrec-syntax)
     // -------------------------------------------------------------------------

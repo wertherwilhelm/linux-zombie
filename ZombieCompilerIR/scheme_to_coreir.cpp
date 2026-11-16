@@ -62,6 +62,13 @@ bool SchemeToCoreirLowering::is_atomic(Object* expr) {
         return true;
     }
 
+    // Vector and bytevector literals are self-evaluating constants (R7RS),
+    // so they are atomic from the lowering's point of view.
+    if (expr->get_type() == static_cast<int>(Type::VECTOR) ||
+        expr->get_type() == static_cast<int>(Type::BYTEVECTOR)) {
+        return true;
+    }
+
     // Symbols (variables) are atomic
     if (expr->get_type() == static_cast<int>(Type::SYMBOL)) {
         return true;

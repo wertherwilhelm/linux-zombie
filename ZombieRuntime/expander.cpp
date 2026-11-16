@@ -3,6 +3,7 @@
 #include "cons_cell.h"
 #include "atom.h"
 #include "a_vector.h"
+#include "numeric_runtime.h"  // For numeric::make_integer()
 #include "constants.h"  // For intern_symbol()
 #include "Macro.h"
 #include "syntax_rules_transformer.h"
@@ -223,6 +224,11 @@ Object* Expander::expand_list(Object* list) {
     if (name == "case-lambda") {
         // (case-lambda ((formals body ...) ...))
         return expand_case_lambda(args);
+    }
+
+    if (name == "define-record-type") {
+        // (define-record-type name (ctor field ...) pred (field accessor [modifier]) ...)
+        return expand_define_record_type(args);
     }
 
     // Global Macro definition - install transformer in environment
@@ -977,6 +983,145 @@ Object* Expander::expand_do(Object* bindings, Object* test_clause, Object* body)
 
     // Recursively expand the named let
     return expand(named_let);
+}
+
+Object* Expander::expand_define_record_type(Object* args) {
+    // (define-record-type <name>
+    //   (<constructor> <cfield> ...)
+    //   <predicate>
+    //   (<field> <accessor> [<modifier>]) ...)
+    //
+    // Desugar to a portable tagged-vector representation using only core
+    // primitives, so every evaluator handles it uniformly:
+    //
+    //   (begin
+    //     (define <tag> (list '<name>))            ; unique per-type identity
+    //     (define (<ctor> cf ...) (vector <tag> <slot-or-#f> ...))
+    //     (define (<pred> o) (and (vector? o)
+    //                             (= (vector-length o) N+1)
+    //                             (eq? (vector-ref o 0) <tag>)))
+    //     (define (<accessor_i> o) (vector-ref o i+1))
+    //     (define (<modifier_i> o v) (vector-set! o i+1 v)) ...)
+    if (is_nil(args) || !args->pair()) {
+        throw std::runtime_error("define-record-type: malformed syntax");
+    }
+    Object* type_name  = first(args);
+    Object* ctor_spec  = second(args);
+    Object* pred_name  = first(rest(rest(args)));
+    Object* field_specs = rest(rest(rest(args)));
+
+    if (is_nil(ctor_spec) || !ctor_spec->pair()) {
+        throw std::runtime_error("define-record-type: expected (constructor field ...)");
+    }
+    Object* ctor_name  = first(ctor_spec);
+    Object* ctor_fields = rest(ctor_spec);
+
+    // Collect field names in declaration order; these define the slot layout.
+    std::vector<Object*> fields;
+    for (Object* f = field_specs; !is_nil(f) && !f->is_nil(); f = rest(f)) {
+        Object* spec = first(f);
+        if (is_nil(spec) || !spec->pair()) {
+            throw std::runtime_error("define-record-type: each field must be (field accessor [modifier])");
+        }
+        fields.push_back(first(spec));
+    }
+    const int n = static_cast<int>(fields.size());
+
+    auto field_index = [&](Object* fname) -> int {
+        std::string want = get_identifier_name(fname);
+        for (int i = 0; i < n; ++i) {
+            if (get_identifier_name(fields[i]) == want) return i;
+        }
+        return -1;
+    };
+
+    Object* tag_sym = intern_symbol("__rectype_" + get_identifier_name(type_name));
+
+    // Accumulate the forms in a begin, building in reverse then reversing.
+    std::vector<Object*> forms;
+
+    // (define <tag> (list '<name>))
+    forms.push_back(
+        cons(intern_symbol("define"),
+            cons(tag_sym,
+                cons(cons(intern_symbol("list"),
+                         cons(cons(intern_symbol("quote"), cons(type_name, nil)), nil)),
+                    nil))));
+
+    // Constructor: (define (<ctor> cf ...) (vector <tag> slot0 slot1 ...))
+    {
+        // vector args: tag, then each field slot filled from matching ctor arg or #f
+        Object* vec_args = nil, *vec_tail = nil;
+        auto append_vec = [&](Object* o) {
+            Object* cell = cons(o, nil);
+            if (vec_args == nil) { vec_args = vec_tail = cell; }
+            else { set_rest(vec_tail, cell); vec_tail = cell; }
+        };
+        append_vec(tag_sym);
+        for (int i = 0; i < n; ++i) {
+            // is fields[i] named in ctor_fields? if so use that var, else #f
+            bool in_ctor = false;
+            for (Object* c = ctor_fields; !is_nil(c) && !c->is_nil(); c = rest(c)) {
+                if (get_identifier_name(first(c)) == get_identifier_name(fields[i])) {
+                    in_ctor = true; break;
+                }
+            }
+            append_vec(in_ctor ? fields[i] : false_obj);
+        }
+        Object* ctor_body = cons(intern_symbol("vector"), vec_args);
+        Object* ctor_header = cons(ctor_name, ctor_fields);
+        forms.push_back(
+            cons(intern_symbol("define"), cons(ctor_header, cons(ctor_body, nil))));
+    }
+
+    // Predicate
+    {
+        Object* o = intern_symbol("__rec_o");
+        // (vector? o)
+        Object* is_vec = cons(intern_symbol("vector?"), cons(o, nil));
+        // (= (vector-length o) n+1)
+        Object* len_ok = cons(intern_symbol("="),
+            cons(cons(intern_symbol("vector-length"), cons(o, nil)),
+                cons(numeric::make_integer(n + 1), nil)));
+        // (eq? (vector-ref o 0) <tag>)
+        Object* tag_ok = cons(intern_symbol("eq?"),
+            cons(cons(intern_symbol("vector-ref"), cons(o, cons(numeric::make_integer(0), nil))),
+                cons(tag_sym, nil)));
+        Object* body = cons(intern_symbol("and"), cons(is_vec, cons(len_ok, cons(tag_ok, nil))));
+        Object* header = cons(pred_name, cons(o, nil));
+        forms.push_back(cons(intern_symbol("define"), cons(header, cons(body, nil))));
+    }
+
+    // Accessors and modifiers
+    {
+        int i = 0;
+        for (Object* f = field_specs; !is_nil(f) && !f->is_nil(); f = rest(f), ++i) {
+            Object* spec = first(f);
+            Object* accessor = second(spec);
+            Object* modifier = rest(rest(spec));  // optional (nil or (modifier))
+            Object* o = intern_symbol("__rec_o");
+            // (define (<accessor> o) (vector-ref o i+1))
+            Object* acc_body = cons(intern_symbol("vector-ref"),
+                cons(o, cons(numeric::make_integer(i + 1), nil)));
+            forms.push_back(cons(intern_symbol("define"),
+                cons(cons(accessor, cons(o, nil)), cons(acc_body, nil))));
+            if (!is_nil(modifier) && modifier->pair()) {
+                Object* mod_name = first(modifier);
+                Object* v = intern_symbol("__rec_v");
+                Object* mod_body = cons(intern_symbol("vector-set!"),
+                    cons(o, cons(numeric::make_integer(i + 1), cons(v, nil))));
+                forms.push_back(cons(intern_symbol("define"),
+                    cons(cons(mod_name, cons(o, cons(v, nil))), cons(mod_body, nil))));
+            }
+        }
+    }
+
+    // Build (begin forms...) and expand it (so inner defines/forms get desugared).
+    Object* body = nil;
+    for (auto it = forms.rbegin(); it != forms.rend(); ++it) {
+        body = cons(*it, body);
+    }
+    return expand(cons(intern_symbol("begin"), body));
 }
 
 Object* Expander::quasiquote_tagged(const char* tag, Object* inner) {
