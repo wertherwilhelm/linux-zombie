@@ -341,6 +341,36 @@ Object* scheme_reader::read_atom() {
     return read_symbol();
 }
 
+Object* scheme_reader::parse_number_token(const std::string& tok, int radix, int exactness) {
+    if (tok.empty()) {
+        return make_error("read: empty numeric literal after '#' prefix");
+    }
+    Object* val = nullptr;
+    size_t slash = tok.find('/');
+    try {
+        if (slash != std::string::npos) {
+            int64_t n = std::stoll(tok.substr(0, slash), nullptr, radix);
+            int64_t d = std::stoll(tok.substr(slash + 1), nullptr, radix);
+            if (d == 0) return make_error("read: division by zero in rational");
+            val = numeric::make_rational(n, d);
+        } else if (radix == 10 && (tok.find('.') != std::string::npos ||
+                                   tok.find('e') != std::string::npos ||
+                                   tok.find('E') != std::string::npos)) {
+            // Decimal/exponent notation is only meaningful in radix 10 (in hex
+            // 'e' is a digit); produce an inexact real.
+            val = numeric::make_inexact(std::stod(tok));
+        } else {
+            int64_t n = std::stoll(tok, nullptr, radix);
+            val = numeric::make_integer(n);
+        }
+    } catch (const std::exception&) {
+        return make_error("read: invalid number literal '" + tok + "'");
+    }
+    if (exactness == 1)       val = numeric::to_exact(val);
+    else if (exactness == -1) val = numeric::make_inexact(numeric::to_double(val));
+    return val;
+}
+
 Object* scheme_reader::read_number() {
     std::string num_str;
 
@@ -597,6 +627,33 @@ Object* scheme_reader::read_char() {
             bytes.push_back(static_cast<uint8_t>(v));
         }
         return gc_new<a_bytevector>(bytes);
+    }
+
+    // Handle number prefixes: #b #o #d #x (radix) and #e #i (exactness),
+    // combinable in either order (e.g. #xff, #e1.5, #e#xa). R7RS 7.1.1.
+    if (next == 'x' || next == 'X' || next == 'b' || next == 'B' ||
+        next == 'o' || next == 'O' || next == 'd' || next == 'D' ||
+        next == 'e' || next == 'E' || next == 'i' || next == 'I') {
+        int radix = 10;
+        int exactness = 0;  // 0 = as-written, 1 = exact, -1 = inexact
+        for (int k = 0; k < 2; ++k) {
+            char c = peek();
+            if      (c == 'x' || c == 'X') { radix = 16; consume(); }
+            else if (c == 'b' || c == 'B') { radix = 2;  consume(); }
+            else if (c == 'o' || c == 'O') { radix = 8;  consume(); }
+            else if (c == 'd' || c == 'D') { radix = 10; consume(); }
+            else if (c == 'e' || c == 'E') { exactness = 1;  consume(); }
+            else if (c == 'i' || c == 'I') { exactness = -1; consume(); }
+            else return make_error("read: unknown '#' syntax");
+            // A second prefix must be introduced by another '#'.
+            if (!at_end() && peek() == '#') { consume(); continue; }
+            break;
+        }
+        std::string tok;
+        while (!at_end() && !is_delimiter(peek())) {
+            tok += consume();
+        }
+        return parse_number_token(tok, radix, exactness);
     }
 
     // Handle boolean literals #t and #f

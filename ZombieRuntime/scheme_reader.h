@@ -72,6 +72,9 @@ private:
     Object* read_string();     // "..."
     Object* read_symbol();
     Object* read_char();       // #\a character literals
+    // Parse a numeric literal token (after a #b/#o/#d/#x/#e/#i prefix) in the
+    // given radix. exactness: 0 = as-written, 1 = force exact, -1 = force inexact.
+    Object* parse_number_token(const std::string& tok, int radix, int exactness);
 
     // Error reporting
     Object* make_error(const std::string& message);

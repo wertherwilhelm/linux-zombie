@@ -161,6 +161,9 @@ const Case kCorpus[] = {
     {"(case 5 ((5) => (lambda (x) (* x x))) (else 0))", "25", ALL},
     {"(case 9 ((1 2) 'low) (else => (lambda (x) (+ x 1))))", "10", ALL},
     {"(let ((h (make-hash-table))) (hash-table-update!/default h 'x (lambda (v) (+ v 5)) 0) (hash-table-ref/default h 'x -1))", "5", ALL},
+    // radix / exactness number prefixes
+    {"#xff", "255", ALL}, {"#b101", "5", ALL}, {"#o17", "15", ALL},
+    {"#e1.5", "3/2", ALL}, {"(exact? #i1/2)", "#f", ALL}, {"(+ #xff #b1)", "256", ALL},
     // strings / symbols (display-style printing: no quotes)
     {"(string-length \"hello\")", "5", ALL},
     {"(string-append \"a\" \"b\" \"c\")", "abc", ALL},
