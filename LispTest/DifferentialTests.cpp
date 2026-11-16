@@ -119,6 +119,10 @@ const Case kCorpus[] = {
     // quote / quasiquote
     {"(quote (a b c))", "(a b c)", ALL}, {"'(1 2 3)", "(1 2 3)", ALL},
     {"`(1 ,(+ 1 1) 3)", "(1 2 3)", ALL}, {"`(1 ,@(list 2 3) 4)", "(1 2 3 4)", ALL},
+    // quasiquote into vectors, dotted tail, and nested-depth preservation
+    {"(vector-ref `#(1 ,(+ 1 1) 3) 1)", "2", ALL},
+    {"`(x . ,(+ 2 3))", "(x . 5)", ALL},
+    {"(equal? `(1 `(2 ,(+ 1 2))) '(1 (quasiquote (2 (unquote (+ 1 2))))))", "#t", ALL},
     // strings / symbols (display-style printing: no quotes)
     {"(string-length \"hello\")", "5", ALL},
     {"(string-append \"a\" \"b\" \"c\")", "abc", ALL},

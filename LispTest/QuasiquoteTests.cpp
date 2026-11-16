@@ -6,6 +6,33 @@
 // Quasiquote Tests
 // ============================================================================
 
+// Regression: quasiquote descends into vector literals, and nested quasiquote
+// tracks depth so inner unquotes are only evaluated at the matching level.
+// Both were handled by the shared Expander; the tree-walk evaluator's parallel
+// qq_expand was removed so all four evaluators behave identically.
+TEST_F(ZombieSchemeTest, QuasiquoteVectorDescends) {
+    expectBool("(equal? `#(1 ,(+ 1 1) 3) #(1 2 3))", true);
+    expectBool("(equal? `#(a ,@(list 1 2) z) #(a 1 2 z))", true);
+    // nothing to unquote: still a vector equal to the literal
+    expectBool("(equal? `#(1 2 3) #(1 2 3))", true);
+}
+
+TEST_F(ZombieSchemeTest, QuasiquoteNestedDepth) {
+    // inner unquote at depth 2 is preserved verbatim (not evaluated)
+    expectBool(
+        "(equal? `(1 `(2 ,(+ 1 2))) '(1 (quasiquote (2 (unquote (+ 1 2))))))",
+        true);
+    // ,,x at depth 2: the outer unquote is preserved, inner evaluates
+    eval("(define x 7)");
+    expectBool(
+        "(equal? `(a `(b ,,x)) '(a (quasiquote (b (unquote 7)))))",
+        true);
+}
+
+TEST_F(ZombieSchemeTest, QuasiquoteDottedUnquote) {
+    expectBool("(equal? `(x . ,(+ 2 3)) '(x . 5))", true);
+}
+
 TEST_F(ZombieSchemeTest, QuasiquoteAtom) {
     // Quasiquote of atom is like quote
     Object* result = eval("`5");

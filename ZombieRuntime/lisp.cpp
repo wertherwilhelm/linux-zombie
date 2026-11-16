@@ -439,7 +439,8 @@ eval_result Lisp::eval_step_list(Object* x, Environment* env) {
         // Expander's dispatch desugaring is both unnecessary and far slower.
         static const std::unordered_set<std::string> kExpanderForms = {
             "when", "unless", "and", "or", "cond", "case", "do",
-            "let", "let*", "letrec", "letrec*", "let-values", "let*-values"
+            "let", "let*", "letrec", "letrec*", "let-values", "let*-values",
+            "quasiquote"
         };
         if (kExpanderForms.count(fn_val)) {
             Expander expander(env);
@@ -691,12 +692,6 @@ eval_result Lisp::eval_step_list(Object* x, Environment* env) {
         // No matching clause - return unspecified value
         return eval_result::make_value(nil);
     }
-    else if (fn_val == "quasiquote") {
-        // Expand quasiquote into cons/append/quote operations and evaluate
-        Object* template_expr = first(args);
-        Object* expanded = qq_expand(template_expr, env);
-        return eval_result::make_tailcall(expanded, env);
-    }
     else if (fn_val == "lambda") {
         return eval_result::make_value(gc_new<Closure>(first(args), rest(args), env));
     }
@@ -889,77 +884,5 @@ eval_result Lisp::eval_step_list(Object* x, Environment* env) {
         return eval_result::make_value(result);
     }
 }
-
-// Helper function to expand quasiquote recursively
-// Processes quasiquote, unquote, and unquote-splicing
-Object* Lisp::qq_expand(Object* x, Environment* env) {
-    // Base case: atom or nil
-    if (x == nil) {
-        return cons(gc_new<a_string>("quote"), cons(nil, nil));
-    }
-
-    if (x->is_atom()) {
-        // Return it quoted
-        return cons(gc_new<a_string>("quote"), cons(x, nil));
-    }
-
-    // x is a list - check for special forms
-    Object* first_elem = first(x);
-
-    // Check if it's (unquote expr)
-    if (is_string(first_elem) || is_symbol(first_elem)) {
-        std::string name = is_string(first_elem) ?
-            ((a_string*)first_elem)->value() :
-            ((a_symbol*)first_elem)->value();
-
-        if (name == "unquote") {
-            // (unquote expr) - return expr to be evaluated
-            return second(x);
-        }
-
-        if (name == "unquote-splicing") {
-            // unquote-splicing at top level is an error
-            return error("unquote-splicing: not in list context");
-        }
-    }
-
-    // x is a regular list - process each element and build result
-    return qq_expand_list(x, env);
-}
-
-// Helper to expand a list in quasiquote context
-Object* Lisp::qq_expand_list(Object* x, Environment* env) {
-    if (x == nil) {
-        return cons(intern_symbol("quote"), cons(nil, nil));
-    }
-
-    Object* elem = first(x);
-    Object* rest_list = rest(x);
-
-    // Check if elem is (unquote-splicing expr)
-    if (!elem->is_atom()) {
-        Object* elem_first = first(elem);
-        if (is_string(elem_first) || is_symbol(elem_first)) {
-            std::string elem_name = is_string(elem_first) ?
-                ((a_string*)elem_first)->value() :
-                ((a_symbol*)elem_first)->value();
-
-            if (elem_name == "unquote-splicing") {
-                // Build (append splice-expr (qq-expand rest))
-                Object* splice_expr = second(elem);
-                Object* rest_expanded = qq_expand_list(rest_list, env);
-                return cons(intern_symbol("append"),
-                    cons(splice_expr, cons(rest_expanded, nil)));
-            }
-        }
-    }
-
-    // Regular element - build (cons (qq-expand elem) (qq-expand rest))
-    Object* elem_expanded = qq_expand(elem, env);
-    Object* rest_expanded = qq_expand_list(rest_list, env);
-    return cons(intern_symbol("cons"),
-        cons(elem_expanded, cons(rest_expanded, nil)));
-}
-
 
 } } // namespace zombie::runtime

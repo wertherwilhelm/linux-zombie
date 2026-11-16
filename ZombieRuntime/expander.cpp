@@ -2,6 +2,7 @@
 #include "expander.h"
 #include "cons_cell.h"
 #include "atom.h"
+#include "a_vector.h"
 #include "constants.h"  // For intern_symbol()
 #include "Macro.h"
 #include "syntax_rules_transformer.h"
@@ -978,79 +979,89 @@ Object* Expander::expand_do(Object* bindings, Object* test_clause, Object* body)
     return expand(named_let);
 }
 
+Object* Expander::quasiquote_tagged(const char* tag, Object* inner) {
+    // (list 'tag inner)  ->  evaluates to the two-element list (tag <inner>)
+    Object* quoted_tag = cons(intern_symbol("quote"), cons(intern_symbol(tag), nil));
+    return cons(intern_symbol("list"),
+               cons(quoted_tag, cons(inner, nil)));
+}
+
 Object* Expander::expand_quasiquote(Object* expr) {
-    // Transform: `expr → quasiquote expansion
-    // Handles unquote (,) and unquote-splicing (,@)
+    return expand_quasiquote_depth(expr, 1);
+}
 
-    // Base case: atoms and nil
-    if (is_nil(expr) || expr->is_nil()) {
+Object* Expander::expand_quasiquote_depth(Object* expr, int depth) {
+    // Vector literals: `#(...) descends into the elements (R7RS). Rebuild as
+    // (list->vector <quasiquoted element list>) so unquote / unquote-splicing
+    // inside the vector are handled exactly as they are inside a list.
+    if (is_vector(expr)) {
+        a_vector* v = (a_vector*)expr;
+        Object* elems = nil;
+        for (int i = v->length() - 1; i >= 0; --i) {
+            elems = cons(v->get(i), elems);
+        }
+        Object* expanded = expand_quasiquote_depth(elems, depth);
+        return cons(intern_symbol("list->vector"), cons(expanded, nil));
+    }
+
+    // Base case: nil and non-vector atoms quote themselves.
+    if (is_nil(expr) || expr->is_nil() || expr->is_atom()) {
         return cons(intern_symbol("quote"), cons(expr, nil));
     }
 
-    if (expr->is_atom()) {
-        return cons(intern_symbol("quote"), cons(expr, nil));
-    }
-
-    // Check for unquote: (unquote expr) or ,expr
     Object* first_elem = first(expr);
     std::string first_name = get_identifier_name(first_elem);
 
     if (first_name == "unquote") {
-        // (unquote expr) → expr (evaluate it)
         Object* unquoted = first(rest(expr));
-        return expand(unquoted);
+        if (depth == 1) {
+            // ,expr at the active level → evaluate it
+            return expand(unquoted);
+        }
+        // Nested: strip one level but keep the unquote wrapper as data.
+        return quasiquote_tagged("unquote", expand_quasiquote_depth(unquoted, depth - 1));
     }
 
-    if (first_name == "unquote-splicing") {
-        // Error: unquote-splicing not allowed at top level of quasiquote
-        return cons(intern_symbol("quote"), cons(expr, nil));
+    if (first_name == "quasiquote") {
+        // A nested quasiquote raises the level; preserve it as data.
+        Object* inner = first(rest(expr));
+        return quasiquote_tagged("quasiquote", expand_quasiquote_depth(inner, depth + 1));
     }
 
-    // Recursive case: (a . b)
-    // Process car and cdr separately
-
-    // Check if car is unquote-splicing
+    // Recursive case: (car . cdr). car may itself be (unquote-splicing e).
     Object* car_elem = first(expr);
+    Object* cdr_elem = rest(expr);
+
     bool car_is_splicing = false;
     if (!is_nil(car_elem) && !car_elem->is_nil() && car_elem->pair()) {
-        Object* car_first = first(car_elem);
-        std::string car_first_name = get_identifier_name(car_first);
+        std::string car_first_name = get_identifier_name(first(car_elem));
         if (car_first_name == "unquote-splicing") {
             car_is_splicing = true;
         }
     }
 
-    Object* expanded_car;
-    if (car_is_splicing) {
-        // ,@expr → (append expr ...)
-        Object* spliced = first(rest(car_elem));
-        expanded_car = expand(spliced);
-    } else {
-        // Recursively expand car
-        expanded_car = expand_quasiquote(car_elem);
-    }
-
-    // Recursively expand cdr
-    Object* cdr_elem = rest(expr);
     Object* expanded_cdr;
     if (is_nil(cdr_elem) || cdr_elem->is_nil()) {
         expanded_cdr = cons(intern_symbol("quote"), cons(nil, nil));
     } else {
-        expanded_cdr = expand_quasiquote(cdr_elem);
+        expanded_cdr = expand_quasiquote_depth(cdr_elem, depth);
     }
 
-    // Build result using cons or append
     if (car_is_splicing) {
-        // (append expanded_car expanded_cdr)
-        return cons(intern_symbol("append"),
-                   cons(expanded_car,
-                       cons(expanded_cdr, nil)));
-    } else {
-        // (cons expanded_car expanded_cdr)
-        return cons(intern_symbol("cons"),
-                   cons(expanded_car,
-                       cons(expanded_cdr, nil)));
+        Object* spliced = first(rest(car_elem));
+        if (depth == 1) {
+            // ,@expr → (append expr <cdr>)
+            return cons(intern_symbol("append"),
+                       cons(expand(spliced), cons(expanded_cdr, nil)));
+        }
+        // Nested: keep the unquote-splicing wrapper, lower depth by one.
+        Object* kept = quasiquote_tagged("unquote-splicing",
+                                         expand_quasiquote_depth(spliced, depth - 1));
+        return cons(intern_symbol("cons"), cons(kept, cons(expanded_cdr, nil)));
     }
+
+    Object* expanded_car = expand_quasiquote_depth(car_elem, depth);
+    return cons(intern_symbol("cons"), cons(expanded_car, cons(expanded_cdr, nil)));
 }
 
 // ============================================================================

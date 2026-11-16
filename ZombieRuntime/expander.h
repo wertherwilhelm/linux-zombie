@@ -120,9 +120,24 @@ private:
     /**
      * @brief Transform quasiquote expression.
      *
-     * Handles unquote (,) and unquote-splicing (,@).
+     * Handles unquote (,) and unquote-splicing (,@), descends into vector
+     * literals, and tracks nesting depth so unquotes inside nested
+     * quasiquotes are only evaluated at the matching level (R7RS 4.2.8).
      */
     Object* expand_quasiquote(Object* expr);
+
+    /**
+     * @brief Depth-aware quasiquote worker. depth==1 is the active level at
+     * which unquote/unquote-splicing evaluate; deeper nesting is preserved.
+     */
+    Object* expand_quasiquote_depth(Object* expr, int depth);
+
+    /**
+     * @brief Build an expression that evaluates to the two-element tagged list
+     * (tag <value-of-inner>), i.e. (list 'tag inner). Used to reconstruct
+     * unquote/unquote-splicing/quasiquote forms preserved at deeper levels.
+     */
+    Object* quasiquote_tagged(const char* tag, Object* inner);
 
     /**
      * @brief Transform (and e1 e2 ...) into nested if statements.

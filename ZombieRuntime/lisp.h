@@ -322,31 +322,6 @@ private:
      * @endcode
      */
 
-    /**
-     * @brief Expand quasiquote template (recursive helper)
-     * @param x Template expression to expand
-     * @param env Environment for evaluation
-     * @return Expanded expression
-     * @note Handles unquote and unquote-splicing recursively
-     * @note Used by quasiquote special form
-     *
-     * Example:
-     * @code
-     * `(a ,b ,@c)  =>  (append (list 'a b) c)
-     * @endcode
-     */
-    Object* qq_expand(Object* x, Environment* env);
-
-    /**
-     * @brief Expand quasiquote list (recursive helper)
-     * @param x List template to expand
-     * @param env Environment for evaluation
-     * @return Expanded list expression
-     * @note Handles unquote-splicing (,@) in list context
-     * @note Called by qq_expand() for list templates
-     */
-    Object* qq_expand_list(Object* x, Environment* env);
-
 };
 
 } } // namespace zombie::runtime

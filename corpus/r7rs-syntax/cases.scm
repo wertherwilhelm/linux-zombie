@@ -47,7 +47,5 @@
     ;; --- quasiquote ---
     (list "qq-unquote"  '`(a ,(+ 1 2) c)                                   '(a 3 c))
     (list "qq-splice"   '`(1 ,@(list 2 3) 4)                               '(1 2 3 4))
-    ;; quasiquote does not yet descend into vector literals (unquote left verbatim).
-    (list "qq-vector"   '`#(1 ,(+ 1 1) 3)                                  #(1 2 3) 'gap)
-    ;; nested quasiquote mishandles depth: inner unquote evaluated at wrong level.
-    (list "qq-nested"   '`(1 `(2 ,(+ 1 2)))                                '(1 (quasiquote (2 (unquote (+ 1 2))))) 'gap)))
+    (list "qq-vector"   '`#(1 ,(+ 1 1) 3)                                  #(1 2 3))
+    (list "qq-nested"   '`(1 `(2 ,(+ 1 2)))                                '(1 (quasiquote (2 (unquote (+ 1 2))))))))
