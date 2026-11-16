@@ -136,7 +136,7 @@ const Case kCorpus[] = {
     {"(begin (define-record-type c (mk v) c? (v gv sv!)) (let ((o (mk 1))) (sv! o 9) (gv o)))", "9", ALL},
     {"(begin (define-record-type pt (mk x) pt? (x gx)) (pt? 5))", "#f", ALL},
     // round ties-to-even; string->number radix; optional range/comparator args
-    {"(round 2.5)", "2", ALL}, {"(round 3.5)", "4", ALL}, {"(round -2.5)", "-2", ALL},
+    {"(round 2.5)", "2.0", ALL}, {"(round 3.5)", "4.0", ALL}, {"(round -2.5)", "-2.0", ALL},
     {"(string->number \"ff\" 16)", "255", ALL},
     {"(string->number \"101\" 2)", "5", ALL},
     {"(string-copy \"hello\" 1 3)", "el", ALL},
@@ -153,6 +153,10 @@ const Case kCorpus[] = {
     {"(string<? \"a\" \"b\" \"c\")", "#t", ALL},
     {"(boolean=? #t #t #t)", "#t", ALL},
     {"(exact? (min 1 2.0))", "#f", ALL}, {"(exact? (min 1 2 3))", "#t", ALL},
+    // inexact reals print with a decimal point; expt is exact for exact args
+    {"(number->string 2.0)", "2.0", ALL}, {"1.0", "1.0", ALL},
+    {"(expt 2 10)", "1024", ALL}, {"(expt 2 -2)", "1/4", ALL},
+    {"(exact? (expt 2 10))", "#t", ALL}, {"(exact? (expt 2.0 3))", "#f", ALL},
     // strings / symbols (display-style printing: no quotes)
     {"(string-length \"hello\")", "5", ALL},
     {"(string-append \"a\" \"b\" \"c\")", "abc", ALL},

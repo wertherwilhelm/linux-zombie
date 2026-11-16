@@ -9,6 +9,9 @@
 
 #include "Object.h"
 #include "gc_ptr.h"  // For gc_new
+#include <cmath>
+#include <sstream>
+#include <string>
 
 
 // should it have been atom->value type
@@ -345,6 +348,25 @@ Object* atom<T>::clone() const {
 template <class T>
 void atom<T>::print(std::ostream& os) const {
     os << m_value;
+}
+
+// R7RS: inexact reals print with a decimal point so they read back as inexact
+// (a bare "1" would read as an exact integer); infinities and NaN use the
+// +inf.0 / -inf.0 / +nan.0 external representations.
+template <>
+inline void atom<double>::print(std::ostream& os) const {
+    double v = m_value;
+    if (std::isnan(v)) { os << "+nan.0"; return; }
+    if (std::isinf(v)) { os << (v < 0 ? "-inf.0" : "+inf.0"); return; }
+    std::ostringstream tmp;
+    tmp << v;
+    std::string s = tmp.str();
+    if (s.find('.') == std::string::npos &&
+        s.find('e') == std::string::npos &&
+        s.find('E') == std::string::npos) {
+        s += ".0";
+    }
+    os << s;
 }
 
 template <class T>

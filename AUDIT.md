@@ -245,11 +245,31 @@ differential entries. Full suite 1322/1322, ASan-clean.
 All work on every evaluator. Corpus `corpus/r7rs-comparisons` (16 cases) +
 differential entries. Full suite 1322/1322, ASan-clean.
 
-Corpus now has 11 entries: algol-msweet, r7rs-core, r7rs-extra, r7rs-syntax,
+All work on every evaluator. Corpus `corpus/r7rs-comparisons` (16 cases) +
+differential entries. Full suite 1322/1322, ASan-clean.
+
+### Corpus batch 9 (`corpus/r7rs-inexact-print`, 2026-11-16)
+- **Inexact reals printed without a decimal point** (`1.0`→"1"), so a written
+  value read back as an exact integer — a real external-representation bug.
+  Added an `atom<double>::print` specialization (atom.h) that appends `.0` when
+  the default formatting has no `.`/`e`, and emits `+inf.0`/`-inf.0`/`+nan.0`.
+  `number->string` (radix 10) now delegates to the value's own `print` so it
+  shares this (it had a separate formatter that printed inexact integers bare).
+- **`expt` was always inexact** — `(expt 2 10)`→1024.0. R7RS: exact base with an
+  exact integer exponent gives an exact result (integer for e≥0, rational for
+  e<0). Added that path (repeated `numeric::mul`, `div` for negatives); other
+  cases still use `std::pow`. This was masked until the printing fix exposed it.
+- Fixing the printer also corrected several of my own earlier corpus/differential
+  expectations that assumed the buggy bare-integer printing for inexact `round`
+  results (`(round 2.5)` is inexact → "2.0").
+All on every evaluator. Corpus `corpus/r7rs-inexact-print` (17 cases) +
+differential entries. Full suite 1322/1322, ASan-clean.
+
+Corpus now has 12 entries: algol-msweet, r7rs-core, r7rs-extra, r7rs-syntax,
 r7rs-io, r7rs-records, r7rs-bytevectors, r7rs-numeric-strings, r7rs-seq-ops,
-r7rs-comparisons. Only `'gap`: `rationalize` (inexact), `with-output-to-string`.
-Known still-open: `#x`/`#b`/`#o`/`#e`/`#i` number prefixes aren't read; inexact
-integer-valued doubles print without `.0`.
+r7rs-comparisons, r7rs-inexact-print. Only `'gap`: `rationalize` (inexact),
+`with-output-to-string`. Known still-open: `#x`/`#b`/`#o`/`#e`/`#i` number
+prefixes aren't read; `case` with `=>` errors; `hash-table-update!` missing.
 
 ---
 

@@ -149,15 +149,10 @@ static Object* numberToString(Object* x, Object* y) {
     std::ostringstream oss;
 
     if (radix == 10) {
-        // For Base 10, handle floating point
-        double dval = num(x);
-        if (dval == (double)value) {
-            // Integer value
-            oss << value;
-        } else {
-            // Floating point value
-            oss << dval;
-        }
+        // Delegate to the value's own printer: exact integers/rationals print
+        // canonically ("2", "1/2") and inexact reals keep their decimal point
+        // ("2.0", "+inf.0") so the exact/inexact distinction survives.
+        x->print(oss);
     } else {
         // For other bases, use integer conversion
         if (radix == 2) {
@@ -661,6 +656,23 @@ Object* PrimitiveNumbers::apply(IEvaluator* eval, Object* args, Environment* env
         case EXPT: {
             if (!numeric::is_number(x) || !numeric::is_number(y)) {
                 return error("expt: expected two numbers");
+            }
+            // R7RS: if the base is exact and the exponent is an exact integer,
+            // the result is exact (integer for e>=0, rational for e<0).
+            if (numeric::is_exact(x) && numeric::is_exact(y) &&
+                numeric::is_integer_value(y)) {
+                int64_t e = numeric::to_int64(y);
+                int64_t n = e < 0 ? -e : e;
+                Object* acc = numeric::make_integer(1);
+                gc_root<Object> aguard(acc);
+                for (int64_t i = 0; i < n; ++i) {
+                    acc = numeric::mul(acc, x);
+                    aguard = gc_root<Object>(acc);
+                }
+                if (e < 0) {
+                    return numeric::div(numeric::make_integer(1), acc);  // exact 1/x^|e|
+                }
+                return acc;
             }
             return numeric::make_inexact(std::pow(numeric::to_double(x), numeric::to_double(y)));
         }

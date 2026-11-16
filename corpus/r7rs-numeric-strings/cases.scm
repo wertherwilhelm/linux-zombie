@@ -3,16 +3,17 @@
 
 (define corpus-cases
   (list
-    ;; --- round: ties to even (R7RS 6.2.6) ---
-    (list "round-0.5"   '(round 0.5)    0)
-    (list "round-1.5"   '(round 1.5)    2)
-    (list "round-2.5"   '(round 2.5)    2)
-    (list "round-3.5"   '(round 3.5)    4)
-    (list "round-neg"   '(round -2.5)  -2)
+    ;; --- round: ties to even (R7RS 6.2.6); inexact in -> inexact out ---
+    (list "round-0.5"   '(round 0.5)    0.0)
+    (list "round-1.5"   '(round 1.5)    2.0)
+    (list "round-2.5"   '(round 2.5)    2.0)
+    (list "round-3.5"   '(round 3.5)    4.0)
+    (list "round-neg"   '(round -2.5)  -2.0)
     (list "round-rat"   '(round 7/2)    4)   ; exact rational -> exact 4
     (list "round-rat2"  '(round 5/2)    2)
     (list "round-int"   '(round 42)    42)
     (list "round-exact" '(exact? (round 7/2)) #t)
+    (list "round-inexact?" '(exact? (round 2.5)) #f)
 
     ;; --- string->number with explicit radix (R7RS 6.2.6) ---
     (list "s->n-dec"    '(string->number "42")       42)
