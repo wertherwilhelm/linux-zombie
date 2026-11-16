@@ -98,12 +98,20 @@ dynamic-wind, assv, list-copy. Closed the R7RS-small **core** gaps it found:
 - **Inexact division by zero no longer errors** — `(/ 1.0 0.0)` -> `+inf.0`,
   `(/ 0.0 0.0)` -> `+nan.0` (R7RS); exact `(/ 1 0)` still errors. (numeric::div.)
 
-Remaining, tagged `'gap` in the corpus (library-level, not R7RS-small — backlog):
-SRFI-1 list ops (iota, take, drop, last, count, delete, remove, partition,
-delete-duplicates, find, any, every, append-map, list-index, list-tabulate);
-SRFI-13 string ops (string-reverse/-join/-index/-prefix?/-suffix?/-trim/-pad);
-`vector-sort` (R6RS); `rationalize` (returns inexact). Candidates for a future
-SRFI-1/SRFI-13 library (several already exist in `stdlib/*.scm`, just not loaded).
+**Prelude wired (2026-11-16):** `scheme_engine::warmup_prelude()` (previously a
+no-op stub) now evaluates a Scheme SRFI-1/SRFI-13 prelude into `global_env_` after
+primitives+evaluator are ready; called from every constructor and `reset()`. So
+the REPL, embedding, and the corpus get: iota, take, drop, last, count, delete,
+remove, partition, delete-duplicates, find, any, every, append-map, list-index,
+list-tabulate (SRFI-1); string-reverse, string-join, string-index, string-prefix?,
+string-suffix?, string-trim, string-pad (SRFI-13); vector-sort (R6RS). All built
+on existing primitives; works on all four evaluators. The r7rs-extra corpus
+entries are now untagged (pass); only `rationalize` remains `'gap` (returns
+inexact — a numeric-runtime fix, not a prelude one).
+- Note: the prelude loads per `scheme_engine` construction; the differential
+  suite (fresh engine per case × evaluator) pushed the full-suite time ~43s->62s.
+  If the corpus/differential grow, cache the parsed prelude or add a no-prelude
+  engine mode for the differential (it uses only primitives).
 
 ---
 

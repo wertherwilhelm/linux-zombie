@@ -65,6 +65,9 @@ scheme_engine::scheme_engine(bool use_isolated_gc)
 
     // Set up default I/O ports
     setup_default_ports();
+
+    // Load the SRFI-1/SRFI-13 Scheme prelude on top of the primitives.
+    warmup_prelude();
 }
 
 scheme_engine::scheme_engine(EvaluatorType type, bool use_isolated_gc)
@@ -110,6 +113,9 @@ scheme_engine::scheme_engine(EvaluatorType type, bool use_isolated_gc)
 
     // Set up default I/O ports
     setup_default_ports();
+
+    // Load the SRFI-1/SRFI-13 Scheme prelude on top of the primitives.
+    warmup_prelude();
 }
 
 scheme_engine::scheme_engine(IEvaluator* evaluator, bool take_ownership)
@@ -148,6 +154,9 @@ scheme_engine::scheme_engine(IEvaluator* evaluator, bool take_ownership)
 
     // Set up default I/O ports
     setup_default_ports();
+
+    // Load the SRFI-1/SRFI-13 Scheme prelude on top of the primitives.
+    warmup_prelude();
 }
 
 scheme_engine::~scheme_engine() {
@@ -664,6 +673,9 @@ void scheme_engine::reset() {
     // Clear captured output
     captured_output_.str("");
     captured_output_.clear();
+
+    // Reload the Scheme prelude (match constructor behavior).
+    warmup_prelude();
 }
 
 std::string scheme_engine::print_value(void* value) {
@@ -672,12 +684,83 @@ std::string scheme_engine::print_value(void* value) {
 }
 
 void scheme_engine::warmup_prelude() {
-    // Default implementation does nothing
-    // Subclasses can override to load standard library
-    // Example:
-    // eval_string("(define (caar x) (car (car x)))");
-    // eval_string("(define (cadr x) (car (cdr x)))");
-    // etc.
+    // Standard-library prelude: SRFI-1 (lists) and SRFI-13 (strings) procedures
+    // defined in Scheme on top of the C++ primitives. Loaded once per engine so
+    // they are available in the REPL, embedding, and the corpus. (Keep these as
+    // Scheme — only move one to C++ if it needs to be a primitive.)
+    static const char* kPrelude = R"SRFI(
+;; --- SRFI-1 list operations ---
+(define (iota n . opt)
+  (let ((start (if (pair? opt) (car opt) 0))
+        (step  (if (and (pair? opt) (pair? (cdr opt))) (car (cdr opt)) 1)))
+    (let loop ((i 0) (acc '()))
+      (if (< i n) (loop (+ i 1) (cons (+ start (* i step)) acc)) (reverse acc)))))
+(define (take lst n)
+  (if (or (= n 0) (null? lst)) '() (cons (car lst) (take (cdr lst) (- n 1)))))
+(define (drop lst n)
+  (if (or (= n 0) (null? lst)) lst (drop (cdr lst) (- n 1))))
+(define (last lst) (if (null? (cdr lst)) (car lst) (last (cdr lst))))
+(define (count pred lst)
+  (let loop ((l lst) (n 0))
+    (if (null? l) n (loop (cdr l) (if (pred (car l)) (+ n 1) n)))))
+(define (delete x lst) (filter (lambda (y) (not (equal? x y))) lst))
+(define (remove pred lst) (filter (lambda (y) (not (pred y))) lst))
+(define (partition pred lst)
+  (let loop ((l lst) (yes '()) (no '()))
+    (if (null? l) (values (reverse yes) (reverse no))
+        (if (pred (car l)) (loop (cdr l) (cons (car l) yes) no)
+            (loop (cdr l) yes (cons (car l) no))))))
+(define (delete-duplicates lst)
+  (let loop ((l lst) (seen '()))
+    (cond ((null? l) (reverse seen))
+          ((member (car l) seen) (loop (cdr l) seen))
+          (else (loop (cdr l) (cons (car l) seen))))))
+(define (find pred lst)
+  (cond ((null? lst) #f) ((pred (car lst)) (car lst)) (else (find pred (cdr lst)))))
+(define (any pred lst)
+  (and (pair? lst) (or (pred (car lst)) (any pred (cdr lst)))))
+(define (every pred lst)
+  (or (null? lst) (and (pred (car lst)) (every pred (cdr lst)))))
+(define (append-map f lst) (apply append (map f lst)))
+(define (list-index pred lst)
+  (let loop ((l lst) (i 0))
+    (cond ((null? l) #f) ((pred (car l)) i) (else (loop (cdr l) (+ i 1))))))
+(define (list-tabulate n f)
+  (let loop ((i 0) (acc '()))
+    (if (< i n) (loop (+ i 1) (cons (f i) acc)) (reverse acc))))
+
+;; --- SRFI-13 string operations ---
+(define (string-reverse s) (list->string (reverse (string->list s))))
+(define (string-join lst sep)
+  (if (null? lst) ""
+      (fold-left (lambda (acc x) (string-append acc sep x)) (car lst) (cdr lst))))
+(define (string-index s c)
+  (let ((n (string-length s)))
+    (let loop ((i 0))
+      (cond ((>= i n) #f) ((char=? (string-ref s i) c) i) (else (loop (+ i 1)))))))
+(define (string-prefix? p s)
+  (and (<= (string-length p) (string-length s))
+       (string=? p (substring s 0 (string-length p)))))
+(define (string-suffix? suf s)
+  (let ((ls (string-length s)) (lp (string-length suf)))
+    (and (<= lp ls) (string=? suf (substring s (- ls lp) ls)))))
+(define (string-trim s)
+  (let ((n (string-length s)))
+    (let ((start (let loop ((i 0))
+                   (if (and (< i n) (char-whitespace? (string-ref s i))) (loop (+ i 1)) i)))
+          (end   (let loop ((i n))
+                   (if (and (> i 0) (char-whitespace? (string-ref s (- i 1)))) (loop (- i 1)) i))))
+      (if (< start end) (substring s start end) ""))))
+(define (string-pad s n)
+  (let ((l (string-length s)))
+    (if (>= l n) (substring s (- l n) l)
+        (string-append (make-string (- n l) #\space) s))))
+
+;; --- R6RS vector-sort: (vector-sort proc vec) ---
+(define (vector-sort proc v) (list->vector (sort (vector->list v) proc)))
+)SRFI";
+
+    eval_string(kPrelude);
 }
 
 void scheme_engine::set_input_port(InputPort* port) {
