@@ -602,13 +602,21 @@ as harmless, never-instantiated infrastructure.)
   escape continuations in the main corpus (all evaluators agree) and a
   `ReentrantContinuations` test comparing bytecode vs toy VM against known values
   (the tree-walk is excluded — it is escape-only and is asserted NOT to produce
-  the re-entrant result). This immediately surfaced a **CoreIR gap**: a call/cc
-  escaping through a `begin` in *operand* position leaves a CoreIR ANF temp
-  unbound (`Unbound variable: $tmpN`) — e.g. `(+ 100 (begin (call/cc (lambda (k)
-  (k 5))) 999))`. Masked out of CoreIR in the corpus; it works on tree-walk,
-  bytecode, and toy VM. Root cause is CoreIR's ANF lowering binding the begin's
-  value to a temp that the escaping continuation bypasses — a deep
-  lowering/continuation interaction, left for a dedicated CoreIR fix.
+  the re-entrant result). This immediately surfaced a **CoreIR gap** (now FIXED).
+
+- **FIXED — CoreIR: a complex form in operand position whose lowering ends in a
+  literal.** The call/cc framing was a red herring; the real bug was any `begin`
+  (or other non-atomic form) used as an argument, e.g. `(+ 100 (begin 1 999))` ->
+  `Unbound variable: $tmp0`. Root cause: `extract_result_var` returned a FRESH,
+  UNBOUND temp when a lowered chain's terminal `Return` held a literal (or an If),
+  while `inline_stmt_chain` discards the `Return` value — so the invented temp was
+  referenced but never bound. Fix: new `terminal_atom(Stmt*)` helper returns the
+  terminal `Return`'s actual atom (a Var bound by the preceding Lets, or the Lit
+  used directly); the two argument-lowering sites (prim-call and call) use it
+  instead of `makeVar(extract_result_var(...))`. Handles non-numeric literal
+  terminals too (the old `(+ x 0)` carry-an-atom trick was numeric-only).
+  Unmasked in the differential corpus (begin-in-operand cases now ALL four);
+  full suite 1298/1298, ASan clean.
 
 ### dynamic-wind + continuation: confirmed R7RS 6.10 traces (2026-11-15)
 

@@ -337,14 +337,11 @@ std::unique_ptr<Stmt> SchemeToCoreirLowering::lower_primitive_call_stmt(const st
             // Atomic argument: use directly (atomic_to_atom strips quote consistently)
             atom_args.push_back(atomic_to_atom(arg));
         } else {
-            // Complex argument: lower to full Stmt chain
+            // Complex argument: lower to full Stmt chain, then use its terminal
+            // value (Var bound by the chain, or a Lit — e.g. a begin ending in a
+            // literal). The chain becomes the prelude via inline_stmt_chain below.
             auto arg_stmt = lower_expr(arg);
-
-            // Extract the variable that holds the result
-            // The result is always in a Return statement at the end
-            std::string result_var = extract_result_var(arg_stmt.get());
-
-            atom_args.push_back(Atom::makeVar(result_var));
+            atom_args.push_back(terminal_atom(arg_stmt.get()));
             arg_stmt_chains.push_back(std::move(arg_stmt));
         }
 
@@ -1073,10 +1070,9 @@ std::unique_ptr<Stmt> SchemeToCoreirLowering::lower_expr(Object* scheme_expr) {
         if (is_atomic(arg)) {
             atom_args.push_back(atomic_to_atom(arg));  // strips quote consistently
         } else {
-            // Complex argument - normalize it
+            // Complex argument - normalize it; use its terminal value (Var or Lit)
             auto arg_stmt = lower_expr(arg);
-            std::string result_var = extract_result_var(arg_stmt.get());
-            atom_args.push_back(Atom::makeVar(result_var));
+            atom_args.push_back(terminal_atom(arg_stmt.get()));
             arg_stmt_chains.push_back(std::move(arg_stmt));
         }
 
@@ -1306,6 +1302,23 @@ std::string SchemeToCoreirLowering::extract_result_var(Stmt* stmt) {
     }
 
     throw std::runtime_error("Unexpected statement type in extract_result_var");
+}
+
+Atom SchemeToCoreirLowering::terminal_atom(Stmt* stmt) {
+    // Walk Lets to the terminal Return and return its atom directly. For a
+    // Return(Var) the var is bound by the preceding Lets; for a Return(Lit) the
+    // literal is used as-is. (The old pattern — extract_result_var + makeVar —
+    // invented a fresh, UNBOUND temp for a Return(Lit), so e.g. (begin 1 999) in
+    // operand position produced "Unbound variable: $tmpN".)
+    if (std::holds_alternative<Stmt::Return>(stmt->data)) {
+        return std::get<Stmt::Return>(stmt->data).value;
+    }
+    if (std::holds_alternative<Stmt::Let>(stmt->data)) {
+        return terminal_atom(std::get<Stmt::Let>(stmt->data).next.get());
+    }
+    // A terminal If (value-position if) is not supported here — inline_stmt_chain
+    // cannot splice an If either, so this is a pre-existing limitation.
+    throw std::runtime_error("terminal_atom: if in operand position not supported");
 }
 
 std::unique_ptr<Stmt> SchemeToCoreirLowering::inline_stmt_chain(std::unique_ptr<Stmt> chain,

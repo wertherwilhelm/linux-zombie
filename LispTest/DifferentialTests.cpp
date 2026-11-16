@@ -134,10 +134,12 @@ const Case kCorpus[] = {
     // Escape continuations — supported by all three (the tree-walk's only mode).
     {"(+ 1 (call/cc (lambda (k) (k 10))))", "11", ALL},
     {"(* 2 (call/cc (lambda (k) (+ 1 (k 5)))))", "10", ALL},
-    // NOTE: masked out of CoreIR (C) — a call/cc escaping through a begin in
-    // operand position leaves a CoreIR ANF temp unbound ("Unbound variable:
-    // $tmpN"). A deep CoreIR lowering/continuation interaction; see AUDIT 2.3.
-    {"(+ 100 (begin (call/cc (lambda (k) (k 5))) 999))", "1099", ALL & ~C},
+    {"(+ 100 (begin (call/cc (lambda (k) (k 5))) 999))", "1099", ALL},
+    // begin (and other complex forms) in operand position — exercises the CoreIR
+    // terminal-atom fix (a chain ending in Return(literal) must bind correctly).
+    {"(+ 100 (begin 1 999))", "1099", ALL},
+    {"(* 2 (begin 10 20))", "40", ALL},
+    {"(list 1 (begin 2 'sym))", "(1 sym)", ALL},
     {"(begin (+ 1 2) (call/cc (lambda (k) (k 42))) (+ 3 4))", "7", ALL},
     {"((lambda (ls) (call/cc (lambda (break) (let loop ((l ls) (acc 1)) (cond ((null? l) acc) ((= (car l) 0) (break 0)) (else (loop (cdr l) (* acc (car l))))))))) '(1 2 0 4))", "0", ALL},
 };
