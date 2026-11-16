@@ -72,7 +72,11 @@ public:
 
         // R7RS additions
         STRINGMAP = 25,        ///< string-map (R7RS)
-        STRINGFOREACH = 26     ///< string-for-each (R7RS)
+        STRINGFOREACH = 26,    ///< string-for-each (R7RS)
+
+        // Common extensions
+        STRINGSPLIT = 27,      ///< string-split (str char) -> list of substrings
+        STRINGCONTAINS = 28    ///< string-contains (haystack needle) -> index or #f
     };
 
     /**

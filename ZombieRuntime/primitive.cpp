@@ -33,6 +33,7 @@
 #include "primitives/primitive_strings.h"
 #include "primitives/primitive_vectors.h"
 #include "primitives/primitive_bytevectors.h"
+#include "primitives/primitive_hashtables.h"
 #include "primitives/primitive_exceptions.h"
 #include "primitives/primitive_parameters.h"
 #include "primitives/primitive_control.h"
@@ -107,6 +108,7 @@ Environment* Primitive::install_primitives(Environment* env) {
     PrimitiveStrings::install(env);
     PrimitiveVectors::install(env);
     PrimitiveBytevectors::install(env);  // R7RS bytevectors
+    PrimitiveHashTables::install(env);   // SRFI-69 subset
     PrimitiveExceptions::install(env);   // R7RS exception handling
     PrimitiveParameters::install(env);   // R7RS parameters
     PrimitiveControl::install(env);

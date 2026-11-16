@@ -1,4 +1,6 @@
 #include "zombie_runtime_types.h"
+#include <algorithm>
+#include <vector>
 #include "zombie_runtime_types.h"
 #include "primitive_control.h"
 #include "../Base.h"
@@ -85,6 +87,9 @@ PrimitiveControl::PrimitiveControl(ID id, int minArgs, int maxArgs)
         case FILTER:         m_name = "filter"; break;
         case FOLDLEFT:       m_name = "fold-left"; break;
         case FOLDRIGHT:      m_name = "fold-right"; break;
+        case REDUCE:         m_name = "reduce"; break;
+        case SORT:           m_name = "sort"; break;
+        case LISTSORT:       m_name = "list-sort"; break;
         case FORCE:          m_name = "force"; break;
         case VALUES:         m_name = "values"; break;
         case CALLWITHVALUES: m_name = "call-with-values"; break;
@@ -514,6 +519,60 @@ Object* PrimitiveControl::apply(IEvaluator* evaluator, Object* args, Environment
             return accumulator;
         }
 
+        case REDUCE: {
+            // (reduce proc ridentity list) - SRFI-1. Empty list -> ridentity;
+            // otherwise fold left with the first element as the seed, calling
+            // (proc elem acc).
+            if (!is_procedure(x)) {
+                return error("reduce: first argument must be a Procedure");
+            }
+            Object* ridentity = y;
+            Object* list = (rest(rest(args)) != nil) ? first(rest(rest(args))) : nil;
+            if (list == NULL || list->is_nil()) {
+                return ridentity;
+            }
+            Procedure* proc = dynamic_cast<Procedure*>(x);
+            Object* acc = first(list);
+            gc_root<Object> guard_acc(acc);
+            for (Object* cur = rest(list); cur && !cur->is_nil() && !cur->is_atom();
+                 cur = rest(cur)) {
+                Object* arg_list = cons(first(cur), cons(acc, nil));
+                gc_root<Object> guard_args(arg_list);
+                acc = proc->apply(evaluator, arg_list, env);
+                guard_acc = gc_root<Object>(acc);
+            }
+            return acc;
+        }
+
+        case SORT:
+        case LISTSORT: {
+            // (sort list proc) / (list-sort proc list) - stable sort by proc,
+            // where (proc a b) is true iff a should come before b.
+            Object* list = (m_id == SORT) ? x : y;
+            Object* proc_obj = (m_id == SORT) ? y : x;
+            if (!is_procedure(proc_obj)) {
+                return error("sort: comparison argument must be a Procedure");
+            }
+            Procedure* proc = dynamic_cast<Procedure*>(proc_obj);
+            // Collect elements (reachable via `args`, so safe across proc calls).
+            std::vector<Object*> elems;
+            for (Object* p = list; p && !p->is_nil() && !p->is_atom(); p = rest(p)) {
+                elems.push_back(first(p));
+            }
+            std::stable_sort(elems.begin(), elems.end(),
+                [&](Object* a, Object* b) {
+                    Object* r = proc->apply(evaluator, cons(a, cons(b, nil)), env);
+                    return truth(r);
+                });
+            Object* result = nil;
+            gc_root<Object> guard_result(result);
+            for (auto it = elems.rbegin(); it != elems.rend(); ++it) {
+                result = cons(*it, result);
+                guard_result = gc_root<Object>(result);
+            }
+            return result;
+        }
+
         case FOLDRIGHT: {
             // (fold-right proc init list1 list2 ...) - fold from right
             // (fold-right + 0 '(1 2 3)) => 6
@@ -741,6 +800,9 @@ void PrimitiveControl::install(Environment* env) {
     DEF("filter",     FILTER, 2, 2);
     DEF("fold-left",  FOLDLEFT, 3, n);
     DEF("fold-right", FOLDRIGHT, 3, n);
+    DEF("reduce",     REDUCE, 3, 3);
+    DEF("sort",       SORT, 2, 2);
+    DEF("list-sort",  LISTSORT, 2, 2);
 
     // Promises and lazy evaluation
     DEF("force", FORCE, 1, 1);

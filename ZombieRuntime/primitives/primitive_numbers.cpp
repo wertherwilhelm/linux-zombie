@@ -917,8 +917,9 @@ Object* PrimitiveNumbers::apply(IEvaluator* eval, Object* args, Environment* env
             int s = (int)std::floor(std::sqrt(val));
             int r = (int)val - (s * s);
 
-            // Return as multiple values (list for now)
-            return cons(numeric::make_integer(s), cons(numeric::make_integer(r), nil));
+            // R7RS: returns TWO values (s and r), not a list.
+            return gc_new<ValuesObject>(
+                cons(numeric::make_integer(s), cons(numeric::make_integer(r), nil)));
         }
 
         case FLOORDIV: {
@@ -937,14 +938,13 @@ Object* PrimitiveNumbers::apply(IEvaluator* eval, Object* args, Environment* env
                 return error("floor/: division by zero");
             }
 
-            // Floor division - return integer if both inputs are integers
-            if (numeric::is_integer_value(x) && numeric::is_integer_value(y)) {
-                int quotient = (int)std::floor(dividend / divisor);
-                return numeric::make_integer(quotient);
-            } else {
-                double quotient = std::floor(dividend / divisor);
-                return numeric::make_inexact(quotient);
-            }
+            // R7RS: floor/ returns TWO values (quotient and remainder).
+            bool exact = numeric::is_integer_value(x) && numeric::is_integer_value(y);
+            double q = std::floor(dividend / divisor);
+            double r = dividend - divisor * q;
+            Object* qo = exact ? numeric::make_integer((long long)q) : numeric::make_inexact(q);
+            Object* ro = exact ? numeric::make_integer((long long)r) : numeric::make_inexact(r);
+            return gc_new<ValuesObject>(cons(qo, cons(ro, nil)));
         }
 
         case TRUNCATEDIV: {
@@ -963,14 +963,13 @@ Object* PrimitiveNumbers::apply(IEvaluator* eval, Object* args, Environment* env
                 return error("truncate/: division by zero");
             }
 
-            // Truncate division - return integer if both inputs are integers
-            if (numeric::is_integer_value(x) && numeric::is_integer_value(y)) {
-                int quotient = (int)std::trunc(dividend / divisor);
-                return numeric::make_integer(quotient);
-            } else {
-                double quotient = std::trunc(dividend / divisor);
-                return numeric::make_inexact(quotient);
-            }
+            // R7RS: truncate/ returns TWO values (quotient and remainder).
+            bool exact = numeric::is_integer_value(x) && numeric::is_integer_value(y);
+            double q = std::trunc(dividend / divisor);
+            double r = dividend - divisor * q;
+            Object* qo = exact ? numeric::make_integer((long long)q) : numeric::make_inexact(q);
+            Object* ro = exact ? numeric::make_integer((long long)r) : numeric::make_inexact(r);
+            return gc_new<ValuesObject>(cons(qo, cons(ro, nil)));
         }
 
         case FLOORQUOTIENT: {

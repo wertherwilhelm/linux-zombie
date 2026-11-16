@@ -51,7 +51,10 @@ public:
         VALUES = 9,         ///< values
         CALLWITHVALUES = 10,///< call-with-values
         DYNAMICWIND = 11,   ///< dynamic-wind
-        CALLCC = 12         ///< call/cc (call-with-current-Continuation)
+        CALLCC = 12,        ///< call/cc (call-with-current-Continuation)
+        REDUCE = 13,        ///< reduce (SRFI-1)
+        SORT = 14,          ///< sort (list proc)
+        LISTSORT = 15       ///< list-sort (proc list) (R6RS)
     };
 
     /**

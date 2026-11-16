@@ -71,12 +71,19 @@ in `ReaderPrimitiveFixTests.cpp`:
   tree-walk; bytecode/CoreIR/toy-VM self-eval of `#(...)` not yet checked.
 - **`equal?` now compares vectors element-wise** (was pointer-only -> `#f`).
 
-Gaps the `r7rs-core` corpus flagged (tagged `'gap`, tracked not failing):
-- Missing procedures: `reduce`, `list-sort`, `sort`, `string-split`,
-  `string-contains` (SRFI/R6RS/extensions), `make-hash-table`/`hash-table-*`
-  (R7RS-large — notable).
-- `floor/` returns only the quotient, and `exact-integer-sqrt` returns a single
-  list — both should return **two values** (R7RS). Multi-value conformance gap.
+Gaps the `r7rs-core` corpus flagged — ALL NOW CLOSED (2026-11-16), corpus green
+with zero `'gap` tags; regression tests in `LispTest/StdlibGapTests.cpp`:
+- `reduce`, `sort`, `list-sort` — added to `PrimitiveControl` (higher-order; sort
+  is a stable_sort driven by the comparison procedure).
+- `string-split`, `string-contains` — added to `PrimitiveStrings`.
+- `floor/` / `truncate/` / `exact-integer-sqrt` now return **two values**
+  (`ValuesObject`) per R7RS; the ~30 numeric tests that treated them as single
+  values were updated to `call-with-values`.
+- **Hash tables** (SRFI-69 subset) — new `HashTable` Object type
+  (`hash_table.h`, `atype::HASHTABLE`, alist-backed with `equal?` keys, GC-traced)
+  + `PrimitiveHashTables` group: make-hash-table, hash-table? , -set!, -ref
+  (value or thunk default), -ref/default, -delete!, -contains?, -size, -keys,
+  -values, ->alist.
 
 ---
 

@@ -4,6 +4,7 @@
 #include "../Base.h"
 #include "../atom.h"
 #include "../numeric_runtime.h"
+#include <vector>
 #include <algorithm>
 #include <cctype>
 
@@ -144,6 +145,8 @@ PrimitiveStrings::PrimitiveStrings(ID id, int minArgs, int maxArgs)
         case STRINGDOWNCASE:m_name = "string-downcase"; break;
         case STRINGFOLDCASE:m_name = "string-foldcase"; break;
         case STRINGTOLIST:  m_name = "string->list"; break;
+        case STRINGSPLIT:   m_name = "string-split"; break;
+        case STRINGCONTAINS: m_name = "string-contains"; break;
         case LISTTOSTRING:  m_name = "list->string"; break;
         case STRINGFILL:    m_name = "string-fill!"; break;
 
@@ -626,6 +629,40 @@ Object* PrimitiveStrings::apply(IEvaluator* eval, Object* args, Environment* env
             return nil;  // R7RS: string-for-each returns unspecified value
         }
 
+        case STRINGSPLIT: {
+            // (string-split str delim-char) -> list of substrings between delims.
+            a_string* s = dynamic_cast<a_string*>(x);
+            if (!s) return error("string-split: first argument must be a string");
+            if (!is_char(y)) return error("string-split: delimiter must be a character");
+            char delim = ((a_char*)y)->value();
+            const std::string& str = s->value();
+            // Build the list of pieces (right-to-left so the result is in order).
+            std::vector<std::string> parts;
+            std::string cur;
+            for (char c : str) {
+                if (c == delim) { parts.push_back(cur); cur.clear(); }
+                else cur += c;
+            }
+            parts.push_back(cur);
+            Object* result = nil;
+            gc_root<Object> guard(result);
+            for (auto it = parts.rbegin(); it != parts.rend(); ++it) {
+                result = cons(gc_new<a_string>(*it), result);
+                guard = gc_root<Object>(result);
+            }
+            return result;
+        }
+
+        case STRINGCONTAINS: {
+            // (string-contains haystack needle) -> index of first match, or #f.
+            a_string* hs = dynamic_cast<a_string*>(x);
+            a_string* nd = dynamic_cast<a_string*>(y);
+            if (!hs || !nd) return error("string-contains: expected two strings");
+            size_t pos = hs->value().find(nd->value());
+            if (pos == std::string::npos) return false_obj;
+            return numeric::make_integer(static_cast<long long>(pos));
+        }
+
         default:
             return error("Unknown string Primitive");
     }
@@ -686,6 +723,8 @@ void PrimitiveStrings::install(Environment* env) {
     // R7RS additions
     DEF("string-map",        STRINGMAP, 2, n);
     DEF("string-for-each",   STRINGFOREACH, 2, n);
+    DEF("string-split",      STRINGSPLIT, 2, 2);
+    DEF("string-contains",   STRINGCONTAINS, 2, 2);
 
     #undef DEF
 }

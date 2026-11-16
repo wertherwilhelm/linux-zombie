@@ -80,31 +80,31 @@ TEST_F(R7RSNumericTest, SquareFraction) {
 // ============================================================================
 
 TEST_F(R7RSNumericTest, ExactIntegerSqrtPerfectSquare) {
-    eval("(define result (exact-integer-sqrt 16))");
+    eval("(define result (call-with-values (lambda () (exact-integer-sqrt 16)) list))");
     expectInt("(car result)", 4);
     expectInt("(cadr result)", 0);
 }
 
 TEST_F(R7RSNumericTest, ExactIntegerSqrtNonPerfect) {
-    eval("(define result (exact-integer-sqrt 10))");
+    eval("(define result (call-with-values (lambda () (exact-integer-sqrt 10)) list))");
     expectInt("(car result)", 3);  // sqrt(10) = 3.16... => 3
     expectInt("(cadr result)", 1);  // 10 - 3^2 = 1
 }
 
 TEST_F(R7RSNumericTest, ExactIntegerSqrtZero) {
-    eval("(define result (exact-integer-sqrt 0))");
+    eval("(define result (call-with-values (lambda () (exact-integer-sqrt 0)) list))");
     expectInt("(car result)", 0);
     expectInt("(cadr result)", 0);
 }
 
 TEST_F(R7RSNumericTest, ExactIntegerSqrtOne) {
-    eval("(define result (exact-integer-sqrt 1))");
+    eval("(define result (call-with-values (lambda () (exact-integer-sqrt 1)) list))");
     expectInt("(car result)", 1);
     expectInt("(cadr result)", 0);
 }
 
 TEST_F(R7RSNumericTest, ExactIntegerSqrtLarge) {
-    eval("(define result (exact-integer-sqrt 100))");
+    eval("(define result (call-with-values (lambda () (exact-integer-sqrt 100)) list))");
     expectInt("(car result)", 10);
     expectInt("(cadr result)", 0);
 }
@@ -112,7 +112,7 @@ TEST_F(R7RSNumericTest, ExactIntegerSqrtLarge) {
 TEST_F(R7RSNumericTest, ExactIntegerSqrtVerifyFormula) {
     // Verify k = s^2 + r
     eval("(define k 50)");
-    eval("(define result (exact-integer-sqrt k))");
+    eval("(define result (call-with-values (lambda () (exact-integer-sqrt k)) list))");
     eval("(define s (car result))");
     eval("(define r (cadr result))");
     eval("(define reconstructed (+ (* s s) r))");
@@ -121,7 +121,7 @@ TEST_F(R7RSNumericTest, ExactIntegerSqrtVerifyFormula) {
 
 TEST_F(R7RSNumericTest, ExactIntegerSqrtRemainderBound) {
     // Verify r < 2*s + 1 (remainder is bounded)
-    eval("(define result (exact-integer-sqrt 50))");
+    eval("(define result (call-with-values (lambda () (exact-integer-sqrt 50)) list))");
     eval("(define s (car result))");
     eval("(define r (cadr result))");
     eval("(define bound (+ (* 2 s) 1))");
@@ -133,37 +133,37 @@ TEST_F(R7RSNumericTest, ExactIntegerSqrtRemainderBound) {
 // ============================================================================
 
 TEST_F(R7RSNumericTest, FloorDivPositivePositive) {
-    eval("(define q (floor/ 7 3))");
+    eval("(define q (call-with-values (lambda () (floor/ 7 3)) (lambda (fq fr) fq)))");
     expectInt("q", 2);
 }
 
 TEST_F(R7RSNumericTest, FloorDivPositiveNegative) {
-    eval("(define q (floor/ 7 -3))");
+    eval("(define q (call-with-values (lambda () (floor/ 7 -3)) (lambda (fq fr) fq)))");
     expectInt("q", -3);  // floor(7/-3) = floor(-2.33) = -3
 }
 
 TEST_F(R7RSNumericTest, FloorDivNegativePositive) {
-    eval("(define q (floor/ -7 3))");
+    eval("(define q (call-with-values (lambda () (floor/ -7 3)) (lambda (fq fr) fq)))");
     expectInt("q", -3);  // floor(-7/3) = floor(-2.33) = -3
 }
 
 TEST_F(R7RSNumericTest, FloorDivNegativeNegative) {
-    eval("(define q (floor/ -7 -3))");
+    eval("(define q (call-with-values (lambda () (floor/ -7 -3)) (lambda (fq fr) fq)))");
     expectInt("q", 2);  // floor(-7/-3) = floor(2.33) = 2
 }
 
 TEST_F(R7RSNumericTest, FloorDivExactDivision) {
-    eval("(define q (floor/ 10 5))");
+    eval("(define q (call-with-values (lambda () (floor/ 10 5)) (lambda (fq fr) fq)))");
     expectInt("q", 2);
 }
 
 TEST_F(R7RSNumericTest, FloorDivOne) {
-    eval("(define q (floor/ 7 1))");
+    eval("(define q (call-with-values (lambda () (floor/ 7 1)) (lambda (fq fr) fq)))");
     expectInt("q", 7);
 }
 
 TEST_F(R7RSNumericTest, FloorDivSelf) {
-    eval("(define q (floor/ 5 5))");
+    eval("(define q (call-with-values (lambda () (floor/ 5 5)) (lambda (fq fr) fq)))");
     expectInt("q", 1);
 }
 
@@ -172,37 +172,37 @@ TEST_F(R7RSNumericTest, FloorDivSelf) {
 // ============================================================================
 
 TEST_F(R7RSNumericTest, TruncateDivPositivePositive) {
-    eval("(define q (truncate/ 7 3))");
+    eval("(define q (call-with-values (lambda () (truncate/ 7 3)) (lambda (tq tr) tq)))");
     expectInt("q", 2);
 }
 
 TEST_F(R7RSNumericTest, TruncateDivPositiveNegative) {
-    eval("(define q (truncate/ 7 -3))");
+    eval("(define q (call-with-values (lambda () (truncate/ 7 -3)) (lambda (tq tr) tq)))");
     expectInt("q", -2);  // trunc(7/-3) = trunc(-2.33) = -2
 }
 
 TEST_F(R7RSNumericTest, TruncateDivNegativePositive) {
-    eval("(define q (truncate/ -7 3))");
+    eval("(define q (call-with-values (lambda () (truncate/ -7 3)) (lambda (tq tr) tq)))");
     expectInt("q", -2);  // trunc(-7/3) = trunc(-2.33) = -2
 }
 
 TEST_F(R7RSNumericTest, TruncateDivNegativeNegative) {
-    eval("(define q (truncate/ -7 -3))");
+    eval("(define q (call-with-values (lambda () (truncate/ -7 -3)) (lambda (tq tr) tq)))");
     expectInt("q", 2);  // trunc(-7/-3) = trunc(2.33) = 2
 }
 
 TEST_F(R7RSNumericTest, TruncateDivExactDivision) {
-    eval("(define q (truncate/ 10 5))");
+    eval("(define q (call-with-values (lambda () (truncate/ 10 5)) (lambda (tq tr) tq)))");
     expectInt("q", 2);
 }
 
 TEST_F(R7RSNumericTest, TruncateDivOne) {
-    eval("(define q (truncate/ 7 1))");
+    eval("(define q (call-with-values (lambda () (truncate/ 7 1)) (lambda (tq tr) tq)))");
     expectInt("q", 7);
 }
 
 TEST_F(R7RSNumericTest, TruncateDivSelf) {
-    eval("(define q (truncate/ 5 5))");
+    eval("(define q (call-with-values (lambda () (truncate/ 5 5)) (lambda (tq tr) tq)))");
     expectInt("q", 1);
 }
 
@@ -211,22 +211,22 @@ TEST_F(R7RSNumericTest, TruncateDivSelf) {
 // ============================================================================
 
 TEST_F(R7RSNumericTest, FloorVsTruncatePositive) {
-    eval("(define f (floor/ 7 3))");
-    eval("(define t (truncate/ 7 3))");
+    eval("(define f (call-with-values (lambda () (floor/ 7 3)) (lambda (fq fr) fq)))");
+    eval("(define t (call-with-values (lambda () (truncate/ 7 3)) (lambda (tq tr) tq)))");
     expectInt("f", 2);
     expectInt("t", 2);  // Same for positive/positive
 }
 
 TEST_F(R7RSNumericTest, FloorVsTruncateNegative) {
-    eval("(define f (floor/ -7 3))");
-    eval("(define t (truncate/ -7 3))");
+    eval("(define f (call-with-values (lambda () (floor/ -7 3)) (lambda (fq fr) fq)))");
+    eval("(define t (call-with-values (lambda () (truncate/ -7 3)) (lambda (tq tr) tq)))");
     expectInt("f", -3);  // floor rounds toward negative infinity
     expectInt("t", -2);  // truncate rounds toward zero
 }
 
 TEST_F(R7RSNumericTest, FloorVsTruncateMixed) {
-    eval("(define f (floor/ 7 -3))");
-    eval("(define t (truncate/ 7 -3))");
+    eval("(define f (call-with-values (lambda () (floor/ 7 -3)) (lambda (fq fr) fq)))");
+    eval("(define t (call-with-values (lambda () (truncate/ 7 -3)) (lambda (tq tr) tq)))");
     expectInt("f", -3);  // floor rounds toward negative infinity
     expectInt("t", -2);  // truncate rounds toward zero
 }
@@ -238,7 +238,7 @@ TEST_F(R7RSNumericTest, FloorVsTruncateMixed) {
 TEST_F(R7RSNumericTest, SquareAndSqrt) {
     eval("(define x 7)");
     eval("(define squared (square x))");
-    eval("(define root (exact-integer-sqrt squared))");
+    eval("(define root (call-with-values (lambda () (exact-integer-sqrt squared)) list))");
     expectInt("(car root)", 7);
     expectInt("(cadr root)", 0);
 }
@@ -296,7 +296,7 @@ TEST_F(R7RSNumericTest, DistanceFormula) {
 TEST_F(R7RSNumericTest, IntegerDivision) {
     eval(R"(
         (define (div-mod n d)
-            (define q (floor/ n d))
+            (define q (call-with-values (lambda () (floor/ n d)) (lambda (fq fr) fq)))
             (define r (- n (* q d)))
             (cons q r))
         (define result (div-mod 17 5))
@@ -308,7 +308,7 @@ TEST_F(R7RSNumericTest, IntegerDivision) {
 TEST_F(R7RSNumericTest, IsPerfectSquare) {
     eval(R"(
         (define (is-perfect-square? n)
-            (define result (exact-integer-sqrt n))
+            (define result (call-with-values (lambda () (exact-integer-sqrt n)) list))
             (define r (cadr result))
             (= r 0))
         (define test1 (is-perfect-square? 16))
@@ -339,12 +339,12 @@ TEST_F(R7RSNumericTest, SquareOfOne) {
 }
 
 TEST_F(R7RSNumericTest, FloorDivByLarger) {
-    eval("(define q (floor/ 3 7))");
+    eval("(define q (call-with-values (lambda () (floor/ 3 7)) (lambda (fq fr) fq)))");
     expectInt("q", 0);
 }
 
 TEST_F(R7RSNumericTest, TruncateDivByLarger) {
-    eval("(define q (truncate/ 3 7))");
+    eval("(define q (call-with-values (lambda () (truncate/ 3 7)) (lambda (tq tr) tq)))");
     expectInt("q", 0);
 }
 
@@ -465,7 +465,7 @@ TEST_F(R7RSNumericTest, CompareFloorVsTruncateRemainder) {
 
 TEST_F(R7RSNumericTest, DivisionConsistency) {
     // Compare floor/, floor-quotient
-    eval("(define div1 (floor/ 17 5))");
+    eval("(define div1 (call-with-values (lambda () (floor/ 17 5)) (lambda (fq fr) fq)))");
     eval("(define div2 (floor-quotient 17 5))");
     expectInt("div1", 3);
     expectInt("div2", 3);
@@ -473,7 +473,7 @@ TEST_F(R7RSNumericTest, DivisionConsistency) {
 
 TEST_F(R7RSNumericTest, TruncateDivisionConsistency) {
     // Compare truncate/, truncate-quotient
-    eval("(define div1 (truncate/ 17 5))");
+    eval("(define div1 (call-with-values (lambda () (truncate/ 17 5)) (lambda (tq tr) tq)))");
     eval("(define div2 (truncate-quotient 17 5))");
     expectInt("div1", 3);
     expectInt("div2", 3);

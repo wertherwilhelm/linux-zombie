@@ -11,12 +11,12 @@
     (list "filter"      '(filter odd? '(1 2 3 4 5 6))              '(1 3 5))
     (list "fold-left"   '(fold-left + 0 '(1 2 3 4 5))              15)
     (list "fold-right"  '(fold-right cons '() '(1 2 3))           '(1 2 3))
-    (list "reduce"      '(reduce + 0 '(1 2 3 4))                   10  'gap)
+    (list "reduce"      '(reduce + 0 '(1 2 3 4))                   10 )
     (list "assoc"       '(assoc 'b '((a . 1) (b . 2)))            '(b . 2))
     (list "assq"        '(assq 'c '((a . 1) (c . 3)))             '(c . 3))
     (list "member"      '(member 3 '(1 2 3 4))                    '(3 4))
-    (list "list-sort"   '(list-sort < '(3 1 2))                   '(1 2 3) 'gap)
-    (list "sort"        '(sort '(3 1 2) <)                        '(1 2 3) 'gap)
+    (list "list-sort"   '(list-sort < '(3 1 2))                   '(1 2 3))
+    (list "sort"        '(sort '(3 1 2) <)                        '(1 2 3))
 
     ;; vectors
     (list "vector-map"  '(vector-map (lambda (x) (* x 2)) (vector 1 2 3)) #(2 4 6))
@@ -27,9 +27,9 @@
     ;; strings & chars
     (list "string-map"  '(string-map char-upcase "abc")          "ABC")
     (list "string-for-each" '(let ((n 0)) (string-for-each (lambda (c) (set! n (+ n 1))) "hi") n) 2)
-    (list "string-split" '(string-split "a,b,c" #\,)            '("a" "b" "c") 'gap)
+    (list "string-split" '(string-split "a,b,c" #\,)            '("a" "b" "c"))
     (list "string-upcase" '(string-upcase "hello")              "HELLO")
-    (list "string-contains" '(string-contains "hello world" "wor") 6 'gap)
+    (list "string-contains" '(string-contains "hello world" "wor") 6)
     (list "string->list" '(string->list "abc")                  '(#\a #\b #\c))
     (list "char-upcase" '(char-upcase #\a)                       #\A)
 
@@ -52,14 +52,12 @@
     (list "exact->inexact" '(exact->inexact 1/4)                 0.25)
     (list "expt"        '(expt 2 10)                              1024)
     (list "gcd-lcm"     '(list (gcd 12 18) (lcm 4 6))           '(6 12))
-    ;; floor/ and exact-integer-sqrt should return TWO values; currently floor/
-    ;; yields only the quotient and exact-integer-sqrt a single list — gaps.
-    (list "floor/"      '(call-with-values (lambda () (floor/ 7 2)) list) '(3 1) 'gap)
+    (list "floor/"      '(call-with-values (lambda () (floor/ 7 2)) list) '(3 1))
     (list "number->string-radix" '(number->string 255 16)        "ff")
-    (list "exact-sqrt"  '(call-with-values (lambda () (exact-integer-sqrt 17)) list) '(4 1) 'gap)
+    (list "exact-sqrt"  '(call-with-values (lambda () (exact-integer-sqrt 17)) list) '(4 1))
 
     ;; association / hash tables (R7RS/SRFI-69 - likely a gap)
-    (list "make-hash"   '(let ((h (make-hash-table))) (hash-table-set! h 'k 42) (hash-table-ref h 'k #f)) 42 'gap)
+    (list "make-hash"   '(let ((h (make-hash-table))) (hash-table-set! h 'k 42) (hash-table-ref h 'k #f)) 42)
 
     ;; tail recursion depth
     (list "deep-tail"   '(let loop ((i 0)) (if (< i 100000) (loop (+ i 1)) i)) 100000)))
