@@ -216,6 +216,27 @@ differential entries. Full suite 1322/1322, ASan-clean.
 - Minor still-open: `(min 1 2.0)` should be inexact (1.0) by contagion but
   returns exact 1; `#x`/`#b` number prefixes in the reader aren't parsed.
 
+### Corpus batch 7 (`corpus/r7rs-seq-ops`, 2026-11-16)
+- **floor/ceiling/truncate** had the same exactness bug as round (always
+  returned inexact). Now exact/integral inputs give exact results
+  (`(floor 7/2)`→exact 3), inexact stays inexact.
+- **`symbol=?`** was missing — added to `primitive_symbols` (variadic, 2+ args;
+  the group's constructor now picks arity per id).
+- **`define-values`** was missing — added as a derived form in the Expander
+  (`expand_define_values`): defines each variable then `call-with-values` on a
+  producer thunk `set!`s them. Handles fixed, dotted-rest, and single-symbol
+  formals. Tree-walk delegates via `kExpanderForms`.
+- **`vector->list`**/**`vector-fill!`** gained their optional `[start [end]]`
+  args; **`vector-copy!`** (`to at from [start [end]]`) was missing entirely —
+  added with overlap-safe copy direction.
+All work on every evaluator. Corpus `corpus/r7rs-seq-ops` (19 cases) +
+differential entries. Full suite 1322/1322, ASan-clean.
+
+Corpus now has 10 entries: algol-msweet, r7rs-core, r7rs-extra, r7rs-syntax,
+r7rs-io, r7rs-records, r7rs-bytevectors, r7rs-numeric-strings, r7rs-seq-ops
+(plus the original set). Only `'gap`: `rationalize` (inexact),
+`with-output-to-string`.
+
 ---
 
 ## Evaluator architecture audit (2026-11-13)

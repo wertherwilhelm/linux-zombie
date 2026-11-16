@@ -606,21 +606,31 @@ Object* PrimitiveNumbers::apply(IEvaluator* eval, Object* args, Environment* env
             if (!numeric::is_number(x)) {
                 return error("floor: expected a number");
             }
-            return numeric::make_inexact(std::floor(numeric::to_double(x)));
+            // Exactness is preserved (R7RS): exact input -> exact integer.
+            if (numeric::is_integer_value(x)) return x;
+            double r = std::floor(numeric::to_double(x));
+            return numeric::is_exact(x) ? numeric::make_integer((int64_t)r)
+                                        : numeric::make_inexact(r);
         }
 
         case CEILING: {
             if (!numeric::is_number(x)) {
                 return error("ceiling: expected a number");
             }
-            return numeric::make_inexact(std::ceil(numeric::to_double(x)));
+            if (numeric::is_integer_value(x)) return x;
+            double r = std::ceil(numeric::to_double(x));
+            return numeric::is_exact(x) ? numeric::make_integer((int64_t)r)
+                                        : numeric::make_inexact(r);
         }
 
         case TRUNCATE: {
             if (!numeric::is_number(x)) {
                 return error("truncate: expected a number");
             }
-            return numeric::make_inexact(std::trunc(numeric::to_double(x)));
+            if (numeric::is_integer_value(x)) return x;
+            double r = std::trunc(numeric::to_double(x));
+            return numeric::is_exact(x) ? numeric::make_integer((int64_t)r)
+                                        : numeric::make_inexact(r);
         }
 
         // ====================================================================

@@ -35,7 +35,8 @@ public:
     enum ID {
         SYMBOLQ = 0,         ///< symbol? predicate
         SYMBOLTOSTRING = 1,  ///< symbol->string conversion
-        STRINGTOSYMBOL = 2   ///< string->symbol conversion
+        STRINGTOSYMBOL = 2,  ///< string->symbol conversion
+        SYMBOLEQ = 3         ///< symbol=? (variadic equality)
     };
 
     /**

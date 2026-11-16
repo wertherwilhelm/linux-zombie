@@ -78,6 +78,7 @@ PrimitiveVectors::PrimitiveVectors(ID id, int minArgs, int maxArgs)
         case VECTORTOLIST:  m_name = "vector->list"; break;
         case LISTTOVECTOR:  m_name = "list->vector"; break;
         case VECTORCOPY:    m_name = "vector-copy"; break;
+        case VECTORCOPYMUT: m_name = "vector-copy!"; break;
         case VECTORAPPEND:  m_name = "vector-append"; break;
         case VECTORMAP:     m_name = "vector-map"; break;
         case VECTORFOREACH: m_name = "vector-for-each"; break;
@@ -99,6 +100,8 @@ Object* PrimitiveVectors::apply(IEvaluator* eval, Object* args, Environment* env
     // Extract arguments
     Object* x = first(args);
     Object* y = (rest(args) && !rest(args)->is_nil()) ? second(args) : nil;
+    Object* rest2 = (rest(args) && !rest(args)->is_nil()) ? rest(rest(args)) : nil;
+    Object* z = (rest2 && rest2->pair()) ? first(rest2) : nil;
 
     // Dispatch based on Primitive ID
     switch (m_id) {
@@ -173,6 +176,7 @@ Object* PrimitiveVectors::apply(IEvaluator* eval, Object* args, Environment* env
         }
 
         case VECTORFILL: {
+            // (vector-fill! vec fill [start [end]]) - R7RS 6.8
             if (!is_vector(x)) {
                 return error("vector-fill!: first argument must be a vector");
             }
@@ -180,8 +184,15 @@ Object* PrimitiveVectors::apply(IEvaluator* eval, Object* args, Environment* env
                 return error("vector-fill!: requires fill value argument");
             }
             a_vector* vec = (a_vector*)x;
-            // Fill all elements with the value
-            for (int i = 0; i < vec->length(); i++) {
+            int len = vec->length();
+            int start = (z && !z->is_nil()) ? (int)num(z) : 0;
+            Object* end_obj = (rest2 && rest2->pair() && rest(rest2) && rest(rest2)->pair())
+                                  ? first(rest(rest2)) : nil;
+            int end = (end_obj && !end_obj->is_nil()) ? (int)num(end_obj) : len;
+            if (start < 0 || end > len || start > end) {
+                return error("vector-fill!: index out of range");
+            }
+            for (int i = start; i < end; i++) {
                 vec->set(i, y);
             }
             return nil;
@@ -191,8 +202,25 @@ Object* PrimitiveVectors::apply(IEvaluator* eval, Object* args, Environment* env
         // Conversions
         // ====================================================================
 
-        case VECTORTOLIST:
-            return vector_to_list(x);
+        case VECTORTOLIST: {
+            // (vector->list vec [start [end]]) - R7RS 6.8
+            if (!is_vector(x)) {
+                return error("vector->list: argument must be a vector");
+            }
+            a_vector* vec = (a_vector*)x;
+            int len = vec->length();
+            int start = (y && !y->is_nil()) ? (int)num(y) : 0;
+            int end   = (z && !z->is_nil()) ? (int)num(z) : len;
+            if (start < 0 || end > len || start > end) {
+                return error("vector->list: index out of range");
+            }
+            Object* result = nil;
+            gc_root<Object> rguard(result);
+            for (int i = end - 1; i >= start; i--) {
+                result = cons(vec->get(i), result);
+            }
+            return result;
+        }
 
         case LISTTOVECTOR:
             return list_to_vector(x);
@@ -237,6 +265,47 @@ Object* PrimitiveVectors::apply(IEvaluator* eval, Object* args, Environment* env
                 elements.push_back(vec->get(i));
             }
             return gc_new<a_vector>(elements);
+        }
+
+        case VECTORCOPYMUT: {
+            // (vector-copy! to at from [start [end]]) - R7RS 6.8
+            // Copy from[start,end) into to starting at index at.
+            Object* to_obj   = x;         // args: (to at from [start [end]])
+            Object* at_obj   = y;
+            Object* from_obj = z;         // rest2 = (from start end); z = from
+            Object* r3 = (rest2 && rest2->pair()) ? rest(rest2) : nil;   // (start end)
+            Object* start_obj = (r3 && r3->pair()) ? first(r3) : nil;
+            Object* r4 = (r3 && r3->pair()) ? rest(r3) : nil;           // (end)
+            Object* end_obj = (r4 && r4->pair()) ? first(r4) : nil;
+
+            if (!is_vector(to_obj) || !is_vector(from_obj)) {
+                return error("vector-copy!: to and from must be vectors");
+            }
+            if (at_obj == nullptr || at_obj->is_nil()) {
+                return error("vector-copy!: requires an 'at' index");
+            }
+            a_vector* to   = (a_vector*)to_obj;
+            a_vector* from = (a_vector*)from_obj;
+            int at    = (int)num(at_obj);
+            int start = (start_obj && !start_obj->is_nil()) ? (int)num(start_obj) : 0;
+            int end   = (end_obj && !end_obj->is_nil()) ? (int)num(end_obj) : from->length();
+            if (start < 0 || end > from->length() || start > end) {
+                return error("vector-copy!: source range out of bounds");
+            }
+            if (at < 0 || at + (end - start) > to->length()) {
+                return error("vector-copy!: destination range out of bounds");
+            }
+            // Overlap-safe when to and from alias: copy backward if at > start.
+            if (at > start) {
+                for (int i = end - start - 1; i >= 0; i--) {
+                    to->set(at + i, from->get(start + i));
+                }
+            } else {
+                for (int i = 0; i < end - start; i++) {
+                    to->set(at + i, from->get(start + i));
+                }
+            }
+            return nil;
         }
 
         case VECTORAPPEND: {
@@ -532,14 +601,15 @@ void PrimitiveVectors::install(Environment* env) {
     DEF("vector-length", VECTORLENGTH, 1, 1);
     DEF("vector-ref",    VECTORREF, 2, 2);
     DEF("vector-set!",   VECTORSET, 3, 3);
-    DEF("vector-fill!",  VECTORFILL, 2, 2);
+    DEF("vector-fill!",  VECTORFILL, 2, 4);
 
     // Conversions
-    DEF("vector->list", VECTORTOLIST, 1, 1);
+    DEF("vector->list", VECTORTOLIST, 1, 3);
     DEF("list->vector", LISTTOVECTOR, 1, 1);
 
     // R7RS additions
     DEF("vector-copy",       VECTORCOPY, 1, 3);
+    DEF("vector-copy!",      VECTORCOPYMUT, 3, 5);
     DEF("vector-append",     VECTORAPPEND, 0, n);
     DEF("vector-map",        VECTORMAP, 2, n);
     DEF("vector-for-each",   VECTORFOREACH, 2, n);

@@ -231,6 +231,11 @@ Object* Expander::expand_list(Object* list) {
         return expand_define_record_type(args);
     }
 
+    if (name == "define-values") {
+        // (define-values formals producer)
+        return expand_define_values(args);
+    }
+
     // Global Macro definition - install transformer in environment
     if (name == "define-syntax") {
         Object* macro_name = first(args);
@@ -1122,6 +1127,77 @@ Object* Expander::expand_define_record_type(Object* args) {
         body = cons(*it, body);
     }
     return expand(cons(intern_symbol("begin"), body));
+}
+
+Object* Expander::expand_define_values(Object* args) {
+    // (define-values <formals> <producer>)  ->
+    //   (begin (define v #f) ...                  ; one per bound variable
+    //          (call-with-values (lambda () producer)
+    //            (lambda (t ... [. tr]) (set! v t) ... [set! rest tr])))
+    if (is_nil(args) || !args->pair()) {
+        throw std::runtime_error("define-values: malformed syntax");
+    }
+    Object* formals  = first(args);
+    Object* producer = first(rest(args));
+
+    // Collect fixed variables and an optional rest variable.
+    std::vector<Object*> vars;
+    Object* rest_var = nil;
+    if (formals->is_atom() && !is_nil(formals)) {
+        rest_var = formals;  // (define-values x producer): x gets all values
+    } else {
+        Object* f = formals;
+        while (!is_nil(f) && f->pair()) {
+            vars.push_back(first(f));
+            f = rest(f);
+        }
+        if (!is_nil(f) && f->is_atom()) {
+            rest_var = f;  // dotted tail: (a b . rest)
+        }
+    }
+
+    static int dv_counter = 0;
+    std::vector<Object*> temps;
+    for (size_t i = 0; i < vars.size(); ++i) {
+        temps.push_back(intern_symbol("__dv_t" + std::to_string(dv_counter++)));
+    }
+    Object* temp_rest = is_nil(rest_var) ? (Object*)nil
+                      : (Object*)intern_symbol("__dv_r" + std::to_string(dv_counter++));
+
+    // Consumer lambda formals: (t0 t1 ... [. tr])
+    Object* lam_formals = is_nil(rest_var) ? (Object*)nil : temp_rest;
+    for (int i = (int)temps.size() - 1; i >= 0; --i) {
+        lam_formals = cons(temps[i], lam_formals);
+    }
+
+    // Consumer body: (set! var temp) ... [(set! rest tr)]
+    std::vector<Object*> sets;
+    for (size_t i = 0; i < vars.size(); ++i) {
+        sets.push_back(cons(intern_symbol("set!"), cons(vars[i], cons(temps[i], nil))));
+    }
+    if (!is_nil(rest_var)) {
+        sets.push_back(cons(intern_symbol("set!"), cons(rest_var, cons(temp_rest, nil))));
+    }
+    Object* set_list = nil;
+    for (auto it = sets.rbegin(); it != sets.rend(); ++it) set_list = cons(*it, set_list);
+
+    Object* consumer = cons(intern_symbol("lambda"), cons(lam_formals, set_list));
+    Object* producer_thunk = cons(intern_symbol("lambda"), cons(nil, cons(producer, nil)));
+    Object* cwv = cons(intern_symbol("call-with-values"),
+                       cons(producer_thunk, cons(consumer, nil)));
+
+    // (begin (define var #f) ... [define rest #f] cwv)
+    std::vector<Object*> forms;
+    for (size_t i = 0; i < vars.size(); ++i) {
+        forms.push_back(cons(intern_symbol("define"), cons(vars[i], cons(false_obj, nil))));
+    }
+    if (!is_nil(rest_var)) {
+        forms.push_back(cons(intern_symbol("define"), cons(rest_var, cons(false_obj, nil))));
+    }
+    forms.push_back(cwv);
+    Object* begin_body = nil;
+    for (auto it = forms.rbegin(); it != forms.rend(); ++it) begin_body = cons(*it, begin_body);
+    return expand(cons(intern_symbol("begin"), begin_body));
 }
 
 Object* Expander::quasiquote_tagged(const char* tag, Object* inner) {

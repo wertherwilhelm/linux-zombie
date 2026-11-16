@@ -142,6 +142,12 @@ const Case kCorpus[] = {
     {"(string-copy \"hello\" 1 3)", "el", ALL},
     {"(assoc 2.0 '((1 . a) (2 . b)) =)", "(2 . b)", ALL},
     {"(member 2.0 '(1 2 3) =)", "(2 3)", ALL},
+    // floor/ceiling/truncate exactness, symbol=?, define-values, vector ranges
+    {"(exact? (floor 7/2))", "#t", ALL}, {"(ceiling 7/2)", "4", ALL},
+    {"(symbol=? 'a 'a 'a)", "#t", ALL}, {"(symbol=? 'a 'b)", "#f", ALL},
+    {"(begin (define-values (a b) (values 3 4)) (+ a b))", "7", ALL},
+    {"(begin (define-values (a . r) (values 1 2 3)) (length r))", "2", ALL},
+    {"(vector-ref (let ((v (vector 1 2 3))) (vector-copy! v 0 #(9 8)) v) 1)", "8", ALL},
     // strings / symbols (display-style printing: no quotes)
     {"(string-length \"hello\")", "5", ALL},
     {"(string-append \"a\" \"b\" \"c\")", "abc", ALL},

@@ -52,7 +52,8 @@ public:
         VECTORMAP = 11,     ///< vector-map (R7RS)
         VECTORFOREACH = 12, ///< vector-for-each (R7RS)
         STRINGTOVECTOR = 13,///< string->vector (R7RS)
-        VECTORTOSTRING = 14 ///< vector->string (R7RS)
+        VECTORTOSTRING = 14,///< vector->string (R7RS)
+        VECTORCOPYMUT = 15  ///< vector-copy! (R7RS)
     };
 
     /**

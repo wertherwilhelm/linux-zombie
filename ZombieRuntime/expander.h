@@ -196,6 +196,12 @@ private:
      */
     Object* expand_define_record_type(Object* args);
 
+    /**
+     * @brief Desugar (define-values formals producer) to defines + a
+     * call-with-values that set!s each bound variable (R7RS 5.3.3).
+     */
+    Object* expand_define_values(Object* args);
+
     // -------------------------------------------------------------------------
     // Local Macro handling (let-syntax, letrec-syntax)
     // -------------------------------------------------------------------------

@@ -17,7 +17,8 @@
 // ============================================================================
 
 PrimitiveSymbols::PrimitiveSymbols(ID id)
-    : PrimitiveBase(1, 1),  // All symbol primitives take exactly 1 argument
+    // symbol=? is variadic (2+ args); the rest take exactly one argument.
+    : PrimitiveBase(id == SYMBOLEQ ? 2 : 1, id == SYMBOLEQ ? 999999 : 1),
       m_id(id) {
     // Set Primitive name based on ID
     switch (id) {
@@ -31,6 +32,10 @@ PrimitiveSymbols::PrimitiveSymbols(ID id)
 
         case STRINGTOSYMBOL:
             m_name = "string->symbol";
+            break;
+
+        case SYMBOLEQ:
+            m_name = "symbol=?";
             break;
     }
 }
@@ -77,6 +82,24 @@ Object* PrimitiveSymbols::apply(IEvaluator* eval, Object* args, Environment* env
             return intern_symbol(((a_string*)x)->value());
         }
 
+        case SYMBOLEQ: {
+            // (symbol=? sym1 sym2 ...) - #t iff all arguments are the same symbol
+            if (!is_symbol(x)) {
+                return error("symbol=?: arguments must be symbols");
+            }
+            const std::string& s0 = ((a_symbol*)x)->value();
+            for (Object* p = rest(args); p && !p->is_nil(); p = rest(p)) {
+                Object* e = first(p);
+                if (!is_symbol(e)) {
+                    return error("symbol=?: arguments must be symbols");
+                }
+                if (((a_symbol*)e)->value() != s0) {
+                    return static_cast<Object*>(false_obj);
+                }
+            }
+            return t;
+        }
+
         default:
             return error("Unknown symbol Primitive");
     }
@@ -97,4 +120,7 @@ void PrimitiveSymbols::install(Environment* env) {
 
     gc_root<a_string> name_str2sym(gc_new<a_string>("string->symbol"));
     env->define(name_str2sym.get(), gc_new<PrimitiveSymbols>(STRINGTOSYMBOL));
+
+    gc_root<a_string> name_symeq(gc_new<a_string>("symbol=?"));
+    env->define(name_symeq.get(), gc_new<PrimitiveSymbols>(SYMBOLEQ));
 }
