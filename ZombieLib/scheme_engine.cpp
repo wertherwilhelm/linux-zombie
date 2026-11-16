@@ -771,6 +771,25 @@ void scheme_engine::warmup_prelude() {
 
 ;; --- R6RS vector-sort: (vector-sort proc vec) ---
 (define (vector-sort proc v) (list->vector (sort (vector->list v) proc)))
+
+;; --- rationalize (R7RS 6.2.6): simplest rational within tolerance. ---
+;; Defined in Scheme (over the exact tower) so exact inputs give an exact
+;; result; this shadows the inexact-only C++ primitive. floor / + / - / / are
+;; all exactness-preserving, so the recursion stays exact for exact args.
+(define (rationalize x e)
+  (define (simplest-positive lo hi)
+    (let ((fl (floor lo)))
+      (cond ((>= fl lo) fl)
+            ((= fl (floor hi))
+             (+ fl (/ 1 (simplest-positive (/ 1 (- hi fl)) (/ 1 (- lo fl))))))
+            (else (+ fl 1)))))
+  (define (simplest lo hi)
+    (cond ((> lo hi) (simplest hi lo))
+          ((positive? lo) (simplest-positive lo hi))
+          ((negative? hi) (- (simplest-positive (- hi) (- lo))))
+          (else (if (and (exact? lo) (exact? hi)) 0 0.0))))
+  (let ((ax (abs e)))
+    (simplest (- x ax) (+ x ax))))
 )SRFI";
 
     eval_string(kPrelude);

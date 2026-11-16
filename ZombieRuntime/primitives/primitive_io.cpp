@@ -17,6 +17,7 @@
 #include "../../GarbageCollector/gc_ptr.h"
 #include <fstream>
 #include "../a_vector.h"
+#include "../procedure.h"
 #include <sstream>
 #include <cctype>
 
@@ -154,6 +155,8 @@ PrimitiveIO::PrimitiveIO(ID id, int minArgs, int maxArgs)
         case READBYTEVECTOR:     m_name = "read-bytevector"; break;
         case READBYTEVECTORBANG: m_name = "read-bytevector!"; break;
         case WRITEBYTEVECTOR:    m_name = "write-bytevector"; break;
+        case WITHOUTPUTTOSTRING:   m_name = "with-output-to-string"; break;
+        case CALLWITHOUTPUTSTRING: m_name = "call-with-output-string"; break;
     }
 }
 
@@ -450,6 +453,37 @@ Object* PrimitiveIO::apply(IEvaluator* evaluator, Object* args, Environment* env
 
             port->write(x);
             return x;
+        }
+
+        case WITHOUTPUTTOSTRING: {
+            // (with-output-to-string thunk) - run thunk with the default output
+            // port (what display/write use with no port arg) bound to a fresh
+            // string port, and return the accumulated output.
+            Procedure* thunk = dynamic_cast<Procedure*>(x);
+            if (!thunk) return error("with-output-to-string: argument must be a procedure");
+            StringOutputPort* sp = gc_new<StringOutputPort>();
+            gc_root<Object> spguard(sp);
+            OutputPort* saved = stdout_port;
+            stdout_port = sp;
+            try {
+                thunk->apply(evaluator, nil, env);
+            } catch (...) {
+                stdout_port = saved;
+                throw;
+            }
+            stdout_port = saved;
+            return gc_new<a_string>(sp->get_string());
+        }
+
+        case CALLWITHOUTPUTSTRING: {
+            // (call-with-output-string proc) - call proc on a fresh string port
+            // and return the accumulated output.
+            Procedure* proc = dynamic_cast<Procedure*>(x);
+            if (!proc) return error("call-with-output-string: argument must be a procedure");
+            StringOutputPort* sp = gc_new<StringOutputPort>();
+            gc_root<Object> spguard(sp);
+            proc->apply(evaluator, cons(sp, nil), env);
+            return gc_new<a_string>(sp->get_string());
         }
 
         case NEWLINE: {
@@ -1016,6 +1050,8 @@ void PrimitiveIO::install(Environment* env) {
     DEF("open-input-string",  OPENINPUTSTRING, 1, 1);
     DEF("open-output-string", OPENOUTPUTSTRING, 0, 0);
     DEF("get-output-string",  GETOUTPUTSTRING, 1, 1);
+    DEF("with-output-to-string", WITHOUTPUTTOSTRING, 1, 1);
+    DEF("call-with-output-string", CALLWITHOUTPUTSTRING, 1, 1);
 
     // R7RS bytevector I/O
     DEF("read-u8",           READU8, 0, 1);

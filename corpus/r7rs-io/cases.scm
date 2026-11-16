@@ -23,10 +23,12 @@
     (list "out-string-display" '(let ((p (open-output-string)))
                                   (display "hi") (display 42 p) (get-output-string p))
           "42")
-    ;; with-output-to-string needs current-output-port parameterization (not yet wired).
     (list "with-output-to-string"
           '(with-output-to-string (lambda () (display "abc") (display 123)))
-          "abc123" 'gap)
+          "abc123")
+    (list "call-with-output-string"
+          '(call-with-output-string (lambda (p) (display 'x p) (display 42 p)))
+          "x42")
 
     ;; --- write vs display (strings/chars quoting) ---
     (list "write-string-quoted" '(let ((p (open-output-string))) (write "hi" p) (get-output-string p)) "\"hi\"")

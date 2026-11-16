@@ -164,6 +164,9 @@ const Case kCorpus[] = {
     // radix / exactness number prefixes
     {"#xff", "255", ALL}, {"#b101", "5", ALL}, {"#o17", "15", ALL},
     {"#e1.5", "3/2", ALL}, {"(exact? #i1/2)", "#f", ALL}, {"(+ #xff #b1)", "256", ALL},
+    // with-output-to-string / call-with-output-string
+    {"(with-output-to-string (lambda () (display \"ab\") (display 12)))", "ab12", ALL},
+    {"(call-with-output-string (lambda (p) (display 99 p)))", "99", ALL},
     // strings / symbols (display-style printing: no quotes)
     {"(string-length \"hello\")", "5", ALL},
     {"(string-append \"a\" \"b\" \"c\")", "abc", ALL},

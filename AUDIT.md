@@ -279,11 +279,36 @@ differential entries. Full suite 1322/1322, ASan-clean.
   (plain `(list (if #t 1 2))` fails too); the differential harness and
   in-`define` uses lower it fine, so this is orthogonal to `case =>`.
 
-Corpus now has 13 entries: algol-msweet, r7rs-core, r7rs-extra, r7rs-syntax,
+### Known-gap closures (2026-11-16)
+- **Number prefixes `#x`/`#b`/`#o`/`#d`/`#e`/`#i`** — the reader rejected all of
+  them. `scheme_reader::read_char` now parses radix + exactness prefixes
+  (combinable, either order) via `parse_number_token`. New corpus
+  `corpus/r7rs-number-prefixes` (17) + differential. On every evaluator.
+- **`rationalize`** returned inexact for exact inputs. Reimplemented in the
+  prelude (the "simplest rational" algorithm over the exact tower — now correct
+  because floor/`/`/`-` are exactness-preserving), shadowing the inexact C++
+  primitive. Exact on tree-walk/bytecode/vm; **CoreIR still falls back to the
+  inexact primitive** because the SRFI prelude doesn't load there (see below).
+  Untagged in `corpus/r7rs-extra`.
+- **`with-output-to-string` / `call-with-output-string`** were missing — added
+  as IO primitives that bind the default output port (`stdout_port`) to a fresh
+  `StringOutputPort` for the dynamic extent of the thunk/proc and return the
+  captured text. On every evaluator. Untagged in `corpus/r7rs-io`.
+
+**CoreIR "if in operand position" is the key remaining architectural gap.**
+Root cause confirmed: the CoreIR lowering can't handle `if` (hence cond/case,
+and anything that desugars to them) when it appears as a sub-expression — an
+argument, or a `let`-binding init. `(list (if #t 1 2))` fails; the prelude's
+very first form (`iota`, which has `(if ...)` as a `let` init) fails, so the
+whole SRFI prelude aborts loading on CoreIR (iota/take/string-*/rationalize all
+unbound there). Fixing it needs an ANF-style lift of `if` into a join-point
+`let` during lowering. Everything works in tail/statement position and via the
+non-REPL differential harness, so it's isolated but worth doing next.
+
+Corpus now has 14 entries (algol-msweet, r7rs-core, r7rs-extra, r7rs-syntax,
 r7rs-io, r7rs-records, r7rs-bytevectors, r7rs-numeric-strings, r7rs-seq-ops,
-r7rs-comparisons, r7rs-inexact-print, r7rs-case-hashupdate. Only `'gap`:
-`rationalize` (inexact), `with-output-to-string`. Known still-open:
-`#x`/`#b`/`#o`/`#e`/`#i` number prefixes aren't read; CoreIR REPL if-in-operand.
+r7rs-comparisons, r7rs-inexact-print, r7rs-case-hashupdate, r7rs-number-prefixes;
+r7rs-extra/r7rs-io now have no `'gap`s). **No `'gap` tags remain anywhere.**
 
 ---
 

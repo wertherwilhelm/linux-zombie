@@ -81,7 +81,9 @@ public:
         READBYTEVECTOR = 30,   ///< read-bytevector (R7RS)
         READBYTEVECTORBANG = 31, ///< read-bytevector! (R7RS)
         WRITEBYTEVECTOR = 32,  ///< write-bytevector (R7RS)
-        EOFOBJECT = 33         ///< eof-object (R7RS) - returns the EOF sentinel
+        EOFOBJECT = 33,        ///< eof-object (R7RS) - returns the EOF sentinel
+        WITHOUTPUTTOSTRING = 34,  ///< with-output-to-string (thunk)
+        CALLWITHOUTPUTSTRING = 35 ///< call-with-output-string (proc)
     };
 
     /**

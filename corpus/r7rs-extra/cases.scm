@@ -51,7 +51,10 @@
     (list "denominator"     '(denominator 3/4)                       4)
     (list "nan?"            '(nan? (/ 0.0 0.0))                      #t)
     (list "finite?"         '(finite? 1.0)                           #t)
-    (list "rationalize"     '(rationalize 1/3 1/100)                 1/3 'gap)
+    (list "rationalize"     '(rationalize 1/3 1/100)                 1/3)
+    (list "rationalize-exact?" '(exact? (rationalize 1/3 1/100))     #t)
+    (list "rationalize-inexact" '(exact? (rationalize 0.3 0.1))      #f)
+    (list "rationalize-neg" '(rationalize -1/3 1/100)               -1/3)
 
     ;; --- control / exceptions ---
     (list "delay-force"     '(force (delay (+ 1 2)))                 3)
