@@ -196,6 +196,26 @@ Works on all four evaluators (CoreIR already lowered bytevector literals after
 the batch-4 `is_atomic` fix). Corpus `corpus/r7rs-bytevectors` (11 cases) +
 `ReaderPrimitiveFixTest.BytevectorLiterals` + differential entries. 1322/1322.
 
+### Corpus batch 6 (`corpus/r7rs-numeric-strings`, 2026-11-16)
+Probed numeric rounding, radix parsing, and optional range/comparator args.
+Closed:
+- **`round` used round-half-away-from-zero** (`std::round`) instead of R7RS
+  ties-to-even, and always returned inexact. Now uses `std::nearbyint`
+  (FE_TONEAREST = round-even) and preserves exactness: integral/exact inputs
+  give exact results (`(round 2.5)`→2, `(round 7/2)`→exact 4).
+- **`string->number` rejected every explicit radix**: the radix check was
+  `is_double(y)`, but a radix (2/8/10/16) is an exact integer. Switched to
+  `is_number` + `to_int64`; also made the radix-10 path parse exact integers
+  first (so `"42"`→exact 42) before falling back to a float parse.
+- **`string-copy` / `string->list`** were arity (1,1) — added the optional
+  `[start [end]]` substring arguments (now (1,3)).
+- **`assoc` / `member`** were arity (2,2) — added the optional user comparator
+  (now (2,3)), invoked as `(compare obj element)` via a new `member_assoc_cmp`.
+All work on every evaluator. Corpus `corpus/r7rs-numeric-strings` (26 cases) +
+differential entries. Full suite 1322/1322, ASan-clean.
+- Minor still-open: `(min 1 2.0)` should be inexact (1.0) by contagion but
+  returns exact 1; `#x`/`#b` number prefixes in the reader aren't parsed.
+
 ---
 
 ## Evaluator architecture audit (2026-11-13)

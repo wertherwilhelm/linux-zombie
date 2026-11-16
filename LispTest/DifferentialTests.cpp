@@ -135,6 +135,13 @@ const Case kCorpus[] = {
     {"(begin (define-record-type pt (mk x y) pt? (x gx) (y gy)) (pt? (mk 1 2)))", "#t", ALL},
     {"(begin (define-record-type c (mk v) c? (v gv sv!)) (let ((o (mk 1))) (sv! o 9) (gv o)))", "9", ALL},
     {"(begin (define-record-type pt (mk x) pt? (x gx)) (pt? 5))", "#f", ALL},
+    // round ties-to-even; string->number radix; optional range/comparator args
+    {"(round 2.5)", "2", ALL}, {"(round 3.5)", "4", ALL}, {"(round -2.5)", "-2", ALL},
+    {"(string->number \"ff\" 16)", "255", ALL},
+    {"(string->number \"101\" 2)", "5", ALL},
+    {"(string-copy \"hello\" 1 3)", "el", ALL},
+    {"(assoc 2.0 '((1 . a) (2 . b)) =)", "(2 . b)", ALL},
+    {"(member 2.0 '(1 2 3) =)", "(2 3)", ALL},
     // strings / symbols (display-style printing: no quotes)
     {"(string-length \"hello\")", "5", ALL},
     {"(string-append \"a\" \"b\" \"c\")", "abc", ALL},

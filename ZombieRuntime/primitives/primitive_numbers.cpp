@@ -186,10 +186,12 @@ static Object* stringToNumber(Object* x, Object* y) {
 
     int radix = 10;
     if (y != NULL && y != nil) {
-        if (!is_double(y)) {
+        // The radix is an exact integer (2/8/10/16); it is not a double, so the
+        // old is_double() check rejected every explicit radix.
+        if (!numeric::is_number(y)) {
             return error("string->number: radix must be a number");
         }
-        radix = (int)num(y);
+        radix = (int)numeric::to_int64(y);
         if (radix != 2 && radix != 8 && radix != 10 && radix != 16) {
             return error("string->number: radix must be 2, 8, 10, or 16");
         }
@@ -199,7 +201,17 @@ static Object* stringToNumber(Object* x, Object* y) {
 
     try {
         if (radix == 10) {
-            // Try to parse as double
+            // Prefer an exact integer parse; fall back to floating point.
+            // (R7RS: "42" -> exact 42, "4.2" -> inexact 4.2.)
+            try {
+                size_t ipos;
+                long long ivalue = std::stoll(str, &ipos);
+                if (ipos == str.length()) {
+                    return numeric::make_integer(ivalue);
+                }
+            } catch (...) {
+                // not an integer literal - fall through to the double parse
+            }
             size_t pos;
             double value = std::stod(str, &pos);
             if (pos == str.length()) {
@@ -576,7 +588,18 @@ Object* PrimitiveNumbers::apply(IEvaluator* eval, Object* args, Environment* env
             if (!numeric::is_number(x)) {
                 return error("round: expected a number");
             }
-            return numeric::make_inexact(std::round(numeric::to_double(x)));
+            // Integral values round to themselves (exactness preserved).
+            if (numeric::is_integer_value(x)) {
+                return x;
+            }
+            // R7RS: round to the nearest integer, ties to even. std::round rounds
+            // halves away from zero, so use nearbyint (FE_TONEAREST = round-even).
+            double r = std::nearbyint(numeric::to_double(x));
+            // Exactness is preserved: exact (rational) -> exact integer.
+            if (numeric::is_exact(x)) {
+                return numeric::make_integer(static_cast<int64_t>(r));
+            }
+            return numeric::make_inexact(r);
         }
 
         case FLOOR: {

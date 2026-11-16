@@ -311,12 +311,19 @@ Object* PrimitiveStrings::apply(IEvaluator* eval, Object* args, Environment* env
             return string_append(args);
 
         case STRINGCOPY: {
-            // (string-copy string) - create a copy of the string
+            // (string-copy string [start [end]]) - copy a substring (R7RS 6.7)
             if (!is_string(x)) {
                 return error("string-copy: argument must be a string");
             }
             a_string* str = dynamic_cast<a_string*>(x);
-            return gc_new<a_string>(str->value());
+            const std::string& s = str->value();
+            int len = (int)s.length();
+            int start = (y && !y->is_nil()) ? (int)numeric::to_int64(y) : 0;
+            int end   = (z && !z->is_nil()) ? (int)numeric::to_int64(z) : len;
+            if (start < 0 || end > len || start > end) {
+                return error("string-copy: index out of range");
+            }
+            return gc_new<a_string>(s.substr(start, end - start));
         }
 
         case STRINGUPCASE: {
@@ -379,16 +386,17 @@ Object* PrimitiveStrings::apply(IEvaluator* eval, Object* args, Environment* env
         // ====================================================================
 
         case STRINGTOLIST: {
-            // (string->list string) - convert string to list of characters
+            // (string->list string [start [end]]) - chars in [start,end) (R7RS 6.7)
             if (!is_string(x)) {
                 return error("string->list: argument must be a string");
             }
             a_string* str = dynamic_cast<a_string*>(x);
-            std::string s = str->value();
-
-            // Handle empty string case
-            if (s.empty()) {
-                return nil;
+            const std::string& s = str->value();
+            int len = (int)s.length();
+            int start = (y && !y->is_nil()) ? (int)numeric::to_int64(y) : 0;
+            int end   = (z && !z->is_nil()) ? (int)numeric::to_int64(z) : len;
+            if (start < 0 || end > len || start > end) {
+                return error("string->list: index out of range");
             }
 
             Object* result = nil;
@@ -396,7 +404,7 @@ Object* PrimitiveStrings::apply(IEvaluator* eval, Object* args, Environment* env
             gc_root<Object> result_guard(result);
 
             // Build list from end to beginning to maintain order
-            for (int i = (int)s.length() - 1; i >= 0; i--) {
+            for (int i = end - 1; i >= start; i--) {
                 result = cons(gc_new<a_char>(s[i]), result);
             }
             return result;
@@ -696,14 +704,14 @@ void PrimitiveStrings::install(Environment* env) {
 
     // Operations
     DEF("string-append",   STRINGAPPEND, 0, n);
-    DEF("string-copy",     STRINGCOPY, 1, 1);
+    DEF("string-copy",     STRINGCOPY, 1, 3);
     DEF("string-upcase",   STRINGUPCASE, 1, 1);
     DEF("string-downcase", STRINGDOWNCASE, 1, 1);
     DEF("string-foldcase", STRINGFOLDCASE, 1, 1);
     DEF("string-fill!",    STRINGFILL, 2, 2);
 
     // Conversions
-    DEF("string->list", STRINGTOLIST, 1, 1);
+    DEF("string->list", STRINGTOLIST, 1, 3);
     DEF("list->string", LISTTOSTRING, 1, 1);
 
     // Case-sensitive comparisons

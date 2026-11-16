@@ -5,6 +5,8 @@
 #include "../cons_cell.h"
 #include "../atom.h"
 #include "../numeric_runtime.h"
+#include "../procedure.h"
+#include "../i_evaluator.h"
 
 /**
  * @file primitive_lists.cpp
@@ -47,6 +49,28 @@ static Object* member_assoc(Object *obj, Object *List, char m, char eq) {
         List = rest(List);
     }
     return false_obj;  // Return #f when not found (R5RS compliant)
+}
+
+// member / assoc with a user-supplied comparator (R7RS): the predicate is
+// called as (compare obj element). m=='m' for member (whole list on match),
+// m=='a' for assoc (the matching pair on match).
+static Object* member_assoc_cmp(IEvaluator* eval, Environment* env,
+                                Object* obj, Object* list, Object* cmp, char m) {
+    Procedure* proc = dynamic_cast<Procedure*>(cmp);
+    if (!proc) {
+        return error("member/assoc: comparator must be a procedure");
+    }
+    gc_root<Object> lguard(list);
+    gc_root<Object> oguard(obj);
+    while (!list->is_atom()) {
+        Object* target = (m == 'm') ? first(list) : first(first(list));
+        Object* callargs = cons(obj, cons(target, nil));
+        gc_root<Object> aguard(callargs);
+        Object* res = proc->apply(eval, callargs, env);
+        if (truth(res)) return (m == 'm') ? list : first(list);
+        list = rest(list);
+    }
+    return false_obj;
 }
 
 // ============================================================================
@@ -100,6 +124,9 @@ Object* PrimitiveLists::apply(IEvaluator* eval, Object* args, Environment* env) 
     // Extract common arguments
     Object* x = (args && !args->is_nil()) ? first(args) : nil;
     Object* y = (args && !args->is_nil() && rest(args) && !rest(args)->is_nil()) ? second(args) : nil;
+    // Optional third argument (e.g. the comparator for member/assoc).
+    Object* rest2 = (args && !args->is_nil() && rest(args) && !rest(args)->is_nil()) ? rest(rest(args)) : nil;
+    Object* z = (rest2 && rest2->pair()) ? first(rest2) : nil;
 
     // Dispatch based on Primitive ID
     switch (m_id) {
@@ -253,7 +280,10 @@ Object* PrimitiveLists::apply(IEvaluator* eval, Object* args, Environment* env) 
             return member_assoc(x, y, 'm', 'v');
 
         case MEMBER:
-            // (member obj list) - search using equal?
+            // (member obj list [compare]) - equal?, or a user comparator
+            if (z && !z->is_nil()) {
+                return member_assoc_cmp(eval, env, x, y, z, 'm');
+            }
             return member_assoc(x, y, 'm', ' ');
 
         case ASSQ:
@@ -265,7 +295,10 @@ Object* PrimitiveLists::apply(IEvaluator* eval, Object* args, Environment* env) 
             return member_assoc(x, y, 'a', 'v');
 
         case ASSOC:
-            // (assoc obj alist) - association list search using equal?
+            // (assoc obj alist [compare]) - equal?, or a user comparator
+            if (z && !z->is_nil()) {
+                return member_assoc_cmp(eval, env, x, y, z, 'a');
+            }
             return member_assoc(x, y, 'a', ' ');
 
         case MAKELIST: {
@@ -470,10 +503,10 @@ void PrimitiveLists::install(Environment* env) {
 
     DEF("memq",   MEMQ, 2, 2);
     DEF("memv",   MEMV, 2, 2);
-    DEF("member", MEMBER, 2, 2);
+    DEF("member", MEMBER, 2, 3);
     DEF("assq",   ASSQ, 2, 2);
     DEF("assv",   ASSV, 2, 2);
-    DEF("assoc",  ASSOC, 2, 2);
+    DEF("assoc",  ASSOC, 2, 3);
 
     // R7RS additions
     DEF("make-list",  MAKELIST, 1, 2);
