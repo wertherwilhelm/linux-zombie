@@ -78,6 +78,7 @@ PrimitiveCharacters::PrimitiveCharacters(ID id)
         case CHARQ:           m_name = "char?"; break;
         case CHARALPHABETICQ: m_name = "char-alphabetic?"; break;
         case CHARNUMERICQ:    m_name = "char-numeric?"; break;
+        case DIGITVALUE:      m_name = "digit-value"; break;
         case CHARWHITESPACEQ: m_name = "char-whitespace?"; break;
         case CHARUPPERCASEQ:  m_name = "char-upper-case?"; break;
         case CHARLOWERCASEQ:  m_name = "char-lower-case?"; break;
@@ -145,6 +146,16 @@ Object* PrimitiveCharacters::apply(IEvaluator* eval, Object* args, Environment* 
                 return error("char-whitespace?: expected a character");
             }
             return truth(std::isspace(chr(x)));
+        }
+
+        case DIGITVALUE: {
+            // (digit-value c) -> 0..9 for a decimal digit, else #f (R7RS).
+            if (!is_char(x)) {
+                return error("digit-value: expected a character");
+            }
+            char c = chr(x);
+            if (c >= '0' && c <= '9') return numeric::make_integer(c - '0');
+            return false_obj;
         }
 
         case CHARUPPERCASEQ: {
@@ -261,6 +272,7 @@ void PrimitiveCharacters::install(Environment* env) {
     DEF("char?",            CHARQ);
     DEF("char-alphabetic?", CHARALPHABETICQ);
     DEF("char-numeric?",    CHARNUMERICQ);
+    DEF("digit-value",      DIGITVALUE);
     DEF("char-whitespace?", CHARWHITESPACEQ);
     DEF("char-upper-case?", CHARUPPERCASEQ);
     DEF("char-lower-case?", CHARLOWERCASEQ);

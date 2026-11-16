@@ -1177,7 +1177,7 @@ TEST_F(BytecodeVMTest, GuardRethrowsWhenNoClauseMatches) {
 
 TEST_F(BytecodeVMTest, GuardCatchesErrorObjects) {
     Object* result = eval(
-        "(guard (e ((error-Object? e) (error-Object-message e))) "
+        "(guard (e ((error-object? e) (error-object-message e))) "
         "  (error \"kaboom\" 1 2))");
     a_string* str = dynamic_cast<a_string*>(result);
     ASSERT_NE(str, nullptr);

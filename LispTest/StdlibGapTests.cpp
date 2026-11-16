@@ -90,3 +90,30 @@ TEST_F(StdlibGapTest, HashTableSurvivesGC) {
     expectInt("(hash-table-size hg)", 200);
     expectInt("(hash-table-ref hg 150 #f)", 22500);
 }
+
+// R7RS-small core predicates added in discovery batch 2.
+TEST_F(StdlibGapTest, NumericPredicates) {
+    expectBool("(exact-integer? 5)", true);
+    expectBool("(exact-integer? 3.0)", false);
+    expectBool("(exact-integer? 1/2)", false);
+    expectBool("(nan? (/ 0.0 0.0))", true);
+    expectBool("(nan? 1.0)", false);
+    expectBool("(infinite? (/ 1.0 0.0))", true);
+    expectBool("(finite? 1.0)", true);
+    expectBool("(finite? (/ 1.0 0.0))", false);
+}
+
+TEST_F(StdlibGapTest, InexactDivByZeroIsNotAnError) {
+    // R7RS: inexact /0 -> +inf.0/-inf.0/+nan.0; exact /0 still errors.
+    expectBool("(infinite? (/ 1.0 0.0))", true);
+    expectBool("(infinite? (/ -1.0 0.0))", true);
+    EXPECT_THROW(eval("(/ 1 0)"), std::exception);  // exact division by zero errors
+}
+
+TEST_F(StdlibGapTest, DigitValueAndErrorObject) {
+    expectInt("(digit-value #\\7)", 7);
+    expectBool("(digit-value #\\a)", false);
+    // error-object? / -message / -irritants under the correct R7RS names
+    expectString("(guard (e ((error-object? e) (error-object-message e))) (error \"boom\" 1 2))", "boom");
+    expectInt("(guard (e ((error-object? e) (car (error-object-irritants e)))) (error \"x\" 42))", 42);
+}

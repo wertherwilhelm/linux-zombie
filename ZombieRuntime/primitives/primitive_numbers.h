@@ -133,7 +133,11 @@ public:
         FLOORQUOTIENT = 62,    ///< floor-quotient
         FLOORREMAINDER = 63,   ///< floor-remainder
         TRUNCATEQUOTIENT = 64, ///< truncate-quotient
-        TRUNCATEREMAINDER = 65 ///< truncate-remainder
+        TRUNCATEREMAINDER = 65, ///< truncate-remainder
+        EXACTINTEGERQ = 66,    ///< exact-integer?
+        NANQ = 67,             ///< nan?
+        INFINITEQ = 68,        ///< infinite?
+        FINITEQ = 69           ///< finite?
     };
 
     /**

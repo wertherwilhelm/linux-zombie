@@ -28,13 +28,13 @@ TEST_F(ExceptionTest, ErrorObjectPredicateOnException) {
     gc_root<a_string> name(gc_new<a_string>("test-exc"));
     env->define(name.get(), exc);
 
-    expectBool("(error-Object? test-exc)", true);
+    expectBool("(error-object? test-exc)", true);
 }
 
 TEST_F(ExceptionTest, ErrorObjectPredicateOnNonException) {
-    expectBool("(error-Object? \"not an error\")", false);
-    expectBool("(error-Object? 123)", false);
-    expectBool("(error-Object? '(1 2 3))", false);
+    expectBool("(error-object? \"not an error\")", false);
+    expectBool("(error-object? 123)", false);
+    expectBool("(error-object? '(1 2 3))", false);
 }
 
 TEST_F(ExceptionTest, FileErrorPredicateExists) {
@@ -64,11 +64,11 @@ TEST_F(ExceptionTest, ErrorPrimitiveExists) {
 }
 
 TEST_F(ExceptionTest, ErrorObjectMessageExists) {
-    EXPECT_TRUE(primitiveExists("error-Object-message"));
+    EXPECT_TRUE(primitiveExists("error-object-message"));
 }
 
 TEST_F(ExceptionTest, ErrorObjectIrritantsExists) {
-    EXPECT_TRUE(primitiveExists("error-Object-irritants"));
+    EXPECT_TRUE(primitiveExists("error-object-irritants"));
 }
 
 // ============================================================================
@@ -128,7 +128,7 @@ TEST_F(ExceptionTest, ErrorObjectPredicateViaDefine) {
     gc_root<a_string> name(gc_new<a_string>("test-exc"));
     env->define(name.get(), exc);
 
-    expectBool("(error-Object? test-exc)", true);
+    expectBool("(error-object? test-exc)", true);
 }
 
 TEST_F(ExceptionTest, FileErrorPredicateViaDefine) {
@@ -138,7 +138,7 @@ TEST_F(ExceptionTest, FileErrorPredicateViaDefine) {
     env->define(name.get(), exc);
 
     expectBool("(file-error? file-exc)", true);
-    expectBool("(error-Object? file-exc)", true);
+    expectBool("(error-object? file-exc)", true);
 }
 
 TEST_F(ExceptionTest, ReadErrorPredicateViaDefine) {
@@ -148,7 +148,7 @@ TEST_F(ExceptionTest, ReadErrorPredicateViaDefine) {
     env->define(name.get(), exc);
 
     expectBool("(read-error? read-exc)", true);
-    expectBool("(error-Object? read-exc)", true);
+    expectBool("(error-object? read-exc)", true);
 }
 
 // ============================================================================
@@ -161,7 +161,7 @@ TEST_F(ExceptionTest, ErrorObjectMessage) {
     gc_root<a_string> name(gc_new<a_string>("my-exc"));
     env->define(name.get(), exc);
 
-    expectString("(error-Object-message my-exc)", "my error message");
+    expectString("(error-object-message my-exc)", "my error message");
 }
 
 TEST_F(ExceptionTest, ErrorObjectIrritantsEmpty) {
@@ -170,7 +170,7 @@ TEST_F(ExceptionTest, ErrorObjectIrritantsEmpty) {
     gc_root<a_string> name(gc_new<a_string>("exc1"));
     env->define(name.get(), exc);
 
-    expectNil("(error-Object-irritants exc1)");
+    expectNil("(error-object-irritants exc1)");
 }
 
 TEST_F(ExceptionTest, ErrorObjectIrritantsWithValues) {
@@ -185,8 +185,8 @@ TEST_F(ExceptionTest, ErrorObjectIrritantsWithValues) {
     gc_root<a_string> name(gc_new<a_string>("exc2"));
     env->define(name.get(), exc);
 
-    expectInt("(car (error-Object-irritants exc2))", 42);
-    expectString("(car (cdr (error-Object-irritants exc2)))", "foo");
+    expectInt("(car (error-object-irritants exc2))", 42);
+    expectString("(car (cdr (error-object-irritants exc2)))", "foo");
 }
 
 // ============================================================================
@@ -312,7 +312,7 @@ TEST_F(ExceptionTest, ExceptionInLet) {
     gc_root<a_string> name(gc_new<a_string>("let-exc"));
     env->define(name.get(), exc);
 
-    expectBool("(let ((e let-exc)) (error-Object? e))", true);
+    expectBool("(let ((e let-exc)) (error-object? e))", true);
 }
 
 TEST_F(ExceptionTest, ExceptionInLambda) {
@@ -321,7 +321,7 @@ TEST_F(ExceptionTest, ExceptionInLambda) {
     gc_root<a_string> name(gc_new<a_string>("lambda-exc"));
     env->define(name.get(), exc);
 
-    expectBool("((lambda (e) (error-Object? e)) lambda-exc)", true);
+    expectBool("((lambda (e) (error-object? e)) lambda-exc)", true);
 }
 
 TEST_F(ExceptionTest, MultipleExceptionTypes) {
@@ -339,9 +339,9 @@ TEST_F(ExceptionTest, MultipleExceptionTypes) {
     gc_root<a_string> name3(gc_new<a_string>("read-exc"));
     env->define(name3.get(), read);
 
-    expectBool("(error-Object? gen-exc)", true);
-    expectBool("(error-Object? file-exc)", true);
-    expectBool("(error-Object? read-exc)", true);
+    expectBool("(error-object? gen-exc)", true);
+    expectBool("(error-object? file-exc)", true);
+    expectBool("(error-object? read-exc)", true);
 
     expectBool("(file-error? gen-exc)", false);
     expectBool("(file-error? file-exc)", true);
@@ -451,7 +451,7 @@ TEST_F(ExceptionTest, GuardRethrowsWhenNoClauseMatches) {
 
 TEST_F(ExceptionTest, GuardCatchesErrorObjects) {
     expectString(
-        "(guard (e ((error-Object? e) (error-Object-message e)))"
+        "(guard (e ((error-object? e) (error-object-message e)))"
         "  (error \"the message\"))",
         "the message");
 }

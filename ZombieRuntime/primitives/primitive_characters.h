@@ -62,7 +62,8 @@ public:
         CHARCILT = 17,          ///< char-ci<?
         CHARCIGT = 18,          ///< char-ci>?
         CHARCILE = 19,          ///< char-ci<=?
-        CHARCIGE = 20           ///< char-ci>=?
+        CHARCIGE = 20,          ///< char-ci>=?
+        DIGITVALUE = 21         ///< digit-value (R7RS)
     };
 
     /**

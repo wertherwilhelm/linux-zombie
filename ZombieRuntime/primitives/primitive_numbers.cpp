@@ -327,6 +327,10 @@ PrimitiveNumbers::PrimitiveNumbers(ID id, int minArgs, int maxArgs)
         case POSITIVEQ:  m_name = "positive?"; break;
         case NEGATIVEQ:  m_name = "negative?"; break;
         case INTEGERQ:   m_name = "integer?"; break;
+        case EXACTINTEGERQ: m_name = "exact-integer?"; break;
+        case NANQ:       m_name = "nan?"; break;
+        case INFINITEQ:  m_name = "infinite?"; break;
+        case FINITEQ:    m_name = "finite?"; break;
         case EXACTQ:     m_name = "exact?"; break;
         case INEXACTQ:   m_name = "inexact?"; break;
         case RATIONALQ:  m_name = "rational?"; break;
@@ -491,6 +495,21 @@ Object* PrimitiveNumbers::apply(IEvaluator* eval, Object* args, Environment* env
         }
 
         case INTEGERQ:   return truth(numeric::is_integer_value(x));
+
+        case EXACTINTEGERQ:
+            // Exact integer: an exact (INT/LONG) value.
+            return truth(x != nullptr &&
+                         (x->get_type() == static_cast<int>(Type::INT) ||
+                          x->get_type() == static_cast<int>(Type::LONG)));
+
+        case NANQ:
+            return truth(numeric::is_number(x) && std::isnan(num(x)));
+
+        case INFINITEQ:
+            return truth(numeric::is_number(x) && std::isinf(num(x)));
+
+        case FINITEQ:
+            return truth(numeric::is_number(x) && std::isfinite(num(x)));
         case EXACTQ:     return truth(numeric::is_exact(x));
         case INEXACTQ:   return truth(numeric::is_inexact(x));
         case RATIONALQ:  return truth(numeric::is_rational_value(x));
@@ -1106,6 +1125,10 @@ void PrimitiveNumbers::install(Environment* env) {
     DEF("positive?", POSITIVEQ, 1, 1);
     DEF("negative?", NEGATIVEQ, 1, 1);
     DEF("integer?",  INTEGERQ, 1, 1);
+    DEF("exact-integer?", EXACTINTEGERQ, 1, 1);
+    DEF("nan?",      NANQ, 1, 1);
+    DEF("infinite?", INFINITEQ, 1, 1);
+    DEF("finite?",   FINITEQ, 1, 1);
     DEF("exact?",    EXACTQ, 1, 1);
     DEF("inexact?",  INEXACTQ, 1, 1);
     DEF("rational?", RATIONALQ, 1, 1);

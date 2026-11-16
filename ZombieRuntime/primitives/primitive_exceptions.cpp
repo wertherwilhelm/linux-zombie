@@ -79,9 +79,9 @@ PrimitiveExceptions::PrimitiveExceptions(ID id, int minArgs, int maxArgs)
         case RAISE:                 m_name = "raise"; break;
         case RAISECONTINUABLE:      m_name = "raise-continuable"; break;
         case ERROR:                 m_name = "error"; break;
-        case ERROROBJECTQ:          m_name = "error-Object?"; break;
-        case ERROROBJECTMESSAGE:    m_name = "error-Object-message"; break;
-        case ERROROBJECTIRRITANTS:  m_name = "error-Object-irritants"; break;
+        case ERROROBJECTQ:          m_name = "error-object?"; break;
+        case ERROROBJECTMESSAGE:    m_name = "error-object-message"; break;
+        case ERROROBJECTIRRITANTS:  m_name = "error-object-irritants"; break;
         case FILEERRORQ:            m_name = "file-error?"; break;
         case READERRORQ:            m_name = "read-error?"; break;
         case WITHEXCEPTIONHANDLER:  m_name = "with-exception-handler"; break;
@@ -267,7 +267,7 @@ void PrimitiveExceptions::install(Environment* env) {
     env->define(name_error.get(), gc_new<PrimitiveExceptions>(ERROR, 1, 999999));
 
     // Exception predicates
-    gc_root<a_string> name_error_obj(gc_new<a_string>("error-Object?"));
+    gc_root<a_string> name_error_obj(gc_new<a_string>("error-object?"));
     env->define(name_error_obj.get(), gc_new<PrimitiveExceptions>(ERROROBJECTQ, 1, 1));
 
     gc_root<a_string> name_file_err(gc_new<a_string>("file-error?"));
@@ -277,10 +277,10 @@ void PrimitiveExceptions::install(Environment* env) {
     env->define(name_read_err.get(), gc_new<PrimitiveExceptions>(READERRORQ, 1, 1));
 
     // Exception accessors
-    gc_root<a_string> name_err_msg(gc_new<a_string>("error-Object-message"));
+    gc_root<a_string> name_err_msg(gc_new<a_string>("error-object-message"));
     env->define(name_err_msg.get(), gc_new<PrimitiveExceptions>(ERROROBJECTMESSAGE, 1, 1));
 
-    gc_root<a_string> name_err_irr(gc_new<a_string>("error-Object-irritants"));
+    gc_root<a_string> name_err_irr(gc_new<a_string>("error-object-irritants"));
     env->define(name_err_irr.get(), gc_new<PrimitiveExceptions>(ERROROBJECTIRRITANTS, 1, 1));
 
     // Handler installation

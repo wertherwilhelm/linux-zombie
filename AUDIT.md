@@ -85,6 +85,26 @@ with zero `'gap` tags; regression tests in `LispTest/StdlibGapTests.cpp`:
   (value or thunk default), -ref/default, -delete!, -contains?, -size, -keys,
   -values, ->alist.
 
+### Corpus batch 2 (`corpus/r7rs-extra`, 2026-11-16)
+
+A broader probe set (49 cases). Confirmed working (now regression-covered): chars
+(whitespace/alphabetic/numeric/ci=?), vector-copy/-append, square/exact/
+numerator/denominator, delay/force, guard, with-exception-handler, parameterize,
+dynamic-wind, assv, list-copy. Closed the R7RS-small **core** gaps it found:
+- `exact-integer?`, `nan?`, `infinite?`, `finite?` (PrimitiveNumbers).
+- `digit-value` (PrimitiveCharacters).
+- `error-object?` / `error-object-message` / `error-object-irritants` — existed
+  but were mis-cased `error-Object*` (same bug class as `eof-Object?`); renamed.
+- **Inexact division by zero no longer errors** — `(/ 1.0 0.0)` -> `+inf.0`,
+  `(/ 0.0 0.0)` -> `+nan.0` (R7RS); exact `(/ 1 0)` still errors. (numeric::div.)
+
+Remaining, tagged `'gap` in the corpus (library-level, not R7RS-small — backlog):
+SRFI-1 list ops (iota, take, drop, last, count, delete, remove, partition,
+delete-duplicates, find, any, every, append-map, list-index, list-tabulate);
+SRFI-13 string ops (string-reverse/-join/-index/-prefix?/-suffix?/-trim/-pad);
+`vector-sort` (R6RS); `rationalize` (returns inexact). Candidates for a future
+SRFI-1/SRFI-13 library (several already exist in `stdlib/*.scm`, just not loaded).
+
 ---
 
 ## Evaluator architecture audit (2026-11-13)

@@ -380,11 +380,10 @@ Object* div(Object* a, Object* b) {
         return make_complex(div(num_real, denom), div(num_imag, denom));
     }
 
-    // Handle inexact (double)
+    // Handle inexact (double). R7RS: inexact division by zero is NOT an error —
+    // it yields +inf.0 / -inf.0 / +nan.0 per IEEE (only EXACT /0 below errors).
     if (result_type == static_cast<int>(Type::DOUBLE)) {
-        double db = to_double(b);
-        if (db == 0.0) throw std::runtime_error("Division by zero");
-        return make_inexact(to_double(a) / db);
+        return make_inexact(to_double(a) / to_double(b));
     }
 
     // Handle exact division (returns rational)
