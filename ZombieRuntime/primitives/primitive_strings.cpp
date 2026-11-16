@@ -124,6 +124,25 @@ static int stringCompare(Object* str1, Object* str2, bool case_insensitive) {
     return 0;
 }
 
+// Variadic comparison chain for string=?/<?/>?/<=?/>=? (and ci variants): holds
+// iff it holds for every adjacent pair (R7RS 6.7). op: 0 '=', 1 '<', 2 '>',
+// 3 '<=', 4 '>='.
+static Object* stringCompareChain(Object* args, bool ci, int op) {
+    Object* prev = first(args);
+    for (Object* q = rest(args); q && !q->is_nil(); q = rest(q)) {
+        Object* cur = first(q);
+        int c = stringCompare(prev, cur, ci);
+        bool ok = (op == 0) ? (c == 0)
+                : (op == 1) ? (c < 0)
+                : (op == 2) ? (c > 0)
+                : (op == 3) ? (c <= 0)
+                            : (c >= 0);
+        if (!ok) return static_cast<Object*>(false_obj);
+        prev = cur;
+    }
+    return t;
+}
+
 // ============================================================================
 // Constructor
 // ============================================================================
@@ -440,39 +459,21 @@ Object* PrimitiveStrings::apply(IEvaluator* eval, Object* args, Environment* env
         // Case-Sensitive Comparisons
         // ====================================================================
 
-        case STRINGEQ:
-            return truth(stringCompare(x, y, false) == 0);
-
-        case STRINGLT:
-            return truth(stringCompare(x, y, false) < 0);
-
-        case STRINGGT:
-            return truth(stringCompare(x, y, false) > 0);
-
-        case STRINGLE:
-            return truth(stringCompare(x, y, false) <= 0);
-
-        case STRINGGE:
-            return truth(stringCompare(x, y, false) >= 0);
+        case STRINGEQ:  return stringCompareChain(args, false, 0);
+        case STRINGLT:  return stringCompareChain(args, false, 1);
+        case STRINGGT:  return stringCompareChain(args, false, 2);
+        case STRINGLE:  return stringCompareChain(args, false, 3);
+        case STRINGGE:  return stringCompareChain(args, false, 4);
 
         // ====================================================================
         // Case-Insensitive Comparisons
         // ====================================================================
 
-        case STRINGCIEQ:
-            return truth(stringCompare(x, y, true) == 0);
-
-        case STRINGCILT:
-            return truth(stringCompare(x, y, true) < 0);
-
-        case STRINGCIGT:
-            return truth(stringCompare(x, y, true) > 0);
-
-        case STRINGCILE:
-            return truth(stringCompare(x, y, true) <= 0);
-
-        case STRINGCIGE:
-            return truth(stringCompare(x, y, true) >= 0);
+        case STRINGCIEQ: return stringCompareChain(args, true, 0);
+        case STRINGCILT: return stringCompareChain(args, true, 1);
+        case STRINGCIGT: return stringCompareChain(args, true, 2);
+        case STRINGCILE: return stringCompareChain(args, true, 3);
+        case STRINGCIGE: return stringCompareChain(args, true, 4);
 
         // ====================================================================
         // R7RS additions
@@ -714,19 +715,19 @@ void PrimitiveStrings::install(Environment* env) {
     DEF("string->list", STRINGTOLIST, 1, 3);
     DEF("list->string", LISTTOSTRING, 1, 1);
 
-    // Case-sensitive comparisons
-    DEF("string=?",  STRINGEQ, 2, 2);
-    DEF("string<?",  STRINGLT, 2, 2);
-    DEF("string>?",  STRINGGT, 2, 2);
-    DEF("string<=?", STRINGLE, 2, 2);
-    DEF("string>=?", STRINGGE, 2, 2);
+    // Case-sensitive comparisons (variadic chains, R7RS)
+    DEF("string=?",  STRINGEQ, 2, n);
+    DEF("string<?",  STRINGLT, 2, n);
+    DEF("string>?",  STRINGGT, 2, n);
+    DEF("string<=?", STRINGLE, 2, n);
+    DEF("string>=?", STRINGGE, 2, n);
 
-    // Case-insensitive comparisons
-    DEF("string-ci=?",  STRINGCIEQ, 2, 2);
-    DEF("string-ci<?",  STRINGCILT, 2, 2);
-    DEF("string-ci>?",  STRINGCIGT, 2, 2);
-    DEF("string-ci<=?", STRINGCILE, 2, 2);
-    DEF("string-ci>=?", STRINGCIGE, 2, 2);
+    // Case-insensitive comparisons (variadic chains, R7RS)
+    DEF("string-ci=?",  STRINGCIEQ, 2, n);
+    DEF("string-ci<?",  STRINGCILT, 2, n);
+    DEF("string-ci>?",  STRINGCIGT, 2, n);
+    DEF("string-ci<=?", STRINGCILE, 2, n);
+    DEF("string-ci>=?", STRINGCIGE, 2, n);
 
     // R7RS additions
     DEF("string-map",        STRINGMAP, 2, n);

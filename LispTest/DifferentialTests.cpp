@@ -148,6 +148,11 @@ const Case kCorpus[] = {
     {"(begin (define-values (a b) (values 3 4)) (+ a b))", "7", ALL},
     {"(begin (define-values (a . r) (values 1 2 3)) (length r))", "2", ALL},
     {"(vector-ref (let ((v (vector 1 2 3))) (vector-copy! v 0 #(9 8)) v) 1)", "8", ALL},
+    // variadic comparison chains + min/max inexactness contagion
+    {"(char<? #\\a #\\b #\\c)", "#t", ALL}, {"(char<? #\\a #\\c #\\b)", "#f", ALL},
+    {"(string<? \"a\" \"b\" \"c\")", "#t", ALL},
+    {"(boolean=? #t #t #t)", "#t", ALL},
+    {"(exact? (min 1 2.0))", "#f", ALL}, {"(exact? (min 1 2 3))", "#t", ALL},
     // strings / symbols (display-style printing: no quotes)
     {"(string-length \"hello\")", "5", ALL},
     {"(string-append \"a\" \"b\" \"c\")", "abc", ALL},

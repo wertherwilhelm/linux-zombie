@@ -17,8 +17,8 @@
 // ============================================================================
 
 PrimitiveBooleans::PrimitiveBooleans(ID id)
-    : PrimitiveBase(id == BOOLEANEQ ? 2 : 1,   // boolean=? takes two booleans;
-                    id == BOOLEANEQ ? 2 : 1),  // the others take exactly one
+    : PrimitiveBase(id == BOOLEANEQ ? 2 : 1,        // boolean=? is variadic (2+);
+                    id == BOOLEANEQ ? 999999 : 1),  // the others take exactly one
       m_id(id) {
     // Set Primitive name based on ID
     switch (id) {
@@ -76,11 +76,18 @@ Object* PrimitiveBooleans::apply(IEvaluator* eval, Object* args, Environment* en
             return truth(dynamic_cast<zombie::runtime::Procedure*>(x) != nullptr);
 
         case BOOLEANEQ: {
-            // (boolean=? b1 b2)
-            // Returns #t if both arguments are booleans with the same value.
-            // #t / #f are singletons, so identity compares their values.
-            Object* y = second(args);
-            return truth(is_boolean(x) && is_boolean(y) && x == y);
+            // (boolean=? b1 b2 ...) - #t iff all arguments are the same boolean
+            // (R7RS 6.3). #t / #f are singletons, so identity compares values.
+            if (!is_boolean(x)) {
+                return static_cast<Object*>(false_obj);
+            }
+            for (Object* p = rest(args); p && !p->is_nil(); p = rest(p)) {
+                Object* e = first(p);
+                if (!is_boolean(e) || e != x) {
+                    return static_cast<Object*>(false_obj);
+                }
+            }
+            return t;
         }
 
         default:

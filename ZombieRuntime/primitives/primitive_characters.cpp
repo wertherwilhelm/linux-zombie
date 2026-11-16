@@ -63,14 +63,33 @@ static int charCompare(Object* x, Object* y, bool caseInsensitive) {
     return 0;
 }
 
+// Variadic comparison chain for char=?/<?/>?/<=?/>=? (and ci variants): the
+// predicate holds iff it holds for every adjacent pair (R7RS 6.6). op encodes
+// the relation: 0 '=', 1 '<', 2 '>', 3 '<=', 4 '>='.
+static Object* charCompareChain(Object* args, bool ci, int op) {
+    Object* prev = first(args);
+    for (Object* q = rest(args); q && !q->is_nil(); q = rest(q)) {
+        Object* cur = first(q);
+        int c = charCompare(prev, cur, ci);
+        bool ok = (op == 0) ? (c == 0)
+                : (op == 1) ? (c < 0)
+                : (op == 2) ? (c > 0)
+                : (op == 3) ? (c <= 0)
+                            : (c >= 0);
+        if (!ok) return static_cast<Object*>(false_obj);
+        prev = cur;
+    }
+    return t;
+}
+
 // ============================================================================
 // Constructor
 // ============================================================================
 
 PrimitiveCharacters::PrimitiveCharacters(ID id)
     : PrimitiveBase(
-        (id >= CHAREQ && id <= CHARCIGE) ? 2 : 1,  // Comparisons take 2 args, others take 1
-        (id >= CHAREQ && id <= CHARCIGE) ? 2 : 1
+        (id >= CHAREQ && id <= CHARCIGE) ? 2 : 1,        // comparisons: 2+ args
+        (id >= CHAREQ && id <= CHARCIGE) ? 999999 : 1    // (variadic chain)
       ),
       m_id(id) {
     // Set Primitive name based on ID
@@ -218,39 +237,21 @@ Object* PrimitiveCharacters::apply(IEvaluator* eval, Object* args, Environment* 
         // Case-Sensitive Comparisons
         // ====================================================================
 
-        case CHAREQ:
-            return truth(charCompare(x, y, false) == 0);
-
-        case CHARLT:
-            return truth(charCompare(x, y, false) < 0);
-
-        case CHARGT:
-            return truth(charCompare(x, y, false) > 0);
-
-        case CHARLE:
-            return truth(charCompare(x, y, false) <= 0);
-
-        case CHARGE:
-            return truth(charCompare(x, y, false) >= 0);
+        case CHAREQ:  return charCompareChain(args, false, 0);
+        case CHARLT:  return charCompareChain(args, false, 1);
+        case CHARGT:  return charCompareChain(args, false, 2);
+        case CHARLE:  return charCompareChain(args, false, 3);
+        case CHARGE:  return charCompareChain(args, false, 4);
 
         // ====================================================================
         // Case-Insensitive Comparisons
         // ====================================================================
 
-        case CHARCIEQ:
-            return truth(charCompare(x, y, true) == 0);
-
-        case CHARCILT:
-            return truth(charCompare(x, y, true) < 0);
-
-        case CHARCIGT:
-            return truth(charCompare(x, y, true) > 0);
-
-        case CHARCILE:
-            return truth(charCompare(x, y, true) <= 0);
-
-        case CHARCIGE:
-            return truth(charCompare(x, y, true) >= 0);
+        case CHARCIEQ: return charCompareChain(args, true, 0);
+        case CHARCILT: return charCompareChain(args, true, 1);
+        case CHARCIGT: return charCompareChain(args, true, 2);
+        case CHARCILE: return charCompareChain(args, true, 3);
+        case CHARCIGE: return charCompareChain(args, true, 4);
 
         default:
             return error("Unknown character Primitive");

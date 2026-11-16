@@ -84,6 +84,7 @@ static Object* num_compute(Object *args, char op, Object* result) {
         }
     } else {
         Object* acc = result;
+        bool any_inexact = false;  // for min/max inexactness contagion
 
         while (args->pair()) {
             Object* x = first(args);
@@ -93,6 +94,7 @@ static Object* num_compute(Object *args, char op, Object* result) {
             if (!numeric::is_number(x)) {
                 return error("arithmetic operation requires numbers");
             }
+            if (!numeric::is_exact(x)) any_inexact = true;
 
             switch (op) {
                 case 'X': {  // max
@@ -111,6 +113,11 @@ static Object* num_compute(Object *args, char op, Object* result) {
                 case '/': acc = numeric::div(acc, x); break;
                 default: error("internal error: unrecognized op: " + op); break;
             }
+        }
+        // R7RS: min/max return an inexact result if any argument is inexact,
+        // even when the chosen extremum happens to be an exact value.
+        if ((op == 'X' || op == 'N') && any_inexact && numeric::is_exact(acc)) {
+            acc = numeric::make_inexact(numeric::to_double(acc));
         }
         return acc;
     }

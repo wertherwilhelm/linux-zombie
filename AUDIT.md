@@ -232,10 +232,24 @@ differential entries. Full suite 1322/1322, ASan-clean.
 All work on every evaluator. Corpus `corpus/r7rs-seq-ops` (19 cases) +
 differential entries. Full suite 1322/1322, ASan-clean.
 
-Corpus now has 10 entries: algol-msweet, r7rs-core, r7rs-extra, r7rs-syntax,
-r7rs-io, r7rs-records, r7rs-bytevectors, r7rs-numeric-strings, r7rs-seq-ops
-(plus the original set). Only `'gap`: `rationalize` (inexact),
-`with-output-to-string`.
+### Corpus batch 8 (`corpus/r7rs-comparisons`, 2026-11-16)
+- **char / string comparison predicates were binary-only** (arity 2,2); R7RS
+  makes `char=?`/`<?`/`>?`/`<=?`/`>=?` (and ci variants) and the string variants
+  variadic chains. Added `charCompareChain`/`stringCompareChain` helpers (hold
+  iff every adjacent pair holds) and widened the arity to (2, n).
+- **`boolean=?`** was binary-only — made variadic.
+- **min/max inexactness contagion**: `(min 1 2.0)` returned exact 1; R7RS says
+  the result is inexact if any argument is inexact. `num_compute` now tracks it
+  and coerces the extremum to inexact. (Note: an inexact integer-valued double
+  still *prints* without a `.0` here — a separate printer cosmetic gap.)
+All work on every evaluator. Corpus `corpus/r7rs-comparisons` (16 cases) +
+differential entries. Full suite 1322/1322, ASan-clean.
+
+Corpus now has 11 entries: algol-msweet, r7rs-core, r7rs-extra, r7rs-syntax,
+r7rs-io, r7rs-records, r7rs-bytevectors, r7rs-numeric-strings, r7rs-seq-ops,
+r7rs-comparisons. Only `'gap`: `rationalize` (inexact), `with-output-to-string`.
+Known still-open: `#x`/`#b`/`#o`/`#e`/`#i` number prefixes aren't read; inexact
+integer-valued doubles print without `.0`.
 
 ---
 
