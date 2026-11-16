@@ -34,6 +34,7 @@ scheme_engine::scheme_engine(bool use_isolated_gc)
     , capture_stdout_(false)
     , last_error_object_(nullptr)
     , owns_isolated_gc_(false)
+    , env_root_gc_(nullptr)
     , runtime_context_(nullptr)
     , auto_load_libraries_(false)
 {
@@ -52,6 +53,7 @@ scheme_engine::scheme_engine(bool use_isolated_gc)
     global_env_ = gc_new<Environment>();
     if (auto* gc = gc_context::current()) {
         gc->register_persistent_root(reinterpret_cast<gc_object**>(&global_env_));
+        env_root_gc_ = gc;  // remember it so the destructor can unregister the slot
     }
 
     // Install Primitive functions
@@ -82,6 +84,7 @@ scheme_engine::scheme_engine(EvaluatorType type, bool use_isolated_gc)
     , capture_stdout_(false)
     , last_error_object_(nullptr)
     , owns_isolated_gc_(false)
+    , env_root_gc_(nullptr)
     , runtime_context_(nullptr)
     , auto_load_libraries_(false)
 {
@@ -100,6 +103,7 @@ scheme_engine::scheme_engine(EvaluatorType type, bool use_isolated_gc)
     global_env_ = gc_new<Environment>();
     if (auto* gc = gc_context::current()) {
         gc->register_persistent_root(reinterpret_cast<gc_object**>(&global_env_));
+        env_root_gc_ = gc;  // remember it so the destructor can unregister the slot
     }
 
     // Install Primitive functions
@@ -130,6 +134,7 @@ scheme_engine::scheme_engine(IEvaluator* evaluator, bool take_ownership)
     , capture_stdout_(false)
     , last_error_object_(nullptr)
     , owns_isolated_gc_(false)
+    , env_root_gc_(nullptr)
     , runtime_context_(nullptr)
     , auto_load_libraries_(false)
 {
@@ -162,7 +167,15 @@ scheme_engine::scheme_engine(IEvaluator* evaluator, bool take_ownership)
 scheme_engine::~scheme_engine() {
     cleanup_ports();
     cleanup_evaluator();
-    // Note: global_env_ will be cleaned up by GC
+    // Unregister the &global_env_ persistent root. The slot is the address of
+    // our global_env_ member; once this engine is destroyed (commonly on the
+    // stack) that address is reused, so a stale registration would make a later
+    // collection dereference freed stack memory. global_env_ itself is left for
+    // the GC to reclaim.
+    if (env_root_gc_) {
+        env_root_gc_->unregister_persistent_root(reinterpret_cast<gc_object**>(&global_env_));
+        env_root_gc_ = nullptr;
+    }
 }
 
 void scheme_engine::install_primitives() {

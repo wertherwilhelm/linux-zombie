@@ -34,6 +34,7 @@
 // Forward declarations
 class gc_manager;
 class RuntimeContext;
+class IGarbageCollector;
 
 /**
  * @brief Evaluator type selection for scheme_engine
@@ -577,6 +578,14 @@ private:
 
     gc_manager* isolated_gc_;        ///< Non-null if this engine owns an isolated GC instance (for test isolation)
     bool owns_isolated_gc_;          ///< If true, shutdown isolated GC on destruction
+
+    /// GC with which &global_env_ was registered as a persistent root, or null
+    /// if this engine did not register one (e.g. constructed from an existing
+    /// evaluator). The destructor must unregister from exactly this GC: the
+    /// slot is the address of the global_env_ member, so leaving it registered
+    /// after a stack-allocated engine is destroyed leaves a dangling stack slot
+    /// that a later collection would dereference.
+    IGarbageCollector* env_root_gc_;
 
     std::unique_ptr<RuntimeContext> runtime_context_;  ///< Runtime context (owns GC, ports, ledger, etc.)
 

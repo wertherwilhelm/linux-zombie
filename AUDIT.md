@@ -134,8 +134,30 @@ predicates. Gaps it discovered and their disposition:
   non-seekable (interactive stdin) fallback. Regression tests in
   `ReaderPrimitiveFixTests.cpp` (WriteVsDisplaySemantics, ReadPrimitiveFullGrammar).
 - Still `'gap` (tagged, non-trivial): `with-output-to-string` (needs
-  current-output-port parameterization), quasiquote into vector literals
-  (`` `#(... ,x ...) ``), and nested-quasiquote depth handling.
+  current-output-port parameterization).
+
+### Quasiquote rewrite + tree-walk unification (2026-11-16)
+`Expander::expand_quasiquote` is now depth-threaded: it descends into vector
+literals (`` `#(1 ,(+ 1 1) 3) `` → `#(1 2 3)`, rebuilt via `list->vector`) and
+tracks nesting so an unquote is only evaluated at the matching level
+(`` `(1 `(2 ,(+ 1 2))) `` preserves the inner `(unquote (+ 1 2))`). The tree-walk
+evaluator's parallel `qq_expand`/`qq_expand_list` (which did neither, so it
+diverged from the other three evaluators) was removed; `quasiquote` now routes
+through the shared Expander like the other derived forms. `qq-vector`/`qq-nested`
+corpus entries un-tagged; three entries added to the cross-evaluator differential.
+
+### GC: scheme_engine leaked a stack-address persistent root (2026-11-16, CRITICAL)
+Found via ASan while running the suites together (abort in
+`MarkSweepStrategy::mark()` at mark_sweep_strategy.cpp:131). The constructor
+registered `&global_env_` — the address of a member of a (usually stack-allocated)
+`scheme_engine` — as a persistent GC root, but `~scheme_engine()` never
+unregistered it ("global_env_ will be cleaned up by GC"). After a stack engine was
+destroyed, the slot address was reused, so the next collection (in a later test)
+dereferenced freed stack memory. Fix: capture the registering GC in
+`env_root_gc_` and `unregister_persistent_root(&global_env_)` in the destructor.
+Full suite now ASan-clean (1321/1321). Note the "robust safety check" in `mark()`
+validates the root *value* but still dereferences the *slot* first, so it could
+not have caught this — the slot lifetime is the real invariant.
 
 ---
 
