@@ -790,6 +790,45 @@ void scheme_engine::warmup_prelude() {
           (else (if (and (exact? lo) (exact? hi)) 0 0.0))))
   (let ((ax (abs e)))
     (simplest (- x ax) (+ x ax))))
+
+;; --- more SRFI-1 list operations ---
+(define (fold kons knil lst)
+  (let loop ((l lst) (acc knil))
+    (if (null? l) acc (loop (cdr l) (kons (car l) acc)))))
+(define (filter-map f lst)
+  (let loop ((l lst) (acc '()))
+    (cond ((null? l) (reverse acc))
+          ((f (car l)) => (lambda (v) (loop (cdr l) (cons v acc))))
+          (else (loop (cdr l) acc)))))
+(define (concatenate lists) (apply append lists))
+(define (take-while pred lst)
+  (let loop ((l lst) (acc '()))
+    (if (or (null? l) (not (pred (car l)))) (reverse acc)
+        (loop (cdr l) (cons (car l) acc)))))
+(define (drop-while pred lst)
+  (if (or (null? lst) (not (pred (car lst)))) lst (drop-while pred (cdr lst))))
+(define (span pred lst) (values (take-while pred lst) (drop-while pred lst)))
+(define (break pred lst) (span (lambda (x) (not (pred x))) lst))
+(define (unfold stop? mapper gen seed)
+  (let loop ((s seed) (acc '()))
+    (if (stop? s) (reverse acc) (loop (gen s) (cons (mapper s) acc)))))
+
+;; --- SRFI-69 hash-table helpers (built on the hash-table primitives) ---
+(define (hash-table-walk h proc)
+  (for-each (lambda (kv) (proc (car kv) (cdr kv))) (hash-table->alist h)))
+(define (hash-table-fold h proc init)
+  (let loop ((al (hash-table->alist h)) (acc init))
+    (if (null? al) acc
+        (loop (cdr al) (proc (car (car al)) (cdr (car al)) acc)))))
+(define (hash-table->list h) (hash-table->alist h))
+(define (hash-table-copy h)
+  (let ((new (make-hash-table)))
+    (hash-table-walk h (lambda (k v) (hash-table-set! new k v)))
+    new))
+(define (alist->hash-table al)
+  (let ((h (make-hash-table)))
+    (for-each (lambda (kv) (hash-table-set! h (car kv) (cdr kv))) al)
+    h))
 )SRFI";
 
     eval_string(kPrelude);

@@ -440,7 +440,7 @@ eval_result Lisp::eval_step_list(Object* x, Environment* env) {
         static const std::unordered_set<std::string> kExpanderForms = {
             "when", "unless", "and", "or", "cond", "case", "do",
             "let", "let*", "letrec", "letrec*", "let-values", "let*-values",
-            "quasiquote", "define-record-type", "define-values"
+            "quasiquote", "define-record-type", "define-values", "receive"
         };
         if (kExpanderForms.count(fn_val)) {
             Expander expander(env);

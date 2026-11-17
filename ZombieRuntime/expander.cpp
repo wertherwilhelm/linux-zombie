@@ -236,6 +236,21 @@ Object* Expander::expand_list(Object* list) {
         return expand_define_values(args);
     }
 
+    if (name == "receive") {
+        // (receive formals expr body...) ->  (SRFI-8)
+        //   (call-with-values (lambda () expr) (lambda formals body...))
+        if (is_nil(args) || !args->pair() || !rest(args)->pair()) {
+            throw std::runtime_error("receive: malformed syntax");
+        }
+        Object* formals = first(args);
+        Object* expr    = first(rest(args));
+        Object* body    = rest(rest(args));
+        Object* producer = cons(intern_symbol("lambda"), cons(nil, cons(expr, nil)));
+        Object* consumer = cons(intern_symbol("lambda"), cons(formals, body));
+        return expand(cons(intern_symbol("call-with-values"),
+                           cons(producer, cons(consumer, nil))));
+    }
+
     // Global Macro definition - install transformer in environment
     if (name == "define-syntax") {
         Object* macro_name = first(args);

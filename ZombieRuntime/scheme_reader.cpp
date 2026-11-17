@@ -694,7 +694,7 @@ Object* scheme_reader::read_char() {
         }
     }
 
-    // Handle named characters
+    // Handle named characters (R7RS 7.1.1)
     if (name == "space") {
         return gc_new<atom<char>>(' ');
     } else if (name == "newline") {
@@ -703,6 +703,26 @@ Object* scheme_reader::read_char() {
         return gc_new<atom<char>>('\t');
     } else if (name == "return") {
         return gc_new<atom<char>>('\r');
+    } else if (name == "null" || name == "nul") {
+        return gc_new<atom<char>>('\0');
+    } else if (name == "alarm") {
+        return gc_new<atom<char>>('\a');
+    } else if (name == "backspace") {
+        return gc_new<atom<char>>('\b');
+    } else if (name == "delete" || name == "rubout") {
+        return gc_new<atom<char>>('\x7f');
+    } else if (name == "escape" || name == "esc") {
+        return gc_new<atom<char>>('\x1b');
+    } else if ((name[0] == 'x' || name[0] == 'X') && name.length() > 1) {
+        // #\xHH hex scalar value (R7RS)
+        try {
+            size_t pos;
+            long code = std::stol(name.substr(1), &pos, 16);
+            if (pos == name.length() - 1 && code >= 0 && code <= 0x10FFFF) {
+                return gc_new<atom<char>>(static_cast<char>(code));
+            }
+        } catch (const std::exception&) { /* fall through to error */ }
+        return make_error("read: invalid hex character literal '" + name + "'");
     } else if (name.length() == 1) {
         // Single character literal
         return gc_new<atom<char>>(name[0]);

@@ -167,6 +167,11 @@ const Case kCorpus[] = {
     // with-output-to-string / call-with-output-string
     {"(with-output-to-string (lambda () (display \"ab\") (display 12)))", "ab12", ALL},
     {"(call-with-output-string (lambda (p) (display 99 p)))", "99", ALL},
+    // named character literals (reader) + receive (Expander) — shared, all 4
+    {"(char->integer #\\null)", "0", ALL}, {"(char->integer #\\escape)", "27", ALL},
+    {"(char->integer #\\x41)", "65", ALL},
+    {"(receive (a b) (values 1 2) (+ a b))", "3", ALL},
+    {"(receive (a . r) (values 1 2 3) (length r))", "2", ALL},
     // strings / symbols (display-style printing: no quotes)
     {"(string-length \"hello\")", "5", ALL},
     {"(string-append \"a\" \"b\" \"c\")", "abc", ALL},

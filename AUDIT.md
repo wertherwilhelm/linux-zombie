@@ -305,10 +305,26 @@ unbound there). Fixing it needs an ANF-style lift of `if` into a join-point
 `let` during lowering. Everything works in tail/statement position and via the
 non-REPL differential harness, so it's isolated but worth doing next.
 
-Corpus now has 14 entries (algol-msweet, r7rs-core, r7rs-extra, r7rs-syntax,
-r7rs-io, r7rs-records, r7rs-bytevectors, r7rs-numeric-strings, r7rs-seq-ops,
-r7rs-comparisons, r7rs-inexact-print, r7rs-case-hashupdate, r7rs-number-prefixes;
-r7rs-extra/r7rs-io now have no `'gap`s). **No `'gap` tags remain anywhere.**
+### Corpus batch 11 (`corpus/r7rs-srfi-extras`, 2026-11-16) — shared-layer fills
+All targeting the generalized layers (reader/expander/prelude), per the
+architecture intent (see memory linux-zombie-architecture):
+- **Named character literals** `#\null`/`#\alarm`/`#\backspace`/`#\delete`/
+  `#\escape` (+ aliases nul/rubout/esc) and `#\xHH` hex scalar — the reader only
+  knew space/newline/tab/return. Added to `scheme_reader::read_char`. All 4.
+- **`receive`** (SRFI-8) — added as an Expander derived form
+  `(call-with-values (lambda () expr) (lambda formals body))`. All 4.
+- **SRFI-1 prelude**: `fold`, `filter-map`, `concatenate`, `take-while`,
+  `drop-while`, `span`, `break`, `unfold`. **SRFI-69 prelude**: `hash-table-walk`,
+  `hash-table-fold`, `hash-table->list`, `hash-table-copy`, `alist->hash-table`
+  (built on the hash-table primitives). tree-walk/bytecode/vm (prelude not on
+  CoreIR yet — the if-in-operand lowering gap).
+Corpus `corpus/r7rs-srfi-extras` (19 cases) + differential (reader/receive).
+Full suite 1322/1322, ASan-clean.
+
+Corpus now has 15 entries. **No `'gap` tags remain anywhere.** Reader + Expander
+are the dense shared layers (every derived form / lexical feature added there is
+all-4 at once); the Scheme prelude is all-4 *except CoreIR* until the CoreIR
+lowering handles `if` in operand position (the hinge for the next phase).
 
 ---
 
