@@ -172,6 +172,11 @@ const Case kCorpus[] = {
     {"(char->integer #\\x41)", "65", ALL},
     {"(receive (a b) (values 1 2) (+ a b))", "3", ALL},
     {"(receive (a . r) (values 1 2 3) (length r))", "2", ALL},
+    // inf/nan literals, negative-radix number->string, string mutation ops
+    {"(nan? +nan.0)", "#t", ALL}, {"(infinite? +inf.0)", "#t", ALL},
+    {"(number->string -255 16)", "-ff", ALL}, {"(number->string -10 2)", "-1010", ALL},
+    {"(let ((s (make-string 4 #\\-))) (string-copy! s 1 \"ab\") s)", "-ab-", ALL},
+    {"(let ((s (make-string 4 #\\-))) (string-fill! s #\\z 1 3) s)", "-zz-", ALL},
     // strings / symbols (display-style printing: no quotes)
     {"(string-length \"hello\")", "5", ALL},
     {"(string-append \"a\" \"b\" \"c\")", "abc", ALL},

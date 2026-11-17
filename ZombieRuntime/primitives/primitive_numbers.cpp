@@ -8,6 +8,7 @@
 #include "../a_rational.h"
 #include "../../GarbageCollector/gc_ptr.h"
 #include <cmath>
+#include <limits>
 #include <sstream>
 #include <iomanip>
 #include <bitset>
@@ -154,22 +155,22 @@ static Object* numberToString(Object* x, Object* y) {
         // ("2.0", "+inf.0") so the exact/inexact distinction survives.
         x->print(oss);
     } else {
-        // For other bases, use integer conversion
-        if (radix == 2) {
-            oss << std::bitset<64>(value);
-            // Remove leading zeros
-            std::string str = oss.str();
-            size_t pos = str.find('1');
-            if (pos != std::string::npos) {
-                return gc_new<a_string>(str.substr(pos));
-            } else {
-                return gc_new<a_string>("0");
-            }
+        // Non-decimal radix: format the MAGNITUDE and prepend a '-' for negatives
+        // (R7RS gives "-ff", not the 64-bit two's-complement the old std::hex did).
+        bool neg = value < 0;
+        unsigned long long mag = neg ? (unsigned long long)(-(value + 1)) + 1ULL
+                                     : (unsigned long long)value;
+        std::string digits;
+        if (mag == 0) {
+            digits = "0";
+        } else if (radix == 2) {
+            while (mag) { digits.insert(digits.begin(), char('0' + (mag & 1))); mag >>= 1; }
         } else if (radix == 8) {
-            oss << std::oct << value;
-        } else if (radix == 16) {
-            oss << std::hex << value;
+            std::ostringstream t; t << std::oct << mag; digits = t.str();
+        } else {  // radix == 16
+            std::ostringstream t; t << std::hex << mag; digits = t.str();
         }
+        return gc_new<a_string>(neg ? "-" + digits : digits);
     }
 
     return gc_new<a_string>(oss.str());
@@ -200,6 +201,11 @@ static Object* stringToNumber(Object* x, Object* y) {
     }
 
     std::string str = ((a_string*)x)->value();
+
+    // R7RS infinity / NaN literals.
+    if (str == "+inf.0") return numeric::make_inexact(std::numeric_limits<double>::infinity());
+    if (str == "-inf.0") return numeric::make_inexact(-std::numeric_limits<double>::infinity());
+    if (str == "+nan.0" || str == "-nan.0") return numeric::make_inexact(std::numeric_limits<double>::quiet_NaN());
 
     try {
         if (radix == 10) {

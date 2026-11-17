@@ -321,7 +321,19 @@ architecture intent (see memory linux-zombie-architecture):
 Corpus `corpus/r7rs-srfi-extras` (19 cases) + differential (reader/receive).
 Full suite 1322/1322, ASan-clean.
 
-Corpus now has 15 entries. **No `'gap` tags remain anywhere.** Reader + Expander
+### Corpus batch 12 (`corpus/r7rs-num-string-mut`, 2026-11-16)
+- **inf/nan literals** `+inf.0`/`-inf.0`/`+nan.0` were unreadable (round-trip hole:
+  the printer emits them but the reader rejected them). Added to
+  `scheme_reader::read_symbol` and to `string->number`. All 4.
+- **`number->string` in a non-decimal radix mangled negatives** — it printed the
+  64-bit two's complement (`-255`,16 → "ffffffffffffff01"). Now formats the
+  magnitude and prepends `-` ("-ff", "-1010"). All 4.
+- **`string-copy!`** (R7RS, was missing) and **`string-fill!`** optional range
+  added (both overlap-safe). (Also fixed a `rest(nil)` stderr diagnostic in the
+  new string-fill! range path — same pair-safety class as the bytevector one.)
+Corpus `corpus/r7rs-num-string-mut` (16 cases) + differential. 1322/1322, ASan-clean.
+
+Corpus now has 16 entries. **No `'gap` tags remain anywhere.** Reader + Expander
 are the dense shared layers (every derived form / lexical feature added there is
 all-4 at once); the Scheme prelude is all-4 *except CoreIR* until the CoreIR
 lowering handles `if` in operand position (the hinge for the next phase).

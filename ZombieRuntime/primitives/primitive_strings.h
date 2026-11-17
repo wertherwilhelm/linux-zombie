@@ -76,7 +76,8 @@ public:
 
         // Common extensions
         STRINGSPLIT = 27,      ///< string-split (str char) -> list of substrings
-        STRINGCONTAINS = 28    ///< string-contains (haystack needle) -> index or #f
+        STRINGCONTAINS = 28,   ///< string-contains (haystack needle) -> index or #f
+        STRINGCOPYMUT = 29     ///< string-copy! (to at from [start [end]]) (R7RS)
     };
 
     /**

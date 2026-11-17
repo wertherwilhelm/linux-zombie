@@ -166,6 +166,7 @@ PrimitiveStrings::PrimitiveStrings(ID id, int minArgs, int maxArgs)
         case STRINGTOLIST:  m_name = "string->list"; break;
         case STRINGSPLIT:   m_name = "string-split"; break;
         case STRINGCONTAINS: m_name = "string-contains"; break;
+        case STRINGCOPYMUT:  m_name = "string-copy!"; break;
         case LISTTOSTRING:  m_name = "list->string"; break;
         case STRINGFILL:    m_name = "string-fill!"; break;
 
@@ -381,23 +382,65 @@ Object* PrimitiveStrings::apply(IEvaluator* eval, Object* args, Environment* env
         }
 
         case STRINGFILL: {
-            // (string-fill! string char) - fills string with char (mutates in place)
+            // (string-fill! string char [start [end]]) - R7RS 6.7
             if (!is_string(x)) {
                 return error("string-fill!: first argument must be a string");
             }
             if (!is_char(y)) {
                 return error("string-fill!: second argument must be a character");
             }
-
             a_string* str = (a_string*)x;
             char fill_char = ((a_char*)y)->value();
-
-            // Mutate the string in place by filling with character
             std::string& str_val = str->value();
-            std::fill(str_val.begin(), str_val.end(), fill_char);
-
-            // Returns unspecified value (we return the string)
+            int len = (int)str_val.length();
+            int start = (z && !z->is_nil()) ? (int)num(z) : 0;
+            // Walk pair-by-pair to the optional 4th arg (end) without calling
+            // rest() on a non-pair (which prints a spurious stderr diagnostic).
+            Object* a2 = (args && args->pair()) ? rest(args) : nil;  // (char ...)
+            Object* a3 = (a2 && a2->pair()) ? rest(a2) : nil;        // (start ...)
+            Object* a4 = (a3 && a3->pair()) ? rest(a3) : nil;        // (end ...)
+            Object* end_obj = (a4 && a4->pair()) ? first(a4) : nil;
+            int end = (end_obj && !end_obj->is_nil()) ? (int)num(end_obj) : len;
+            if (start < 0 || end > len || start > end) {
+                return error("string-fill!: index out of range");
+            }
+            std::fill(str_val.begin() + start, str_val.begin() + end, fill_char);
             return str;
+        }
+
+        case STRINGCOPYMUT: {
+            // (string-copy! to at from [start [end]]) - R7RS 6.7
+            if (!is_string(x)) return error("string-copy!: 'to' must be a string");
+            Object* at_obj = y;
+            Object* from_obj = z;
+            Object* r3 = (rest(args) && rest(rest(args)) && rest(rest(args))->pair())
+                             ? rest(rest(rest(args))) : nil;   // (start end)
+            Object* start_obj = (r3 && r3->pair()) ? first(r3) : nil;
+            Object* r4 = (r3 && r3->pair()) ? rest(r3) : nil;
+            Object* end_obj = (r4 && r4->pair()) ? first(r4) : nil;
+            if (at_obj == nullptr || at_obj->is_nil() || !is_string(from_obj)) {
+                return error("string-copy!: expected (to at from [start [end]])");
+            }
+            a_string* to = (a_string*)x;
+            std::string& tov = to->value();
+            const std::string& fromv = ((a_string*)from_obj)->value();
+            int at = (int)num(at_obj);
+            int fl = (int)fromv.length();
+            int start = (start_obj && !start_obj->is_nil()) ? (int)num(start_obj) : 0;
+            int end = (end_obj && !end_obj->is_nil()) ? (int)num(end_obj) : fl;
+            if (start < 0 || end > fl || start > end) {
+                return error("string-copy!: source range out of bounds");
+            }
+            if (at < 0 || at + (end - start) > (int)tov.length()) {
+                return error("string-copy!: destination range out of bounds");
+            }
+            // Overlap-safe (to and from may be the same string).
+            if (at > start) {
+                for (int i = end - start - 1; i >= 0; --i) tov[at + i] = fromv[start + i];
+            } else {
+                for (int i = 0; i < end - start; ++i) tov[at + i] = fromv[start + i];
+            }
+            return to;
         }
 
         // ====================================================================
@@ -709,7 +752,8 @@ void PrimitiveStrings::install(Environment* env) {
     DEF("string-upcase",   STRINGUPCASE, 1, 1);
     DEF("string-downcase", STRINGDOWNCASE, 1, 1);
     DEF("string-foldcase", STRINGFOLDCASE, 1, 1);
-    DEF("string-fill!",    STRINGFILL, 2, 2);
+    DEF("string-fill!",    STRINGFILL, 2, 4);
+    DEF("string-copy!",    STRINGCOPYMUT, 3, 5);
 
     // Conversions
     DEF("string->list", STRINGTOLIST, 1, 3);

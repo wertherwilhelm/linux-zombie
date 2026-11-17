@@ -13,6 +13,7 @@
 #include "gc_ptr.h"
 #include <cctype>
 #include <sstream>
+#include <cmath>
 
 namespace zombie { namespace runtime {
 
@@ -568,6 +569,12 @@ Object* scheme_reader::read_symbol() {
     if (!at_end() && !is_delimiter(peek())) {
         return make_error("read: invalid symbol (no delimiter)");
     }
+
+    // R7RS infinity / NaN literals read as inexact reals (round-trips with the
+    // printer, which emits these same tokens).
+    if (sym == "+inf.0") return numeric::make_inexact(INFINITY);
+    if (sym == "-inf.0") return numeric::make_inexact(-INFINITY);
+    if (sym == "+nan.0" || sym == "-nan.0") return numeric::make_inexact(NAN);
 
     // Use symbol interning to ensure eq? works correctly with symbols
     return intern_symbol(sym);
