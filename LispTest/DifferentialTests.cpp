@@ -177,6 +177,9 @@ const Case kCorpus[] = {
     {"(number->string -255 16)", "-ff", ALL}, {"(number->string -10 2)", "-1010", ALL},
     {"(let ((s (make-string 4 #\\-))) (string-copy! s 1 \"ab\") s)", "-ab-", ALL},
     {"(let ((s (make-string 4 #\\-))) (string-fill! s #\\z 1 3) s)", "-zz-", ALL},
+    // numeric literal syntax: exponent, leading-dot, signs (reader) — all 4
+    {"1e3", "1000.0", ALL}, {"1.5e-2", "0.015", ALL}, {".5", "0.5", ALL},
+    {"(exact .5)", "1/2", ALL}, {"(cons 1 .5)", "(1 . 0.5)", ALL},
     // strings / symbols (display-style printing: no quotes)
     {"(string-length \"hello\")", "5", ALL},
     {"(string-append \"a\" \"b\" \"c\")", "abc", ALL},

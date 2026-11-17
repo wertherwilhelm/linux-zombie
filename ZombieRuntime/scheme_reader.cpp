@@ -186,8 +186,10 @@ Object* scheme_reader::read_list() {
             return result;
         }
 
-        // Check for dotted pair notation
-        if (peek() == '.') {
+        // Check for dotted pair notation — only a STANDALONE '.' (followed by a
+        // delimiter) is the pair marker; '.5' is a number, '...' is a symbol.
+        if (peek() == '.' &&
+            ((m_pos + 1 >= m_end) || is_delimiter(*(m_pos + 1)))) {
             consume();  // consume '.'
             skip_whitespace();
 
@@ -332,9 +334,19 @@ Object* scheme_reader::read_atom() {
     skip_whitespace();
 
     char c = peek();
+    const char* p1 = m_pos + 1;
+    char c1 = (p1 < m_end) ? *p1 : '\0';
+    const char* p2 = m_pos + 2;
+    char c2 = (p2 < m_end) ? *p2 : '\0';
 
-    // Check for number
-    if (is_digit(c) || (c == '-' && !at_end() && is_digit(*(m_pos + 1)))) {
+    // Number if: a digit; a leading '.' then digit (.5); or a sign then a digit
+    // or '.'-digit (+5, -.5). A bare +/-/. or things like -> / ... stay symbols,
+    // and +inf.0/-inf.0/+nan.0 fall through to read_symbol (handled there).
+    bool num_start =
+        is_digit(c) ||
+        (c == '.' && is_digit(c1)) ||
+        ((c == '-' || c == '+') && (is_digit(c1) || (c1 == '.' && is_digit(c2))));
+    if (num_start) {
         return read_number();
     }
 
@@ -375,8 +387,8 @@ Object* scheme_reader::parse_number_token(const std::string& tok, int radix, int
 Object* scheme_reader::read_number() {
     std::string num_str;
 
-    // Handle negative sign
-    if (peek() == '-') {
+    // Handle leading sign
+    if (peek() == '-' || peek() == '+') {
         num_str += consume();
     }
 
@@ -391,6 +403,23 @@ Object* scheme_reader::read_number() {
             has_decimal = true;
         }
         num_str += consume();
+    }
+
+    // Optional exponent, e.g. 1e3, 1.5e-2, 3E+4 -> inexact real. Read it before
+    // the complex check so the exponent's own sign isn't mistaken for +/-i.
+    if (!at_end() && (peek() == 'e' || peek() == 'E')) {
+        const char* save = m_pos;
+        std::string exp;
+        exp += consume();  // 'e' / 'E'
+        if (!at_end() && (peek() == '+' || peek() == '-')) exp += consume();
+        bool any_exp_digit = false;
+        while (!at_end() && is_digit(peek())) { exp += consume(); any_exp_digit = true; }
+        if (any_exp_digit) {
+            num_str += exp;
+            has_decimal = true;  // exponent => inexact
+        } else {
+            m_pos = save;  // not an exponent after all
+        }
     }
 
     // Check for rational number (e.g., 22/7)

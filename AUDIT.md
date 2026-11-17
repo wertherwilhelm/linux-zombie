@@ -333,10 +333,26 @@ Full suite 1322/1322, ASan-clean.
   new string-fill! range path — same pair-safety class as the bytevector one.)
 Corpus `corpus/r7rs-num-string-mut` (16 cases) + differential. 1322/1322, ASan-clean.
 
-Corpus now has 16 entries. **No `'gap` tags remain anywhere.** Reader + Expander
+### Corpus batch 13 (`corpus/r7rs-number-syntax`, 2026-11-16)
+Numeric literal syntax holes in the reader (all 4 evaluators):
+- **Exponent notation** `1e3`/`1.5e-2`/`3E+2` was rejected ("no delimiter").
+  `read_number` now reads an optional `e`/`E`[sign]digits exponent (before the
+  complex-`i` check so the exponent sign isn't mistaken for `+/-i`); result is
+  inexact.
+- **Leading-dot decimals** `.5`/`-.25`/`+.5` and a leading `+` sign weren't
+  recognized. `read_atom`'s number-start test now accepts `.`digit and
+  sign-then-(digit|`.`digit); `read_number` consumes a leading `+` too.
+- **Crucially**, `read_list` only treats a `.` as the dotted-pair marker when it's
+  *standalone* (followed by a delimiter) — so `.5` is a number but `(1 2 . 3)`
+  and `...`/`->` symbols are unaffected.
+Corpus `corpus/r7rs-number-syntax` (17 cases) + differential. 1322/1322, ASan-clean.
+
+Corpus now has 17 entries. **No `'gap` tags remain anywhere.** Reader + Expander
 are the dense shared layers (every derived form / lexical feature added there is
 all-4 at once); the Scheme prelude is all-4 *except CoreIR* until the CoreIR
 lowering handles `if` in operand position (the hinge for the next phase).
+Known-still-open (non-blocking): syntax-rules doesn't match vector patterns
+`#(x ...)`; CoreIR if-in-operand (prelude/JIT/native path).
 
 ---
 
