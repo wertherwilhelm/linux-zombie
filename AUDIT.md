@@ -347,12 +347,19 @@ Numeric literal syntax holes in the reader (all 4 evaluators):
   and `...`/`->` symbols are unaffected.
 Corpus `corpus/r7rs-number-syntax` (17 cases) + differential. 1322/1322, ASan-clean.
 
-### Corpus batch 14 (`corpus/r7rs-list-predicate`, 2026-11-16)
-- **`list?` hung forever on a circular list** — it walked cdrs with no cycle
-  detection. R7RS requires `list?` to return #f for a circular list AND to
-  terminate. Rewrote `is_list` (base.cpp) with Floyd's tortoise-and-hare. Shared
-  helper → all 4 evaluators. (Found by probing `(set-cdr! (cddr x) x)`.)
-Corpus `corpus/r7rs-list-predicate` (8 cases) + differential. 1322/1322, ASan-clean.
+### Corpus batch 14 (`corpus/r7rs-list-predicate`, 2026-11-16) — cyclic robustness
+Two circular-structure bugs the corpus probing surfaced (both terminate now;
+shared helpers → all 4 evaluators):
+- **`list?` hung forever on a circular list** — walked cdrs with no cycle
+  detection. Rewrote `is_list` (base.cpp) with Floyd's tortoise-and-hare (R7RS:
+  #f for circular, must terminate). Found via `(set-cdr! (cddr x) x)`.
+- **`equal?` CRASHED (stack overflow / core dump) on circular lists** — it
+  recursed down the cdr spine. Rewrote the pair branch in `equal()` to walk the
+  spine iteratively (recursing only on cars) with tortoise-hare: equal cyclic
+  structures compare #t co-inductively, cyclic-vs-finite is #f, and finite inputs
+  are unchanged. (Remaining theoretical edge: a car-cycle could still recurse
+  deeply — the common set-cdr! spine cycle is handled.)
+Corpus `corpus/r7rs-list-predicate` (12 cases) + differential. 1322/1322, ASan-clean.
 
 Corpus now has 18 entries. **No `'gap` tags remain anywhere.** Reader + Expander
 are the dense shared layers (every derived form / lexical feature added there is

@@ -68,9 +68,31 @@ bool equal(Object *x, Object *y) {
     // Type mismatch
     if (x->get_type() != y->get_type()) return false;
 
-    // Pairs - recursive comparison
+    // Pairs - compare cars recursively but walk the cdr spine ITERATIVELY so a
+    // circular spine (from set-cdr!) can't overflow the C++ stack. Tortoise-hare
+    // on the spine detects a cycle: if both spines run in lockstep with matching
+    // cars until the spine loops, the structures are equal (R7RS 6.1 allows
+    // terminating on cyclic structure).
     if (x->pair() && y->pair()) {
-        return equal(first(x), first(y)) && equal(rest(x), rest(y));
+        Object* xs = x;
+        Object* ys = y;
+        Object* tort = x;
+        bool advance_tort = false;
+        while (xs->pair() && ys->pair()) {
+            if (!equal(first(xs), first(ys))) return false;
+            xs = rest(xs);
+            ys = rest(ys);
+            if (xs == ys) return true;          // reached a shared tail / same object
+            if (advance_tort) {
+                tort = rest(tort);
+                // x's spine cycles; only equal if y is also still a pair here
+                // (i.e. y cycles too, rather than being a finite list that merely
+                // shares a prefix with the cycle).
+                if (xs == tort && ys->pair()) return true;
+            }
+            advance_tort = !advance_tort;
+        }
+        return equal(xs, ys);                   // compare the final tails
     }
 
     // Strings - compare by content

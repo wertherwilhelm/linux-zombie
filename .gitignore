@@ -6,3 +6,4 @@
 *.a
 compile_commands.json
 .cache/
+/build-release/

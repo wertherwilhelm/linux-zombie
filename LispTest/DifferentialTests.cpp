@@ -183,6 +183,9 @@ const Case kCorpus[] = {
     // list? terminates and returns #f on circular lists
     {"(let ((x (list 1 2))) (set-cdr! (cdr x) x) (list? x))", "#f", ALL},
     {"(list? '(1 2 . 3))", "#f", ALL}, {"(list? '(1 2 3))", "#t", ALL},
+    // equal? terminates on circular structure (used to crash)
+    {"(let ((x (list 1 2)) (y (list 1 2))) (set-cdr! (cdr x) x) (set-cdr! (cdr y) y) (equal? x y))", "#t", ALL},
+    {"(let ((x (list 1 2))) (set-cdr! (cdr x) x) (equal? x '(1 2 1 2)))", "#f", ALL},
     // strings / symbols (display-style printing: no quotes)
     {"(string-length \"hello\")", "5", ALL},
     {"(string-append \"a\" \"b\" \"c\")", "abc", ALL},
