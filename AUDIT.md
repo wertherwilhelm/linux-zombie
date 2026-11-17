@@ -361,7 +361,26 @@ shared helpers → all 4 evaluators):
   deeply — the common set-cdr! spine cycle is handled.)
 Corpus `corpus/r7rs-list-predicate` (12 cases) + differential. 1322/1322, ASan-clean.
 
-Corpus now has 18 entries. **No `'gap` tags remain anywhere.** Reader + Expander
+### Corpus batch 15 (`corpus/r7rs-eval-env`, 2026-11-16)
+- **`interaction-environment`** (R7RS) was missing, so `(eval expr
+  (interaction-environment))` errored. Added an `Environment::parent()` getter and
+  an IO primitive that walks the scope chain to the root (global) env. `eval` into
+  it sees and mutates global bindings. All 4.
+Corpus `corpus/r7rs-eval-env` (6 cases) + differential. 1322/1322, ASan-clean.
+
+**HYGIENE GAP (found 2026-11-16, not yet fixed — dedicated effort):** syntax-rules
+is only partially hygienic. When a macro's template introduces a binding whose
+name collides with a user identifier passed in as an argument, the introduced
+binding *captures* it. E.g. `(define-syntax myor (syntax-rules () ((_ a b)
+(let ((t a)) (if t t b))))) (define t 99) (myor #f t)` returns #f (should be 99);
+`((_ e) (let ((x 10)) e))` applied with user `x`=5 returns 10 (should be 5); and
+`swap!` breaks iff the user variable is literally named `tmp`. Non-colliding names
+work. Proper fix = alpha-rename template-introduced identifiers to fresh symbols
+per expansion (mark/rename) in `syntax_rules_transformer` — shared Expander layer,
+so it would fix all 4 at once, but it's a real transformer change, not a corpus
+increment. Logged as a next big item alongside the CoreIR hinge.
+
+Corpus now has 19 entries. **No `'gap` tags remain anywhere.** Reader + Expander
 are the dense shared layers (every derived form / lexical feature added there is
 all-4 at once); the Scheme prelude is all-4 *except CoreIR* until the CoreIR
 lowering handles `if` in operand position (the hinge for the next phase).

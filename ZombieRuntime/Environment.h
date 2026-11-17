@@ -175,6 +175,9 @@ public:
      */
     void set_parent(Environment* parent) { m_parent = parent; }
 
+    /** @brief Outer scope (null for the global environment). */
+    Environment* parent() const { return m_parent; }
+
     /**
      * @brief Trace all bindings and parent for garbage collection
      * @param tracer GC tracer

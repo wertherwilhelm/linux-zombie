@@ -83,7 +83,8 @@ public:
         WRITEBYTEVECTOR = 32,  ///< write-bytevector (R7RS)
         EOFOBJECT = 33,        ///< eof-object (R7RS) - returns the EOF sentinel
         WITHOUTPUTTOSTRING = 34,  ///< with-output-to-string (thunk)
-        CALLWITHOUTPUTSTRING = 35 ///< call-with-output-string (proc)
+        CALLWITHOUTPUTSTRING = 35, ///< call-with-output-string (proc)
+        INTERACTIONENV = 36       ///< interaction-environment (R7RS)
     };
 
     /**

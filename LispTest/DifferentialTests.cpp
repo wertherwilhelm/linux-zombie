@@ -186,6 +186,9 @@ const Case kCorpus[] = {
     // equal? terminates on circular structure (used to crash)
     {"(let ((x (list 1 2)) (y (list 1 2))) (set-cdr! (cdr x) x) (set-cdr! (cdr y) y) (equal? x y))", "#t", ALL},
     {"(let ((x (list 1 2))) (set-cdr! (cdr x) x) (equal? x '(1 2 1 2)))", "#f", ALL},
+    // eval + interaction-environment
+    {"(eval '(+ 1 2 3) (interaction-environment))", "6", ALL},
+    {"((eval '(lambda (x) (* x x)) (interaction-environment)) 7)", "49", ALL},
     // strings / symbols (display-style printing: no quotes)
     {"(string-length \"hello\")", "5", ALL},
     {"(string-append \"a\" \"b\" \"c\")", "abc", ALL},

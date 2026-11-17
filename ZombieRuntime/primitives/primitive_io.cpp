@@ -157,6 +157,7 @@ PrimitiveIO::PrimitiveIO(ID id, int minArgs, int maxArgs)
         case WRITEBYTEVECTOR:    m_name = "write-bytevector"; break;
         case WITHOUTPUTTOSTRING:   m_name = "with-output-to-string"; break;
         case CALLWITHOUTPUTSTRING: m_name = "call-with-output-string"; break;
+        case INTERACTIONENV:       m_name = "interaction-environment"; break;
     }
 }
 
@@ -532,6 +533,16 @@ Object* PrimitiveIO::apply(IEvaluator* evaluator, Object* args, Environment* env
             // (the-environment) - returns the current environment as a first-class Object
             // This is called during evaluation, so env parameter contains the current environment
             return (Object*)env;
+        }
+
+        case INTERACTIONENV: {
+            // (interaction-environment) - the global environment the REPL evaluates
+            // in (R7RS). Walk the scope chain from the call site up to the root.
+            Environment* e = env;
+            while (e && e->parent() != nullptr) {
+                e = e->parent();
+            }
+            return (Object*)(e ? e : env);
         }
 
         // ====================================================================
@@ -1052,6 +1063,7 @@ void PrimitiveIO::install(Environment* env) {
     DEF("get-output-string",  GETOUTPUTSTRING, 1, 1);
     DEF("with-output-to-string", WITHOUTPUTTOSTRING, 1, 1);
     DEF("call-with-output-string", CALLWITHOUTPUTSTRING, 1, 1);
+    DEF("interaction-environment", INTERACTIONENV, 0, 0);
 
     // R7RS bytevector I/O
     DEF("read-u8",           READU8, 0, 1);
