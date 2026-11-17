@@ -347,12 +347,20 @@ Numeric literal syntax holes in the reader (all 4 evaluators):
   and `...`/`->` symbols are unaffected.
 Corpus `corpus/r7rs-number-syntax` (17 cases) + differential. 1322/1322, ASan-clean.
 
-Corpus now has 17 entries. **No `'gap` tags remain anywhere.** Reader + Expander
+### Corpus batch 14 (`corpus/r7rs-list-predicate`, 2026-11-16)
+- **`list?` hung forever on a circular list** — it walked cdrs with no cycle
+  detection. R7RS requires `list?` to return #f for a circular list AND to
+  terminate. Rewrote `is_list` (base.cpp) with Floyd's tortoise-and-hare. Shared
+  helper → all 4 evaluators. (Found by probing `(set-cdr! (cddr x) x)`.)
+Corpus `corpus/r7rs-list-predicate` (8 cases) + differential. 1322/1322, ASan-clean.
+
+Corpus now has 18 entries. **No `'gap` tags remain anywhere.** Reader + Expander
 are the dense shared layers (every derived form / lexical feature added there is
 all-4 at once); the Scheme prelude is all-4 *except CoreIR* until the CoreIR
 lowering handles `if` in operand position (the hinge for the next phase).
-Known-still-open (non-blocking): syntax-rules doesn't match vector patterns
-`#(x ...)`; CoreIR if-in-operand (prelude/JIT/native path).
+Known-still-open (non-blocking): bare imaginary literals `2i`/`+i`/`-i` aren't
+read (`3+4i` works); syntax-rules doesn't match vector patterns `#(x ...)`;
+CoreIR if-in-operand (prelude/JIT/native path).
 
 ---
 

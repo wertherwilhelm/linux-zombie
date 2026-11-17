@@ -365,19 +365,22 @@ bool pair(Object* x) {
 }
 
 bool is_list(Object* x) {
-    // A proper list is either:
-    // 1. nil (empty list), OR
-    // 2. A pair whose cdr is also a proper list
-    // Use iterative approach to avoid calling rest() on atoms
-    while (x != NULL && x != nil && !x->is_nil()) {
-        if (!x->pair()) {
-            return false;  // Not a pair and not nil = improper list
-        }
-        // It's a pair, move to the cdr
-        x = ((ConsCell*)x)->cdr();
+    // A proper list ends in nil. R7RS requires list? to return #f for a circular
+    // list and to terminate, so use Floyd's tortoise-and-hare cycle detection
+    // rather than a naive cdr walk (which loops forever on a cycle).
+    auto is_end = [](Object* o) { return o == NULL || o == nil || o->is_nil(); };
+    Object* slow = x;
+    Object* fast = x;
+    while (true) {
+        if (is_end(fast)) return true;
+        if (!fast->pair()) return false;            // improper (dotted) list
+        fast = ((ConsCell*)fast)->cdr();
+        if (is_end(fast)) return true;
+        if (!fast->pair()) return false;
+        fast = ((ConsCell*)fast)->cdr();
+        slow = ((ConsCell*)slow)->cdr();
+        if (fast == slow) return false;             // cycle -> not a proper list
     }
-    // Reached nil/NULL, so it's a proper list
-    return true;
 }
 
 void Base::trace_references(Tracer& tracer)
