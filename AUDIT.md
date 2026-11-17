@@ -368,19 +368,24 @@ Corpus `corpus/r7rs-list-predicate` (12 cases) + differential. 1322/1322, ASan-c
   it sees and mutates global bindings. All 4.
 Corpus `corpus/r7rs-eval-env` (6 cases) + differential. 1322/1322, ASan-clean.
 
-**HYGIENE GAP (found 2026-11-16, not yet fixed — dedicated effort):** syntax-rules
-is only partially hygienic. When a macro's template introduces a binding whose
-name collides with a user identifier passed in as an argument, the introduced
-binding *captures* it. E.g. `(define-syntax myor (syntax-rules () ((_ a b)
-(let ((t a)) (if t t b))))) (define t 99) (myor #f t)` returns #f (should be 99);
-`((_ e) (let ((x 10)) e))` applied with user `x`=5 returns 10 (should be 5); and
-`swap!` breaks iff the user variable is literally named `tmp`. Non-colliding names
-work. Proper fix = alpha-rename template-introduced identifiers to fresh symbols
-per expansion (mark/rename) in `syntax_rules_transformer` — shared Expander layer,
-so it would fix all 4 at once, but it's a real transformer change, not a corpus
-increment. Logged as a next big item alongside the CoreIR hinge.
+### Corpus batch 16 (`corpus/r7rs-macro-hygiene`, 2026-11-17) — HYGIENE FIXED
+syntax-rules was only partially hygienic: a template-introduced binder whose name
+collided with a user identifier passed as an argument *captured* it (`myor`'s `t`,
+`swap!`'s `tmp`, a template `(let ((x 10)) e)` shadowing the argument's `x`).
+**Fixed** in `syntax_rules_transformer` (shared Expander layer → all 4 evaluators):
+after a rule matches, `hyg_expr` alpha-renames the identifiers the template
+introduces *as binders* (via let / let-star / letrec / letrec-star / lambda / do,
+incl. named-let names) to fresh gensyms (`name%hygN`) before pattern-variable
+substitution. Pattern variables, literals, syntactic keywords and free references
+are never in the binder scope map, so they're untouched; `quote`/`quasiquote`
+contents are skipped. The scope map starts empty, so a template with no binding
+forms is unchanged (low risk — full macro suite + differential across all 4 still
+1322/1322). Known remaining edge: a binder introduced *under ellipsis* gets one
+shared gensym rather than per-iteration fresh (rare); quasiquote-internal binders
+aren't renamed.
+Corpus `corpus/r7rs-macro-hygiene` (8 cases) + differential. ASan-clean.
 
-Corpus now has 19 entries. **No `'gap` tags remain anywhere.** Reader + Expander
+Corpus now has 20 entries. **No `'gap` tags remain anywhere.** Reader + Expander
 are the dense shared layers (every derived form / lexical feature added there is
 all-4 at once); the Scheme prelude is all-4 *except CoreIR* until the CoreIR
 lowering handles `if` in operand position (the hinge for the next phase).

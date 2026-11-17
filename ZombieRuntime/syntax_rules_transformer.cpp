@@ -22,6 +22,235 @@ SyntaxRulesTransformer::~SyntaxRulesTransformer() {
 /**
  * Expand a Macro call by finding the first matching rule and applying it
  */
+// ---------------------------------------------------------------------------
+// Hygiene: alpha-rename template-introduced binders
+// ---------------------------------------------------------------------------
+
+static std::string sym_name(Object* s) {
+    a_symbol* a = dynamic_cast<a_symbol*>(s);
+    return a ? a->value() : std::string();
+}
+
+bool SyntaxRulesTransformer::hyg_is_introduced(Object* sym, Object* bindings) {
+    if (!is_symbol(sym)) return false;
+    if (is_ellipsis_symbol(sym)) return false;
+    if (is_literal(sym)) return false;
+    if (lookup_binding(sym, bindings) != nullptr) return false;  // pattern variable
+    return true;
+}
+
+Object* SyntaxRulesTransformer::hyg_fresh(Object* orig) {
+    return intern_symbol(sym_name(orig) + "%hyg" + std::to_string(m_gensym_counter++));
+}
+
+// Rename introduced binder symbols in a formals / binding-name structure,
+// extending `scope`. Handles a proper/improper list of symbols or a bare symbol
+// (rest arg / named-let name). Pattern-variable binders (user identifiers) are
+// left as-is so they still substitute.
+Object* SyntaxRulesTransformer::hyg_formals(Object* formals, Object* bindings, Object*& scope) {
+    if (formals == nil || formals->is_nil()) return formals;
+    if (formals->is_atom()) {
+        if (hyg_is_introduced(formals, bindings)) {
+            Object* g = hyg_fresh(formals);
+            scope = cons(cons(formals, g), scope);
+            return g;
+        }
+        return formals;
+    }
+    Object* head = first(formals);
+    Object* new_head = head;
+    if (hyg_is_introduced(head, bindings)) {
+        new_head = hyg_fresh(head);
+        scope = cons(cons(head, new_head), scope);
+    }
+    return cons(new_head, hyg_formals(rest(formals), bindings, scope));
+}
+
+// Map hyg_expr over a list of expressions, preserving ellipsis symbols and any
+// improper tail.
+Object* SyntaxRulesTransformer::hyg_list(Object* lst, Object* bindings, Object* scope) {
+    if (lst == nil || lst->is_nil()) return lst;
+    if (lst->is_atom()) return hyg_expr(lst, bindings, scope);  // improper tail
+    Object* h = first(lst);
+    if (is_ellipsis_symbol(h)) {
+        return cons(h, hyg_list(rest(lst), bindings, scope));
+    }
+    return cons(hyg_expr(h, bindings, scope), hyg_list(rest(lst), bindings, scope));
+}
+
+Object* SyntaxRulesTransformer::hyg_let_bindings(Object* binds, Object* bindings,
+                                                Object* initScope, Object*& bscope, bool seq) {
+    if (binds == nil || binds->is_nil() || !binds->pair()) return binds;
+    Object* pair = first(binds);
+    if (is_ellipsis_symbol(pair)) {
+        return cons(pair, hyg_let_bindings(rest(binds), bindings, initScope, bscope, seq));
+    }
+    if (pair->pair()) {
+        Object* v = first(pair);
+        bool has_init = rest(pair)->pair();
+        Object* new_e = has_init
+            ? hyg_expr(first(rest(pair)), bindings, seq ? bscope : initScope)
+            : nullptr;
+        Object* new_v = v;
+        if (hyg_is_introduced(v, bindings)) {
+            new_v = hyg_fresh(v);
+            bscope = cons(cons(v, new_v), bscope);
+        }
+        Object* new_pair = has_init
+            ? cons(new_v, cons(new_e, rest(rest(pair))))
+            : cons(new_v, rest(pair));
+        return cons(new_pair, hyg_let_bindings(rest(binds), bindings, initScope, bscope, seq));
+    }
+    return cons(pair, hyg_let_bindings(rest(binds), bindings, initScope, bscope, seq));
+}
+
+Object* SyntaxRulesTransformer::hyg_expr(Object* e, Object* bindings, Object* scope) {
+    if (e == nil || e->is_nil()) return e;
+    if (e->is_atom()) {
+        if (is_symbol(e)) {
+            Object* g = lookup_binding(e, scope);  // (orig . gensym) alist
+            if (g != nullptr) return g;            // in-scope introduced binder
+        }
+        return e;
+    }
+
+    Object* head = first(e);
+    std::string op = is_symbol(head) ? sym_name(head) : "";
+
+    // Never rename inside quoted data (quasiquote is also skipped conservatively;
+    // its literal symbols aren't in scope anyway, but a binder could appear in an
+    // unquote — rare, documented).
+    if (op == "quote" || op == "quasiquote") {
+        return e;
+    }
+
+    if (op == "lambda") {
+        Object* formals = second(e);
+        Object* body = rest(rest(e));
+        Object* child = scope;
+        Object* new_formals = hyg_formals(formals, bindings, child);
+        Object* new_body = hyg_list(body, bindings, child);
+        return cons(head, cons(new_formals, new_body));
+    }
+
+    if (op == "let") {
+        Object* a = second(e);
+        // Named let: (let name ((v e)...) body...)
+        if (is_symbol(a)) {
+            Object* name = a;
+            Object* binds = first(rest(rest(e)));
+            Object* body = rest(rest(rest(e)));
+            // The loop name is in scope for the body (and recursive calls).
+            Object* child = scope;
+            Object* new_name = name;
+            if (hyg_is_introduced(name, bindings)) {
+                new_name = hyg_fresh(name);
+                child = cons(cons(name, new_name), child);
+            }
+            // Inits are evaluated in the outer scope + loop name (letrec-like for
+            // the name); binder vars are in scope for the body only.
+            Object* bscope = child;
+            Object* new_binds = hyg_let_bindings(binds, bindings, scope, bscope, /*seq=*/false);
+            Object* new_body = hyg_list(body, bindings, bscope);
+            return cons(head, cons(new_name, cons(new_binds, new_body)));
+        }
+        // Plain let: inits in outer scope, binders in body scope.
+        Object* binds = a;
+        Object* body = rest(rest(e));
+        Object* bscope = scope;
+        Object* new_binds = hyg_let_bindings(binds, bindings, scope, bscope, /*seq=*/false);
+        Object* new_body = hyg_list(body, bindings, bscope);
+        return cons(head, cons(new_binds, new_body));
+    }
+
+    if (op == "let*") {
+        Object* binds = second(e);
+        Object* body = rest(rest(e));
+        Object* bscope = scope;   // grows binding-by-binding
+        Object* new_binds = hyg_let_bindings(binds, bindings, bscope, bscope, /*seq=*/true);
+        Object* new_body = hyg_list(body, bindings, bscope);
+        return cons(head, cons(new_binds, new_body));
+    }
+
+    if (op == "letrec" || op == "letrec*") {
+        Object* binds = second(e);
+        Object* body = rest(rest(e));
+        // Binders are in scope for all inits and the body: collect names first,
+        // then rebuild (inits + binder occurrences renamed in the full scope).
+        Object* bscope = scope;
+        for (Object* b = binds; b != nil && !b->is_nil() && b->pair(); b = rest(b)) {
+            Object* pair = first(b);
+            if (pair->pair() && hyg_is_introduced(first(pair), bindings)) {
+                Object* v = first(pair);
+                bscope = cons(cons(v, hyg_fresh(v)), bscope);
+            }
+        }
+        Object* new_binds = nil, *tl = nil;
+        for (Object* b = binds; b != nil && !b->is_nil() && b->pair(); b = rest(b)) {
+            Object* pair = first(b);
+            Object* rebuilt;
+            if (pair->pair()) {
+                Object* nv = hyg_expr(first(pair), bindings, bscope);
+                if (rest(pair)->pair()) {
+                    Object* ne = hyg_expr(first(rest(pair)), bindings, bscope);
+                    rebuilt = cons(nv, cons(ne, rest(rest(pair))));
+                } else {
+                    rebuilt = cons(nv, rest(pair));
+                }
+            } else {
+                rebuilt = pair;
+            }
+            Object* cell = cons(rebuilt, nil);
+            if (new_binds == nil) { new_binds = tl = cell; }
+            else { set_rest(tl, cell); tl = cell; }
+        }
+        Object* new_body = hyg_list(body, bindings, bscope);
+        return cons(head, cons(new_binds ? new_binds : nil, new_body));
+    }
+
+    if (op == "do") {
+        // (do ((v init step)...) (test result...) body...)
+        Object* specs = second(e);
+        Object* test_clause = first(rest(rest(e)));
+        Object* body = rest(rest(rest(e)));
+        Object* bscope = scope;
+        for (Object* s = specs; s != nil && !s->is_nil() && s->pair(); s = rest(s)) {
+            Object* spec = first(s);
+            if (spec->pair() && hyg_is_introduced(first(spec), bindings)) {
+                Object* v = first(spec);
+                bscope = cons(cons(v, hyg_fresh(v)), bscope);
+            }
+        }
+        // Rebuild specs: binder renamed, init in OUTER scope, step in binder scope.
+        Object* new_specs = nil, *tail = nil;
+        for (Object* s = specs; s != nil && !s->is_nil() && s->pair(); s = rest(s)) {
+            Object* spec = first(s);
+            Object* v = first(spec);
+            Object* new_v = hyg_expr(v, bindings, bscope);
+            Object* init = (rest(spec)->pair()) ? first(rest(spec)) : nil;
+            Object* new_init = (rest(spec)->pair()) ? hyg_expr(init, bindings, scope) : nullptr;
+            Object* rebuilt;
+            if (rest(spec)->pair() && rest(rest(spec))->pair()) {
+                Object* step = first(rest(rest(spec)));
+                rebuilt = cons(new_v, cons(new_init, cons(hyg_expr(step, bindings, bscope), nil)));
+            } else if (new_init) {
+                rebuilt = cons(new_v, cons(new_init, nil));
+            } else {
+                rebuilt = cons(new_v, nil);
+            }
+            Object* cell = cons(rebuilt, nil);
+            if (new_specs == nil) { new_specs = tail = cell; }
+            else { set_rest(tail, cell); tail = cell; }
+        }
+        Object* new_test = hyg_list(test_clause, bindings, bscope);
+        Object* new_body = hyg_list(body, bindings, bscope);
+        return cons(head, cons(new_specs ? new_specs : nil, cons(new_test, new_body)));
+    }
+
+    // Ordinary combination: rename each sub-expression.
+    return hyg_list(e, bindings, scope);
+}
+
 Object* SyntaxRulesTransformer::expand(Object* input, Environment* env) {
     // Try each rule in order
     for (Object* rule_list = m_rules; rule_list != nil && !rule_list->is_nil(); rule_list = rest(rule_list)) {
@@ -33,8 +262,11 @@ Object* SyntaxRulesTransformer::expand(Object* input, Environment* env) {
         Object* bindings = match_pattern(pattern, input);
 
         if (bindings != nullptr) {
+            // Hygiene: alpha-rename template-introduced binders to fresh names so
+            // they can't capture user identifiers, THEN substitute pattern vars.
+            Object* hygienic = hyg_expr(template_expr, bindings, nil);
             // Match succeeded - expand template with bindings
-            Object* expansion = expand_template(template_expr, bindings, env);
+            Object* expansion = expand_template(hygienic, bindings, env);
             return expansion;
         }
     }

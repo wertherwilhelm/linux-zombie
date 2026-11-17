@@ -145,6 +145,28 @@ private:
     Object* make_hygienic(Object* expr, Object* pattern_vars, Environment* macro_env);
 
     /**
+     * @brief Hygiene: alpha-rename the identifiers a template introduces as
+     * binders (via let, let-star, letrec, letrec-star, lambda, do, including
+     * named let) to fresh gensyms, so they cannot capture user identifiers passed
+     * in as macro arguments. Pattern variables, literals, syntactic keywords and
+     * free references are left untouched (never in the binder scope map).
+     * scope is an alist of (original-symbol . gensym-symbol) in scope.
+     */
+    Object* hyg_expr(Object* e, Object* bindings, Object* scope);
+    Object* hyg_list(Object* lst, Object* bindings, Object* scope);
+    // Rename introduced binders in a formals/binding-name structure, extending
+    // `scope` (in/out) with the fresh names.
+    Object* hyg_formals(Object* formals, Object* bindings, Object*& scope);
+    // Rename a list of ((v e) ...) bindings: binder v (if introduced) -> gensym
+    // added to `bscope`; init e renamed in bscope when `seq` (let*) else initScope.
+    Object* hyg_let_bindings(Object* binds, Object* bindings, Object* initScope,
+                             Object*& bscope, bool seq);
+    // A symbol is an introduced binder candidate if it's a symbol that is not a
+    // pattern variable, not a literal, and not the ellipsis.
+    bool hyg_is_introduced(Object* sym, Object* bindings);
+    Object* hyg_fresh(Object* orig);  // fresh gensym symbol for an original binder
+
+    /**
      * @brief Lookup binding for a pattern variable.
      */
     Object* lookup_binding(Object* var, Object* bindings);

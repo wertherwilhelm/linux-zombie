@@ -189,6 +189,10 @@ const Case kCorpus[] = {
     // eval + interaction-environment
     {"(eval '(+ 1 2 3) (interaction-environment))", "6", ALL},
     {"((eval '(lambda (x) (* x x)) (interaction-environment)) 7)", "49", ALL},
+    // syntax-rules hygiene: introduced binders don't capture user identifiers
+    {"(begin (define-syntax myor (syntax-rules () ((_ a b) (let ((t a)) (if t t b))))) (define t 99) (myor #f t))", "99", ALL},
+    {"(begin (define-syntax m (syntax-rules () ((_ e) (let ((x 10)) e)))) (define x 5) (m x))", "5", ALL},
+    {"(begin (define-syntax sw (syntax-rules () ((_ a b) (let ((tmp a)) (set! a b) (set! b tmp))))) (define tmp 1) (define y 2) (sw tmp y) (list tmp y))", "(2 1)", ALL},
     // strings / symbols (display-style printing: no quotes)
     {"(string-length \"hello\")", "5", ALL},
     {"(string-append \"a\" \"b\" \"c\")", "abc", ALL},
