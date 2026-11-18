@@ -1,5 +1,32 @@
 # ZombieScheme — Code Audit (missing / unimplemented / outstanding)
 
+### CoreIR: `if` in operand position, + two backend bugs it exposed (2026-11-18, fixed)
+`--coreir` could not lower an `if` used as a call/primitive argument
+(`(+ 1 (if ...))`, `(list (if ...) ...)`, `(f (if ...))`): ANF operand lowering
+reduced every argument to one Atom via `terminal_atom()`, which throws on a tail
+`If`. Fix (`scheme_to_coreir.cpp`): `lower_operands()` threads the call's
+continuation as a *builder closure* and `splice_tail()` splices it into every
+tail Return — including **both** branches of a tail `If` — so the call is rebuilt
+once per branch instead of forcing the `If` to a temp. Both primitive- and
+general-call paths use it.
+
+Enabling this (and loading the prelude on CoreIR, which splices many more live
+temps across recursive calls) surfaced two backend bugs that had to be fixed
+first:
+- **Bug A** — VM frames never GC-traced (see next entry; fixed d05f76c).
+- **Bug B** — `OP_DEFINE_VAR` was declared but unimplemented, so CoreIR Let
+  bindings emitted `OP_STORE_VAR`, which does set-first-up-the-chain: a temp
+  `$tmpN` that had leaked to an outer/global scope got *mutated* rather than
+  freshly bound, so two sibling calls sharing a temp name clobbered each other
+  (`fib(n)` collapsing to 3). Implemented `DefineVarInsn` (always a fresh binding
+  in the current env) and emit it for Let bindings (`5c84a6c`). CoreIR temps are
+  now strictly frame-local.
+
+With all three fixed, `--coreir` runs the prelude and deep recursion correctly
+(`(f 25)`→75025, `iota`, `take`), and `if` lowers in operand position. Coverage:
+`CoreIREngineTest.IfInOperandPosition` + 5 differential corpus cases (all four
+evaluators). Green at -O0; full suite + ASan.
+
 ### GC rooting for the bytecode VM and toy VM (2026-11-18, CRITICAL — fixed)
 Deep two-sibling recursion (e.g. `fib`) corrupted or crashed on `--bytecode`,
 `--coreir`, and `--vm` once a collection fired mid-recursion: `--bytecode`/
@@ -17,9 +44,9 @@ unregister in their destructor. Masked until now because the test harness runs
 with a 100MB GC threshold (collections almost never fire) and the prelude never
 loaded on CoreIR. Regression test `LispTest/VMGCRecursionTests.cpp` drops the
 threshold so GC fires during an allocating `fib` on all four evaluators; green at
--O0 and ASan. (Found while investigating CoreIR if-in-operand — this is the
-backend bug that made the prelude-on-CoreIR corrupt recursion; the lowering fix
-is still pending, see memory [[linux-zombie-next-steps]].)
+-O0 and ASan. (Found while investigating CoreIR if-in-operand — this is
+one of two backend bugs that made the prelude-on-CoreIR corrupt recursion; the
+lowering now works end-to-end, see the entry above.)
 
 
 Date: 2026-11-13. Scope: the ported Linux tree (`GarbageCollector`,
