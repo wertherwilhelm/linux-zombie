@@ -89,6 +89,13 @@ Object* VM::eval(Object* expr, Environment* env) {
     } catch (...) {
         executing_ = prev_executing;
         if (reentrant) accumulator = saved_acc;
+        // The computation aborted mid-flight (e.g. a GuardEscape / scheme_error
+        // thrown by raise through a %guard thunk). Drop the frames this eval
+        // pushed above `floor` so whatever catches the exception can re-enter the
+        // VM on a consistent stack. Without this, a re-entrant eval (the %guard
+        // thunk running on top of outer frames) would leave orphan frames behind
+        // and the handler re-entry would run atop corrupted state -> crash.
+        if (stack.size() > floor) stack.erase(stack.begin() + floor, stack.end());
         throw;
     }
     executing_ = prev_executing;
