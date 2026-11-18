@@ -226,6 +226,20 @@ Object* Expander::expand_list(Object* list) {
         return expand_case_lambda(args);
     }
 
+    if (name == "parameterize") {
+        // (parameterize ((p v) ...) body...) ->
+        //   (%parameterize (list p ...) (list v ...) (lambda () body...))
+        // Reuses the shared runtime primitive (save old / apply converter on
+        // entry / RAW restore on exit, even on escape), so every evaluator gets
+        // parameterize from the Expander rather than special-casing it.
+        if (is_nil(args) || !args->pair()) {
+            throw std::runtime_error("parameterize: malformed syntax");
+        }
+        Object* bindings = first(args);
+        Object* body = rest(args);
+        return expand_parameterize(bindings, body);
+    }
+
     if (name == "define-record-type") {
         // (define-record-type name (ctor field ...) pred (field accessor [modifier]) ...)
         return expand_define_record_type(args);
@@ -1621,6 +1635,50 @@ Object* Expander::expand_case_lambda(Object* clauses) {
     Object* let_form = cons(intern_symbol("let"), cons(binding, cons(cond_form, nil)));
     Object* lambda_form = cons(intern_symbol("lambda"), cons(args_sym, cons(let_form, nil)));
     return expand(lambda_form);
+}
+
+// ============================================================================
+// parameterize - dynamic binding (R7RS 4.2.6)
+// ============================================================================
+
+Object* Expander::expand_parameterize(Object* bindings, Object* body) {
+    /*
+     * (parameterize ((p v) ...) body ...)
+     * =>
+     * (%parameterize (list p ...) (list v ...) (lambda () body ...))
+     *
+     * %parameterize is the shared runtime primitive (primitive_parameters.cpp):
+     * it saves each parameter's old value, applies converters to the new values
+     * on entry, runs the thunk, and restores the old values RAW on exit (R7RS:
+     * the converter must not re-run on restore) even when an escape/exception
+     * unwinds the thunk. Desugaring here means every evaluator shares it.
+     */
+    Object* params = nil; Object* params_tail = nil;
+    Object* values = nil; Object* values_tail = nil;
+    auto append = [](Object* item, Object*& head, Object*& tail) {
+        Object* cell = cons(item, nil);
+        if (is_nil(head)) { head = cell; tail = cell; }
+        else { set_rest(tail, cell); tail = cell; }
+    };
+
+    for (Object* b = bindings; !is_nil(b); b = rest(b)) {
+        if (!b->pair() || !first(b)->pair()) {
+            throw std::runtime_error("parameterize: each binding must be (param value)");
+        }
+        Object* binding = first(b);
+        append(first(binding), params, params_tail);          // param expr
+        append(first(rest(binding)), values, values_tail);     // value expr
+    }
+
+    // (list p ...) and (list v ...); empty bindings -> (list)
+    Object* params_list = cons(intern_symbol("list"), params);
+    Object* values_list = cons(intern_symbol("list"), values);
+    // (lambda () body ...)
+    Object* thunk = cons(intern_symbol("lambda"), cons(nil, body));
+    // (%parameterize params values thunk) — re-expand so value exprs / body lower
+    Object* form = cons(intern_symbol("%parameterize"),
+                        cons(params_list, cons(values_list, cons(thunk, nil))));
+    return expand(form);
 }
 
 // ============================================================================

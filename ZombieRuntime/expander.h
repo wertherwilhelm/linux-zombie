@@ -190,6 +190,12 @@ private:
     Object* expand_case_lambda(Object* clauses);
 
     /**
+     * @brief Desugar (parameterize ((p v) ...) body...) to a %parameterize call
+     *        on the shared runtime primitive (save/convert/raw-restore).
+     */
+    Object* expand_parameterize(Object* bindings, Object* body);
+
+    /**
      * @brief Desugar (define-record-type ...) to a tagged-vector representation
      * built from core primitives (R7RS 5.5). Produces a (begin ...) of defines
      * for the type tag, constructor, predicate, accessors and modifiers.

@@ -211,6 +211,12 @@ const Case kCorpus[] = {
     {"((case-lambda ((x) (list 'one x)) ((x y) (list 'two x y))) 9)", "(one 9)", ALL},
     {"((case-lambda ((a b) 'two) ((a b . r) (list 'rest r))) 1 2 3 4)", "(rest (3 4))", ALL},
     {"((case-lambda ((x) x) (args (length args))) 1 2 3)", "3", ALL},
+    // parameterize — desugared in the shared Expander to a %parameterize call
+    // (save / apply converter / raw-restore), so all evaluators share it.
+    {"(let ((p (make-parameter 10))) (parameterize ((p 20)) (p)))", "20", ALL},
+    {"(let ((p (make-parameter 10))) (parameterize ((p 20)) (p)) (p))", "10", ALL},
+    {"(let ((p (make-parameter 5 (lambda (x) (* x 2))))) (parameterize ((p 7)) (p)))", "14", ALL},
+    {"(let ((p (make-parameter 1))) (parameterize ((p 2)) (+ (p) (parameterize ((p 3)) (p)) (p))))", "7", ALL},
     // Escape continuations — supported by all three (the tree-walk's only mode).
     {"(+ 1 (call/cc (lambda (k) (k 10))))", "11", ALL},
     {"(* 2 (call/cc (lambda (k) (+ 1 (k 5)))))", "10", ALL},
