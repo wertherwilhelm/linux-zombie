@@ -41,13 +41,16 @@ std::string run_in(EvaluatorType t, const std::string& code) {
 
 // -------------------------------------------------------------------------
 // KNOWN GAPS (masked out below; remove the mask when fixed):
-//   - `guard`: native on lisp + bytecode only. CoreIR and the toy VM lack it.
-//     A uniform Expander desugaring to call/cc + with-exception-handler was tried
-//     and reverted — it regressed the bytecode VM (its with-exception-handler
-//     doesn't catch C++ primitive errors and loses the outer handler on nested
-//     re-raise) and the toy VM can't escape from inside a handler at all.
-//     Unifying guard needs those VMs' exception/continuation machinery fixed.
+//   - Direct `with-exception-handler` where the handler escapes via a call/cc
+//     continuation is still broken on the toy VM (its continuation invocation is
+//     an in-VM stack-restore that can't unwind out of the C++ raise->handler
+//     call). `guard` does NOT hit this (it uses %guard / GuardEscape), so guard
+//     is covered on all four; only the raw pattern is affected. Not probed here.
 // FIXED (now covered on all four):
+//   - `guard` — desugared in the shared Expander to a %guard call; all four
+//     evaluators, incl. nested re-raise, caught C++ primitive errors, and
+//     parameterize-restore on escape. (Toy VM needed a re-entrant-eval fix: on an
+//     exception it now unwinds its frame stack to the entry floor.)
 //   - closure applied from inside a primitive (map/filter/for-each) — was a
 //     toy-VM re-entrant-eval hang/segfault.
 //   - named let `(let loop ...)` — was broken in bytecode and toy VM; the shared
@@ -223,9 +226,17 @@ const Case kCorpus[] = {
     {"(let ((p (make-parameter 10))) (parameterize ((p 20)) (p)) (p))", "10", ALL},
     {"(let ((p (make-parameter 5 (lambda (x) (* x 2))))) (parameterize ((p 7)) (p)))", "14", ALL},
     {"(let ((p (make-parameter 1))) (parameterize ((p 2)) (+ (p) (parameterize ((p 3)) (p)) (p))))", "7", ALL},
-    // guard works on lisp + bytecode (native special form) but not CoreIR/toy VM;
-    // not cross-checked here (desugaring it uniformly needs those VMs'
-    // with-exception-handler fixed first — see the KNOWN GAPS note).
+    // guard — desugared in the shared Expander to a %guard call (the runtime
+    // primitive that owns the C++ RAII). All four evaluators, incl. nested
+    // re-raise, a caught C++ primitive error, and parameterize-restore on escape.
+    {"(guard (e (#t (list 'caught e))) (raise 'boom))", "(caught boom)", ALL},
+    {"(guard (e ((symbol? e) 'sym) (else 'other)) (raise 'x))", "sym", ALL},
+    {"(guard (e (#t (error-object-message e))) (error \"bad\" 1 2))", "bad", ALL},
+    {"(+ 1 (guard (e (#t 100)) (raise 'x)))", "101", ALL},
+    {"(guard (e ((number? e) (+ e 100))) (guard (e2 ((string? e2) 'inner)) (raise 7)))", "107", ALL},
+    {"(guard (e (else 'caught-div)) (/ 10 0))", "caught-div", ALL},
+    {"(guard (e (#t 'nope)) (+ 1 2))", "3", ALL},
+    {"(let ((p (make-parameter 10))) (guard (e (else (p))) (parameterize ((p 99)) (raise 'x))))", "10", ALL},
     // Escape continuations — supported by all three (the tree-walk's only mode).
     {"(+ 1 (call/cc (lambda (k) (k 10))))", "11", ALL},
     {"(* 2 (call/cc (lambda (k) (+ 1 (k 5)))))", "10", ALL},

@@ -1512,21 +1512,56 @@ Object* Expander::expand_unless(Object* test, Object* body) {
 
 Object* Expander::expand_guard(Object* var, Object* clauses, Object* body) {
     /*
-     * Transform: (guard (var (test handler) ... (else handler)) body...)
+     * Transform: (guard (var clause ...) body ...)   [R7RS 4.2.7]
+     * =>
+     *   (%guard (lambda (var) (cond clause ... [else (raise var)]))
+     *           (lambda () body ...))
      *
-     * guard is NOT desugared here: it stays a special form the evaluator handles
-     * directly. The obvious R7RS desugaring to call/cc + with-exception-handler
-     * was tried (2026-11-18) and reverted — it regresses the bytecode VM, whose
-     * with-exception-handler does not turn C++ primitive errors (e.g. divide by
-     * zero) into catchable conditions and loses the outer handler on a nested
-     * re-raise. The tree-walk and bytecode evaluators both implement guard
-     * natively and pass those cases; CoreIR and the toy VM lack guard (tracked as
-     * a gap). Unifying guard requires first fixing those VMs'
-     * with-exception-handler / escape-continuation interaction.
+     * %guard (primitive_exceptions.cpp GUARDIMPL) owns the C++ RAII the compiled
+     * code can't express: it installs a GuardHandler for the thunk's dynamic
+     * extent, recovers the payload when it escapes — covering a Scheme raise, a
+     * C++ primitive error (÷0, car of non-pair), and a nested re-raise to the
+     * outer handler — then runs the clause dispatcher OUTSIDE the guard's handler
+     * scope. The (else (raise var)) re-raise is appended only when the user wrote
+     * no else. Desugaring here (rather than in the bytecode compiler, which also
+     * did this) lets all four evaluators share the one proven implementation,
+     * sidestepping the direct with-exception-handler / escape-continuation bugs
+     * in the two VMs.
      */
-    Object* guard_spec = cons(var, clauses);
-    return cons(intern_symbol("guard"),
-               cons(guard_spec, body));
+    bool has_else = false;
+    for (Object* c = clauses; !is_nil(c); c = rest(c)) {
+        if (c->pair() && first(c)->pair()) {
+            Object* test = first(first(c));
+            if (is_symbol(test) && ((a_symbol*)test)->value() == "else") {
+                has_else = true;
+                break;
+            }
+        }
+    }
+
+    // cond clause list = user clauses (+ a re-raise else if none present).
+    Object* cond_clauses = clauses;
+    if (!has_else) {
+        Object* raise_call = cons(intern_symbol("raise"), cons(var, nil));
+        Object* else_clause = cons(intern_symbol("else"), cons(raise_call, nil));
+        Object* head = nil; Object* tail = nil;
+        for (Object* c = clauses; !is_nil(c); c = rest(c)) {
+            Object* cell = cons(first(c), nil);
+            if (is_nil(head)) { head = cell; tail = cell; }
+            else { set_rest(tail, cell); tail = cell; }
+        }
+        Object* else_cell = cons(else_clause, nil);
+        if (is_nil(head)) head = else_cell; else set_rest(tail, else_cell);
+        cond_clauses = head;
+    }
+
+    Object* cond_expr = cons(intern_symbol("cond"), cond_clauses);
+    Object* handler_lambda = cons(intern_symbol("lambda"),
+                                  cons(cons(var, nil), cons(cond_expr, nil)));
+    Object* thunk_lambda = cons(intern_symbol("lambda"), cons(nil, body));
+    Object* rewritten = cons(intern_symbol("%guard"),
+                             cons(handler_lambda, cons(thunk_lambda, nil)));
+    return expand(rewritten);
 }
 
 // ============================================================================
