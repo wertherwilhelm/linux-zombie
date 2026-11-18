@@ -1,6 +1,6 @@
 # ZombieScheme — Code Audit (missing / unimplemented / outstanding)
 
-### Shared-Expander derived forms: case-lambda, parameterize (2026-11-18, fixed)
+### Shared-Expander derived forms: case-lambda, parameterize, guard (2026-11-18, fixed)
 A differential probe across all four evaluators found derived forms that
 `expand_*` returned **unchanged**, i.e. were handled ad-hoc per evaluator rather
 than desugared in the shared Expander — so they worked on some evaluators and
@@ -15,20 +15,29 @@ not others. Two were cleanly unified:
   entry / raw-restore-on-exit). All 4. Corpus r7rs-parameterize + differential.
   Commit 8e230c9.
 
-**guard — attempted, REVERTED.** Also handled ad-hoc (native on tree-walk +
-bytecode; absent on CoreIR + toy VM). The obvious R7RS desugaring to `call/cc` +
-`with-exception-handler` + `raise-continuable` (with `((call/cc (lambda (k) ...)))`
-returning a thunk so clauses run in the guard's dynamic env) is correct on the
-tree-walk and CoreIR, but it **regresses the bytecode VM**: bytecode's
-with-exception-handler does not turn C++ primitive errors (divide-by-zero →
-error object) into catchable conditions, and it loses the outer handler on a
-nested re-raise (dedicated tests GuardCatchesPrimitiveErrors / GuardNested pass
-natively, fail under the desugaring). The toy VM additionally can't escape from
-inside a handler at all ("exception handler returned from non-continuable
-exception"). Since the desugaring would only help CoreIR while breaking the very
-VM it lowers to, guard stays a native special form. **Follow-up to unblock it:**
-fix the bytecode and toy-VM with-exception-handler / escape-continuation
-interaction, then revisit the desugaring.
+**guard — unified 2026-11-18 (commits 0adadde + 83d7dab).** Was handled ad-hoc
+(native on tree-walk; a guard→%guard rewrite in the bytecode compiler; absent on
+CoreIR + toy VM). First attempt desugared to `call/cc` + `with-exception-handler`
+and was reverted — it regressed the bytecode VM (its with-exception-handler
+doesn't turn C++ primitive errors into catchable conditions and loses the outer
+handler on nested re-raise) and the toy VM couldn't escape from inside a handler.
+The working fix routes guard through the **%guard runtime primitive** instead:
+move the bytecode compiler's `guard => (%guard (lambda (var) (cond clause...
+[else (raise var)])) (lambda () body...))` rewrite into the shared Expander.
+%guard (GUARDIMPL) owns the C++ RAII — GuardHandler install, payload recovery
+over a Scheme raise / C++ primitive error / nested re-raise — so all four
+evaluators share it, sidestepping the with-exception-handler/continuation bugs.
+The toy VM additionally needed `VM::eval` to unwind its frame stack to the entry
+floor on a C++ exception (0adadde); without that, a GuardEscape left orphan
+frames and the handler re-entry crashed. Covered on all four: corpus/r7rs-guard
+(8) + 8 unmasked differential cases.
+
+**Remaining exception gap (low priority, not a guard blocker):** direct
+`with-exception-handler` where the handler escapes via a call/cc continuation
+still fails on the toy VM — its continuation invocation is an in-VM stack-restore
+that can't unwind out of the C++ `raise`→`handler->apply` call. And
+with-exception-handler does not catch C++ primitive errors on any evaluator
+(only %guard does). guard needs neither, so these are deferred.
 
 ### CoreIR: `if` in operand position, + two backend bugs it exposed (2026-11-18, fixed)
 `--coreir` could not lower an `if` used as a call/primitive argument
