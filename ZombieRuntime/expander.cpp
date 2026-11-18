@@ -1534,20 +1534,22 @@ Object* Expander::expand_guard(Object* var, Object* clauses, Object* body) {
 
 Object* Expander::expand_case_lambda(Object* clauses) {
     /*
-     * Transform: (case-lambda ((formals body ...) ...))
+     * Transform: (case-lambda (formals body ...) ...)
      *
-     * R7RS case-lambda allows procedures to have different behavior based on
-     * argument count:
+     * R7RS case-lambda is a multi-arity procedure dispatching on argument count.
+     * It desugars to a single variadic lambda that inspects its argument count,
+     * so EVERY evaluator gets case-lambda from the shared Expander and none has
+     * to special-case it:
      *
-     * (define plus
-     *   (case-lambda
-     *     (() 0)
-     *     ((x) x)
-     *     ((x y) (+ x y))))
+     *   (case-lambda (formals body ...) ...)
+     * =>
+     *   (lambda %args
+     *     (let ((%n (length %args)))
+     *       (cond (<arity-test> (apply (lambda formals body ...) %args)) ...
+     *             (else (error "case-lambda: no matching clause")))))
      *
-     * This cannot be desugared to simpler forms - it needs runtime dispatch
-     * based on argument count. We return a special case-lambda expression that
-     * the evaluator will recognize and handle directly.
+     * <arity-test> is (= %n k) for a fixed k-arg clause, or (>= %n k) for a
+     * rest/variadic clause (dotted formals or a bare symbol).
      */
 
     // Validate clauses
@@ -1555,15 +1557,22 @@ Object* Expander::expand_case_lambda(Object* clauses) {
         throw std::runtime_error("case-lambda: requires at least one clause");
     }
 
-    // Expand each clause's body expressions
-    Object* expanded_clauses = nil;
-    Object* tail = nil;
+    Object* args_sym = gensym("args");
+    Object* n_sym = gensym("n");
+
+    // Build the cond clauses (in source order) with a trailing else.
+    Object* cond_clauses = nil;
+    Object* cc_tail = nil;
+    auto append_clause = [&](Object* clause_form) {
+        Object* cell = cons(clause_form, nil);
+        if (is_nil(cond_clauses)) { cond_clauses = cell; cc_tail = cell; }
+        else { set_rest(cc_tail, cell); cc_tail = cell; }
+    };
 
     for (Object* clause_list = clauses; !is_nil(clause_list); clause_list = rest(clause_list)) {
         if (!clause_list->pair()) {
             throw std::runtime_error("case-lambda: clauses must be a proper list");
         }
-
         Object* clause = first(clause_list);
         if (!clause->pair()) {
             throw std::runtime_error("case-lambda: each clause must be (formals body ...)");
@@ -1571,47 +1580,47 @@ Object* Expander::expand_case_lambda(Object* clauses) {
 
         Object* formals = first(clause);
         Object* body = rest(clause);
-
         if (is_nil(body)) {
             throw std::runtime_error("case-lambda: clause body cannot be empty");
         }
 
-        // Expand body expressions
-        Object* expanded_body = nil;
-        Object* body_tail = nil;
-
-        for (Object* expr_list = body; !is_nil(expr_list); expr_list = rest(expr_list)) {
-            if (!expr_list->pair()) {
-                throw std::runtime_error("case-lambda: clause body must be a proper list");
-            }
-            Object* expanded_expr = expand(first(expr_list));
-            Object* cell = cons(expanded_expr, nil);
-
-            if (is_nil(expanded_body)) {
-                expanded_body = cell;
-                body_tail = cell;
-            } else {
-                set_rest(body_tail, cell);
-                body_tail = cell;
-            }
-        }
-
-        // Build expanded clause: (formals expanded-body ...)
-        Object* expanded_clause = cons(formals, expanded_body);
-        Object* cell = cons(expanded_clause, nil);
-
-        if (is_nil(expanded_clauses)) {
-            expanded_clauses = cell;
-            tail = cell;
+        // Count required args; detect a rest/variadic formal.
+        int required = 0;
+        bool variadic = false;
+        if (is_symbol(formals)) {
+            variadic = true;  // bare symbol: binds all args
         } else {
-            set_rest(tail, cell);
-            tail = cell;
+            Object* cur = formals;
+            while (cur->pair()) { ++required; cur = rest(cur); }
+            if (!is_nil(cur)) variadic = true;  // dotted: (a b . rest)
         }
+
+        // (= %n k)  or  (>= %n k)
+        Object* cmp = intern_symbol(variadic ? ">=" : "=");
+        Object* test = cons(cmp, cons(n_sym,
+                            cons(numeric::make_integer(required), nil)));
+
+        // (apply (lambda formals body ...) %args)
+        Object* clause_lambda = cons(intern_symbol("lambda"), cons(formals, body));
+        Object* action = cons(intern_symbol("apply"),
+                              cons(clause_lambda, cons(args_sym, nil)));
+
+        append_clause(cons(test, cons(action, nil)));
     }
 
-    // Return: (case-lambda expanded-clauses...)
-    // The evaluator will recognize this and create a case_lambda Procedure
-    return cons(intern_symbol("case-lambda"), expanded_clauses);
+    // (else (error "case-lambda: no matching clause"))
+    Object* err = cons(intern_symbol("error"),
+                       cons(gc_new<a_string>("case-lambda: no matching clause"), nil));
+    append_clause(cons(intern_symbol("else"), cons(err, nil)));
+
+    // Assemble (lambda %args (let ((%n (length %args))) (cond ...))) and expand
+    // once more so the generated let/cond/apply lower to core forms everywhere.
+    Object* cond_form = cons(intern_symbol("cond"), cond_clauses);
+    Object* length_form = cons(intern_symbol("length"), cons(args_sym, nil));
+    Object* binding = cons(cons(n_sym, cons(length_form, nil)), nil);
+    Object* let_form = cons(intern_symbol("let"), cons(binding, cons(cond_form, nil)));
+    Object* lambda_form = cons(intern_symbol("lambda"), cons(args_sym, cons(let_form, nil)));
+    return expand(lambda_form);
 }
 
 // ============================================================================

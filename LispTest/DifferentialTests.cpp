@@ -205,6 +205,12 @@ const Case kCorpus[] = {
     // recursion
     {"(letrec ((fact (lambda (n) (if (< n 2) 1 (* n (fact (- n 1))))))) (fact 6))", "720", ALL},
     {"(letrec ((fib (lambda (n) (if (< n 2) n (+ (fib (- n 1)) (fib (- n 2))))))) (fib 10))", "55", ALL},
+    // case-lambda — desugared in the shared Expander (arity dispatch), so every
+    // evaluator runs the same core-form expansion (was tree-walk-only before).
+    {"((case-lambda (() 0) ((x) x) ((x y) (+ x y))) 3 4)", "7", ALL},
+    {"((case-lambda ((x) (list 'one x)) ((x y) (list 'two x y))) 9)", "(one 9)", ALL},
+    {"((case-lambda ((a b) 'two) ((a b . r) (list 'rest r))) 1 2 3 4)", "(rest (3 4))", ALL},
+    {"((case-lambda ((x) x) (args (length args))) 1 2 3)", "3", ALL},
     // Escape continuations — supported by all three (the tree-walk's only mode).
     {"(+ 1 (call/cc (lambda (k) (k 10))))", "11", ALL},
     {"(* 2 (call/cc (lambda (k) (+ 1 (k 5)))))", "10", ALL},
