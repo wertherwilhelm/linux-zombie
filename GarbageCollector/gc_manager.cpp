@@ -32,6 +32,14 @@ void gc_manager::set_scan_stack(bool on) {
     m_strategy->set_scan_stack(on);
 }
 
+int gc_manager::register_root_tracer(std::function<void(Tracer&)> cb) {
+    return m_strategy->register_root_tracer(std::move(cb));
+}
+
+void gc_manager::unregister_root_tracer(int id) {
+    m_strategy->unregister_root_tracer(id);
+}
+
 gc_manager::~gc_manager() {
     delete m_strategy;
 }

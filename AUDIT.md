@@ -1,5 +1,27 @@
 # ZombieScheme — Code Audit (missing / unimplemented / outstanding)
 
+### GC rooting for the bytecode VM and toy VM (2026-11-18, CRITICAL — fixed)
+Deep two-sibling recursion (e.g. `fib`) corrupted or crashed on `--bytecode`,
+`--coreir`, and `--vm` once a collection fired mid-recursion: `--bytecode`/
+`--coreir` gave wrong results or "cannot take first of an atom!", and the toy VM
+segfaulted. Root cause: both VMs keep live `Object*` (call frames + intermediate
+values, accumulator, continuation/wind state) in **heap-allocated** members, which
+are neither reachable from the object graph nor on the C++ machine stack — so the
+runtime GC (object-graph marking + conservative *stack* scan) never traced them.
+Each VM already had a correct `trace_references`, but **nothing ever called it**.
+Fix: a GC root-tracer callback registry — `IGarbageCollector::register_root_tracer
+/unregister_root_tracer` (default no-op; implemented by `gc_manager` →
+`MarkSweepStrategy`), invoked during `mark()` with a marking Tracer. `BytecodeVM`
+and the toy `VM` each self-register `trace_references` in their constructor and
+unregister in their destructor. Masked until now because the test harness runs
+with a 100MB GC threshold (collections almost never fire) and the prelude never
+loaded on CoreIR. Regression test `LispTest/VMGCRecursionTests.cpp` drops the
+threshold so GC fires during an allocating `fib` on all four evaluators; green at
+-O0 and ASan. (Found while investigating CoreIR if-in-operand — this is the
+backend bug that made the prelude-on-CoreIR corrupt recursion; the lowering fix
+is still pending, see memory [[linux-zombie-next-steps]].)
+
+
 Date: 2026-11-13. Scope: the ported Linux tree (`GarbageCollector`,
 `ZombieRuntime`, `ZombieBytecode`, `ZombieCompilerIR`, `ZombieLib`, `REPL-test`).
 Findings were verified empirically against the built `repl`/`LispTest`, not taken

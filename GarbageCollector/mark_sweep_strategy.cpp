@@ -140,6 +140,29 @@ void MarkSweepStrategy::mark() {
         mark_from(obj);
     }
 
+    // Root-tracer callbacks: objects that are neither gc_objects nor on the C++
+    // stack (e.g. the bytecode VM, whose call frames live in a heap vector and
+    // hold live intermediate values during deep recursion) enumerate their live
+    // pointers here. Without this, a collection triggered mid-recursion reclaims
+    // those intermediates -> corruption ("first: cannot take first of an atom!").
+    if (!m_root_tracers.empty()) {
+        std::vector<gc_object*> worklist;
+        auto* previous_worklist = m_marking_worklist;
+        m_marking_worklist = &worklist;
+        MarkingTracer tracer(&worklist);
+        for (auto& kv : m_root_tracers) {
+            if (kv.second) kv.second(tracer);
+        }
+        while (!worklist.empty()) {
+            gc_object* current = worklist.back();
+            worklist.pop_back();
+            if (!current || current->is_marked()) continue;
+            current->set_marked(true);
+            current->trace_references(tracer);
+        }
+        m_marking_worklist = previous_worklist;
+    }
+
     // Conservative stack scan: the reader/evaluator/desugaring keep live Object* in
     // plain C++ locals and registers that are NOT explicitly rooted. Scan the machine
     // stack and retain anything those references point at, so a collection triggered

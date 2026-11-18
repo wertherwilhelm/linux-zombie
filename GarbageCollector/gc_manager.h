@@ -139,6 +139,11 @@ public:
      */
     void set_scan_stack(bool on);
 
+    // Root-tracer callbacks (forwarded to the strategy). Lets a non-gc_object
+    // such as the bytecode VM contribute its heap-held live pointers as GC roots.
+    int register_root_tracer(std::function<void(Tracer&)> cb) override;
+    void unregister_root_tracer(int id) override;
+
     /**
      * @brief Get garbage collection statistics
      */

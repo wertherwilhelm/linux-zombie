@@ -2,10 +2,12 @@
 
 #include <cstddef>  // for size_t
 #include <utility>  // for std::forward
+#include <functional>
 #include "gc_box.h"  // for gc_box::allocate
 
 // Forward declarations
 class gc_object;
+class Tracer;
 
 /**
  * @file gc_interface.h
@@ -98,6 +100,24 @@ public:
     void unregister_persistent_root(gc_object** root_ptr) {
         remove_root(reinterpret_cast<void**>(root_ptr));
     }
+
+    /**
+     * @brief Register a callback that enumerates additional GC roots held in a
+     * plain C++ object that is NOT itself a gc_object and NOT on the C++ stack
+     * (so neither the object graph nor conservative stack scanning reaches it).
+     * The callback is invoked during the mark phase with a marking Tracer and
+     * should call tracer.visit_field(...) on every live gc_object* it holds.
+     *
+     * The canonical user is the bytecode VM, whose call frames live in a heap
+     * vector and hold live intermediate values during deep recursion.
+     *
+     * @return an opaque id for unregister_root_tracer(); the default no-op
+     *         implementation (for GCs that don't support this) returns -1.
+     */
+    virtual int register_root_tracer(std::function<void(Tracer&)> /*cb*/) { return -1; }
+
+    /** @brief Remove a callback previously registered via register_root_tracer. */
+    virtual void unregister_root_tracer(int /*id*/) {}
 
     // ========================================================================
     // memory::ITracer Interface Implementation

@@ -5,6 +5,7 @@
 #include "expander.h"
 #include "gc_manager.h"
 #include "gc_ptr.h"
+#include "gc_context.h"
 #include "continuation.h"
 #include "i_debugger.h"
 #include <iomanip>
@@ -25,6 +26,22 @@ BytecodeVM::BytecodeVM(Environment* env, bool debug)
     , trace_(false)
     , debugger_(nullptr)
     , accumulator_(nullptr) {
+    // Register this VM's roots with the GC. Our call frames live in a heap vector
+    // (frames_), not on the C++ stack and not reachable from the object graph, so
+    // without this the GC would reclaim live intermediates during deep recursion.
+    if (auto* gc = gc_context::current()) {
+        gc_root_tracer_id_ = gc->register_root_tracer(
+            [this](Tracer& tracer) { this->trace_references(tracer); });
+    }
+}
+
+BytecodeVM::~BytecodeVM() {
+    if (gc_root_tracer_id_ >= 0) {
+        if (auto* gc = gc_context::current()) {
+            gc->unregister_root_tracer(gc_root_tracer_id_);
+        }
+        gc_root_tracer_id_ = -1;
+    }
 }
 
 // ============================================================================

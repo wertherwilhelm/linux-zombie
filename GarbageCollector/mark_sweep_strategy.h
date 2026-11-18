@@ -7,6 +7,7 @@
 #include <unordered_set>
 #include <unordered_map>
 #include <algorithm>
+#include <functional>
 
 class gc_object;
 
@@ -121,6 +122,12 @@ private:
     /// Persistent roots registered with this GC instance.
     std::vector<gc_object**> m_persistent_roots;
 
+    /// Root-tracer callbacks: enumerate live pointers held by non-gc_object,
+    /// non-stack owners (e.g. the bytecode VM's heap-allocated call frames).
+    /// Invoked during mark() with a marking Tracer.
+    std::unordered_map<int, std::function<void(Tracer&)>> m_root_tracers;
+    int m_next_root_tracer_id = 0;
+
     /// Current bytes allocated (approximate).
     size_t m_bytes_allocated;
     /// Flag to prevent recursive collection.
@@ -149,6 +156,14 @@ public:
     /// Enable/disable conservative C++ stack scanning during mark (see m_scan_stack).
     void set_scan_stack(bool on) { m_scan_stack = on; }
     bool scan_stack() const { return m_scan_stack; }
+
+    /// Root-tracer registry (see m_root_tracers).
+    int register_root_tracer(std::function<void(Tracer&)> cb) {
+        int id = m_next_root_tracer_id++;
+        m_root_tracers[id] = std::move(cb);
+        return id;
+    }
+    void unregister_root_tracer(int id) { m_root_tracers.erase(id); }
 };
 
 /**

@@ -73,7 +73,7 @@ struct BytecodeFrame {
 class BytecodeVM : public IEvaluator {
 public:
     explicit BytecodeVM(Environment* env, bool debug = false);
-    ~BytecodeVM() override = default;
+    ~BytecodeVM() override;
 
     // ========================================================================
     // IEvaluator interface
@@ -185,6 +185,7 @@ private:
     bool debug_;    // Debug mode (verbose output)
     bool trace_;    // Trace execution (print each instruction)
     IDebugger* debugger_;  // Pluggable debugger (nullptr = no debugging)
+    int gc_root_tracer_id_ = -1;  // id from the GC's root-tracer registry (see ctor/dtor)
 
     // Runtime state (legacy - used when not in trampolined mode)
     std::vector<Object*> value_stack_;  // Value stack

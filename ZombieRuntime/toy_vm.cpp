@@ -7,6 +7,7 @@
 #include "continuation.h"
 #include "cons_cell.h"  // for cons operations
 #include "gc_manager.h"  // for trace_references
+#include "gc_context.h"  // for gc_context::current()
 #include "syntax_rules_transformer.h"  // for let-syntax/letrec-syntax
 
 namespace toy {
@@ -26,10 +27,26 @@ VM::VM(Environment* env, bool debug, bool enable_continuations)
     if (enable_continuations) {
         cont_support = std::make_unique<ContinuationSupport>(this);
     }
+
+    // Register the VM's roots with the GC: its stack/accumulator/continuation
+    // state holds live Object* that are neither gc_objects nor on the C++ stack,
+    // so without this a collection during deep recursion reclaims them (crash /
+    // wrong result). Mirrors the bytecode VM's registration.
+    if (auto* gc = gc_context::current()) {
+        gc_root_tracer_id_ = gc->register_root_tracer(
+            [this](Tracer& tracer) { this->trace_references(tracer); });
+    }
 }
 
 // Destructor must be defined here where ContinuationSupport is a complete type
-VM::~VM() = default;
+VM::~VM() {
+    if (gc_root_tracer_id_ >= 0) {
+        if (auto* gc = gc_context::current()) {
+            gc->unregister_root_tracer(gc_root_tracer_id_);
+        }
+        gc_root_tracer_id_ = -1;
+    }
+}
 
 // ============================================================================
 // eval() - IEvaluator interface implementation

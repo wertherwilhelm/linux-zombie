@@ -111,6 +111,7 @@ public:
     bool debug_mode;
     int step_count;
     bool executing_ = false;  // true while run()/run_to() is active (eval re-entrancy guard)
+    int gc_root_tracer_id_ = -1;  // id from the GC's root-tracer registry (ctor/dtor)
 
     // Continuation support (optional module)
     std::unique_ptr<ContinuationSupport> cont_support;
