@@ -1514,29 +1514,16 @@ Object* Expander::expand_guard(Object* var, Object* clauses, Object* body) {
     /*
      * Transform: (guard (var (test handler) ... (else handler)) body...)
      *
-     * R7RS guard syntax for exception handling.
-     *
-     * NOTE: This is a simplified implementation. Full R7RS guard requires:
-     * - Continuation capture (call/cc) to properly implement re-raising
-     * - Dynamic exception handlers using with-exception-handler
-     * - Proper escape continuations for non-matching handlers
-     *
-     * For now, we mark this as a special form that the evaluator must handle
-     * directly, since we don't have full Continuation support yet.
-     *
-     * The evaluator will need to:
-     * 1. Try to evaluate body
-     * 2. On exception, bind exception to var
-     * 3. Test each clause in order
-     * 4. Execute handler for first matching clause
-     * 5. Re-raise if no clause matches
+     * guard is NOT desugared here: it stays a special form the evaluator handles
+     * directly. The obvious R7RS desugaring to call/cc + with-exception-handler
+     * was tried (2026-11-18) and reverted — it regresses the bytecode VM, whose
+     * with-exception-handler does not turn C++ primitive errors (e.g. divide by
+     * zero) into catchable conditions and loses the outer handler on a nested
+     * re-raise. The tree-walk and bytecode evaluators both implement guard
+     * natively and pass those cases; CoreIR and the toy VM lack guard (tracked as
+     * a gap). Unifying guard requires first fixing those VMs'
+     * with-exception-handler / escape-continuation interaction.
      */
-
-    // For now, return the guard form unchanged - the evaluator will handle it
-    // This marks it as a special form that can't be desugared further
-    // without Continuation support
-
-    // Build: (guard (var clause...) body...)
     Object* guard_spec = cons(var, clauses);
     return cons(intern_symbol("guard"),
                cons(guard_spec, body));

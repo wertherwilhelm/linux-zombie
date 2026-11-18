@@ -40,7 +40,13 @@ std::string run_in(EvaluatorType t, const std::string& code) {
 }
 
 // -------------------------------------------------------------------------
-// KNOWN GAPS (masked out below; remove the mask when fixed): none currently.
+// KNOWN GAPS (masked out below; remove the mask when fixed):
+//   - `guard`: native on lisp + bytecode only. CoreIR and the toy VM lack it.
+//     A uniform Expander desugaring to call/cc + with-exception-handler was tried
+//     and reverted — it regressed the bytecode VM (its with-exception-handler
+//     doesn't catch C++ primitive errors and loses the outer handler on nested
+//     re-raise) and the toy VM can't escape from inside a handler at all.
+//     Unifying guard needs those VMs' exception/continuation machinery fixed.
 // FIXED (now covered on all four):
 //   - closure applied from inside a primitive (map/filter/for-each) — was a
 //     toy-VM re-entrant-eval hang/segfault.
@@ -217,6 +223,9 @@ const Case kCorpus[] = {
     {"(let ((p (make-parameter 10))) (parameterize ((p 20)) (p)) (p))", "10", ALL},
     {"(let ((p (make-parameter 5 (lambda (x) (* x 2))))) (parameterize ((p 7)) (p)))", "14", ALL},
     {"(let ((p (make-parameter 1))) (parameterize ((p 2)) (+ (p) (parameterize ((p 3)) (p)) (p))))", "7", ALL},
+    // guard works on lisp + bytecode (native special form) but not CoreIR/toy VM;
+    // not cross-checked here (desugaring it uniformly needs those VMs'
+    // with-exception-handler fixed first — see the KNOWN GAPS note).
     // Escape continuations — supported by all three (the tree-walk's only mode).
     {"(+ 1 (call/cc (lambda (k) (k 10))))", "11", ALL},
     {"(* 2 (call/cc (lambda (k) (+ 1 (k 5)))))", "10", ALL},

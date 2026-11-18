@@ -1,5 +1,35 @@
 # ZombieScheme — Code Audit (missing / unimplemented / outstanding)
 
+### Shared-Expander derived forms: case-lambda, parameterize (2026-11-18, fixed)
+A differential probe across all four evaluators found derived forms that
+`expand_*` returned **unchanged**, i.e. were handled ad-hoc per evaluator rather
+than desugared in the shared Expander — so they worked on some evaluators and
+not others. Two were cleanly unified:
+- **case-lambda** — worked tree-walk only (bytecode/toy-VM: "Unbound variable:
+  case-lambda"; CoreIR mis-lowered). Now desugars to a variadic lambda that
+  dispatches on `(length args)` via `cond` + `apply` (pure core forms). All 4.
+  Corpus r7rs-case-lambda + differential. Commit be3317b.
+- **parameterize** — worked tree-walk + bytecode (toy-VM unbound; CoreIR "CALL:
+  not a Procedure"). Now desugars to `(%parameterize (list p...) (list v...)
+  (lambda () body...))` on the existing runtime primitive (save / convert-on-
+  entry / raw-restore-on-exit). All 4. Corpus r7rs-parameterize + differential.
+  Commit 8e230c9.
+
+**guard — attempted, REVERTED.** Also handled ad-hoc (native on tree-walk +
+bytecode; absent on CoreIR + toy VM). The obvious R7RS desugaring to `call/cc` +
+`with-exception-handler` + `raise-continuable` (with `((call/cc (lambda (k) ...)))`
+returning a thunk so clauses run in the guard's dynamic env) is correct on the
+tree-walk and CoreIR, but it **regresses the bytecode VM**: bytecode's
+with-exception-handler does not turn C++ primitive errors (divide-by-zero →
+error object) into catchable conditions, and it loses the outer handler on a
+nested re-raise (dedicated tests GuardCatchesPrimitiveErrors / GuardNested pass
+natively, fail under the desugaring). The toy VM additionally can't escape from
+inside a handler at all ("exception handler returned from non-continuable
+exception"). Since the desugaring would only help CoreIR while breaking the very
+VM it lowers to, guard stays a native special form. **Follow-up to unblock it:**
+fix the bytecode and toy-VM with-exception-handler / escape-continuation
+interaction, then revisit the desugaring.
+
 ### CoreIR: `if` in operand position, + two backend bugs it exposed (2026-11-18, fixed)
 `--coreir` could not lower an `if` used as a call/primitive argument
 (`(+ 1 (if ...))`, `(list (if ...) ...)`, `(f (if ...))`): ANF operand lowering
