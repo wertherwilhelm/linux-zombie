@@ -387,9 +387,13 @@ void CoreIRToBytecode::compile_stmt(const Stmt& stmt) {
         // Compile the expression
         compile_expr(*let.expr);
 
-        // Store to local variable in environment
+        // Bind the temp in the CURRENT frame env. Must be a fresh local binding
+        // (OP_DEFINE_VAR), not STORE_VAR's set-first semantics: CoreIR temp names
+        // ($tmpN) reset per function and top-level temps leak into the global env,
+        // so set-first would mutate a leaked global binding and sibling recursion
+        // frames would clobber each other.
         uint16_t name_idx = add_symbol_constant(let.name);
-        emit_byte(OP_STORE_VAR);
+        emit_byte(OP_DEFINE_VAR);
         emit_u16(name_idx);
 
         // Track local variable slot

@@ -274,6 +274,50 @@ public:
 };
 
 // ============================================================================
+// DEFINE_VAR - Define a variable in the CURRENT environment (local)
+// ============================================================================
+
+/**
+ * @brief Bind a value to a name in the current environment, always creating a
+ * fresh local binding (shadowing any outer one) rather than mutating an existing
+ * binding up the scope chain.
+ *
+ * STORE_VAR is overloaded for define + set! so it tries set() first; that is
+ * wrong for a genuinely local binding (e.g. an ANF temp): if an outer scope
+ * already has the name, set() mutates it, and under recursion sibling frames
+ * clobber each other. The CoreIR backend emits DEFINE_VAR for its let/temp
+ * bindings so each frame gets its own binding.
+ */
+class DefineVarInsn : public Instruction {
+    uint16_t name_idx_;
+
+public:
+    explicit DefineVarInsn(const uint8_t* bc) {
+        name_idx_ = read_u16(bc, 1);
+    }
+
+    bool execute(ExecutionContext& ctx) override {
+        if (name_idx_ >= ctx.constant_pool.size()) {
+            throw std::runtime_error("DEFINE_VAR: name index out of bounds");
+        }
+        Object* name = ctx.constant_pool[name_idx_];
+        Object* value = ctx.pop();
+        ctx.env->define(name, value);   // always a fresh binding in the current env
+        ctx.push(value);
+        ctx.ip += size();
+        return true;
+    }
+
+    std::string name() const override { return "DEFINE_VAR"; }
+    uint8_t opcode() const override { return OP_DEFINE_VAR; }
+    size_t size() const override { return 3; }
+
+    std::string disassemble(size_t /*ip*/) const override {
+        return "DEFINE_VAR " + std::to_string(name_idx_);
+    }
+};
+
+// ============================================================================
 // JUMP - Unconditional jump
 // ============================================================================
 
@@ -949,6 +993,7 @@ REGISTER_INSTRUCTION(OP_DUP, DupInsn, "DUP")
 REGISTER_INSTRUCTION(OP_LOAD_CONST, LoadConstInsn, "LOAD_CONST")
 REGISTER_INSTRUCTION(OP_LOAD_VAR, LoadVarInsn, "LOAD_VAR")
 REGISTER_INSTRUCTION(OP_STORE_VAR, StoreVarInsn, "STORE_VAR")
+REGISTER_INSTRUCTION(OP_DEFINE_VAR, DefineVarInsn, "DEFINE_VAR")
 REGISTER_INSTRUCTION(OP_JUMP, JumpInsn, "JUMP")
 REGISTER_INSTRUCTION(OP_JUMP_IF_FALSE, JumpIfFalseInsn, "JUMP_IF_FALSE")
 REGISTER_INSTRUCTION(OP_CALL, CallInsn, "CALL")
