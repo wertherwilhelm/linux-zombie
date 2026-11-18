@@ -6,6 +6,8 @@
 #include "expander.h"
 #include <memory>
 #include <string>
+#include <vector>
+#include <functional>
 
 // Forward declarations
 class ConsCell;
@@ -115,6 +117,16 @@ private:
 
     // Helper: Inline a stmt chain before Continuation (replaces Return with Continuation)
     std::unique_ptr<Stmt> inline_stmt_chain(std::unique_ptr<Stmt> chain, std::unique_ptr<Stmt> Continuation);
+
+    // ANF operand lowering that tolerates `if` in operand position: thread the
+    // continuation as a builder closure, splicing it into every tail position
+    // (including both branches of a tail If). See scheme_to_coreir.cpp.
+    std::unique_ptr<Stmt> lower_operands(
+        Object* args, std::vector<Atom> acc,
+        const std::function<std::unique_ptr<Stmt>(std::vector<Atom>)>& build);
+    std::unique_ptr<Stmt> splice_tail(
+        std::unique_ptr<Stmt> chain,
+        const std::function<std::unique_ptr<Stmt>(Atom)>& k);
 };
 
 } // namespace coreir

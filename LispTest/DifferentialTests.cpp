@@ -214,6 +214,13 @@ const Case kCorpus[] = {
     {"(+ 100 (begin 1 999))", "1099", ALL},
     {"(* 2 (begin 10 20))", "40", ALL},
     {"(list 1 (begin 2 'sym))", "(1 sym)", ALL},
+    // `if` in operand position — CoreIR threads the call's continuation into both
+    // branches of a tail `if`; the other three handle it natively. Cross-check.
+    {"(+ 1 (if #f 10 20))", "21", ALL},
+    {"(+ (if (> 3 1) 100 0) (if (< 3 1) 5 7))", "107", ALL},
+    {"(list (if #t 1 2) (if #f 3 4))", "(1 4)", ALL},
+    {"((lambda (x) (* 2 x)) (if #f 1 7))", "14", ALL},
+    {"(cons (if #t 'a 'b) (if #f '() (list 9)))", "(a 9)", ALL},
     {"(begin (+ 1 2) (call/cc (lambda (k) (k 42))) (+ 3 4))", "7", ALL},
     {"((lambda (ls) (call/cc (lambda (break) (let loop ((l ls) (acc 1)) (cond ((null? l) acc) ((= (car l) 0) (break 0)) (else (loop (cdr l) (* acc (car l))))))))) '(1 2 0 4))", "0", ALL},
 };

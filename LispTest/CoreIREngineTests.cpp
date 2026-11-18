@@ -53,3 +53,20 @@ TEST_F(CoreIREngineTest, NamedLetLoop) {
     EXPECT_EQ(10.0, eval_num(engine,
         "(let loop ((i 0) (s 0)) (if (< i 5) (loop (+ i 1) (+ s i)) s))"));
 }
+
+// `if` in operand position: the lowering threads the call's continuation as a
+// builder closure spliced into both branches of a tail `if`, so an `if` nested
+// inside a call/primitive argument lowers correctly (previously unsupported).
+TEST_F(CoreIREngineTest, IfInOperandPosition) {
+    scheme_engine engine(EvaluatorType::COREIR);
+    EXPECT_EQ(21.0, eval_num(engine, "(+ 1 (if #f 10 20))"));
+    EXPECT_EQ(107.0, eval_num(engine,
+        "(+ (if (> 3 1) 100 0) (if (< 3 1) 5 7))"));          // two ifs as operands
+    EXPECT_EQ(15.0, eval_num(engine, "(* (if #t 3 0) (if #t 5 9))"));
+    // if as an argument to a general (non-primitive) call:
+    engine.eval_string("(define (dbl x) (* 2 x))");
+    EXPECT_EQ(14.0, eval_num(engine, "(dbl (if #f 1 7))"));
+    // list-valued, to confirm the spliced value is the branch result, not a temp:
+    Object* r = static_cast<Object*>(engine.eval_string("(list (if #t 1 2) (if #f 3 4))"));
+    EXPECT_EQ("(1 4)", engine.print_value(r));
+}

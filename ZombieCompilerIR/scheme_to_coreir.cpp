@@ -330,44 +330,55 @@ std::unique_ptr<Expr> SchemeToCoreirLowering::lower_primitive_call(const std::st
 // Lower Primitive Call with Complex Arguments (Statement Context)
 // ============================================================================
 
+std::unique_ptr<Stmt> SchemeToCoreirLowering::splice_tail(
+    std::unique_ptr<Stmt> chain,
+    const std::function<std::unique_ptr<Stmt>(Atom)>& k) {
+    if (std::holds_alternative<Stmt::Return>(chain->data)) {
+        return k(std::get<Stmt::Return>(chain->data).value);
+    }
+    if (std::holds_alternative<Stmt::Let>(chain->data)) {
+        auto& let = std::get<Stmt::Let>(chain->data);
+        std::string name = let.name;
+        auto expr = std::move(let.expr);
+        auto next = splice_tail(std::move(let.next), k);
+        return Stmt::makeLet(name, std::move(expr), std::move(next));
+    }
+    auto& iff = std::get<Stmt::If>(chain->data);
+    Atom cond = iff.cond;
+    auto then_b = splice_tail(std::move(iff.then_branch), k);
+    auto else_b = splice_tail(std::move(iff.else_branch), k);
+    return Stmt::makeIf(cond, std::move(then_b), std::move(else_b));
+}
+
+std::unique_ptr<Stmt> SchemeToCoreirLowering::lower_operands(
+    Object* args, std::vector<Atom> acc,
+    const std::function<std::unique_ptr<Stmt>(std::vector<Atom>)>& build) {
+    if (!args || args == nil || args == empty_list) {
+        return build(std::move(acc));
+    }
+    Object* arg = car(args);
+    Object* rest_args = cdr(args);
+    if (is_atomic(arg)) {
+        acc.push_back(atomic_to_atom(arg));
+        return lower_operands(rest_args, std::move(acc), build);
+    }
+    auto chain = lower_expr(arg);
+    std::vector<Atom> acc_copy = acc;
+    return splice_tail(std::move(chain), [this, rest_args, acc_copy, &build](Atom v) {
+        std::vector<Atom> acc2 = acc_copy;
+        acc2.push_back(v);
+        return lower_operands(rest_args, std::move(acc2), build);
+    });
+}
+
 std::unique_ptr<Stmt> SchemeToCoreirLowering::lower_primitive_call_stmt(const std::string& op,
                                                                           Object* args) {
-    // Step 1: Collect all arguments and normalize complex ones
-    std::vector<Atom> atom_args;
-    std::vector<std::unique_ptr<Stmt>> arg_stmt_chains;
-
-    Object* current = args;
-    while (current && current != nil && current != empty_list) {
-        Object* arg = car(current);
-
-        if (is_atomic(arg)) {
-            // Atomic argument: use directly (atomic_to_atom strips quote consistently)
-            atom_args.push_back(atomic_to_atom(arg));
-        } else {
-            // Complex argument: lower to full Stmt chain, then use its terminal
-            // value (Var bound by the chain, or a Lit — e.g. a begin ending in a
-            // literal). The chain becomes the prelude via inline_stmt_chain below.
-            auto arg_stmt = lower_expr(arg);
-            atom_args.push_back(terminal_atom(arg_stmt.get()));
-            arg_stmt_chains.push_back(std::move(arg_stmt));
-        }
-
-        current = cdr(current);
-    }
-
-    // Step 2: Build final Primitive call
-    std::string result_temp = gen_temp();
-    auto prim_call = std::make_unique<Expr>(Expr::makePrim(op, std::move(atom_args)));
-    auto final_stmt = Stmt::makeReturn(Atom::makeVar(result_temp));
-    auto result_let = Stmt::makeLet(result_temp, std::move(prim_call), std::move(final_stmt));
-
-    // Step 3: Chain all argument statements before the final Primitive call
-    std::unique_ptr<Stmt> stmt = std::move(result_let);
-    for (auto it = arg_stmt_chains.rbegin(); it != arg_stmt_chains.rend(); ++it) {
-        stmt = inline_stmt_chain(std::move(*it), std::move(stmt));
-    }
-
-    return stmt;
+    return lower_operands(args, {}, [this, op](std::vector<Atom> atoms) {
+        std::string result_temp = gen_temp();
+        auto prim_call = std::make_unique<Expr>(Expr::makePrim(op, std::move(atoms)));
+        return Stmt::makeLet(result_temp, std::move(prim_call),
+                             Stmt::makeReturn(Atom::makeVar(result_temp)));
+    });
 }
 
 // ============================================================================
@@ -1066,39 +1077,17 @@ std::unique_ptr<Stmt> SchemeToCoreirLowering::lower_expr(Object* scheme_expr) {
         func_atom = Atom::makeVar(result_var);
     }
 
-    // Step 2: Normalize arguments if needed
-    std::vector<Atom> atom_args;
-    std::vector<std::unique_ptr<Stmt>> arg_stmt_chains;
+    // Step 2: ANF-lower the arguments (tolerating `if` in operand position).
+    std::unique_ptr<Stmt> stmt = lower_operands(rest, {},
+        [this, func_atom](std::vector<Atom> atoms) {
+            auto call_expr = std::make_unique<Expr>(
+                Expr::makeCall(func_atom, std::move(atoms)));
+            std::string temp = gen_temp();
+            return Stmt::makeLet(temp, std::move(call_expr),
+                                 Stmt::makeReturn(Atom::makeVar(temp)));
+        });
 
-    Object* current = rest;
-    while (current && current != nil && current != empty_list) {
-        Object* arg = car(current);
-
-        if (is_atomic(arg)) {
-            atom_args.push_back(atomic_to_atom(arg));  // strips quote consistently
-        } else {
-            // Complex argument - normalize it; use its terminal value (Var or Lit)
-            auto arg_stmt = lower_expr(arg);
-            atom_args.push_back(terminal_atom(arg_stmt.get()));
-            arg_stmt_chains.push_back(std::move(arg_stmt));
-        }
-
-        current = cdr(current);
-    }
-
-    // Step 3: Build the call expression
-    auto call_expr = std::make_unique<Expr>(Expr::makeCall(std::move(func_atom), std::move(atom_args)));
-    std::string temp = gen_temp();
-    auto ret = Stmt::makeReturn(Atom::makeVar(temp));
-    auto call_stmt = Stmt::makeLet(temp, std::move(call_expr), std::move(ret));
-
-    // Step 4: Chain all argument statements before the call
-    std::unique_ptr<Stmt> stmt = std::move(call_stmt);
-    for (auto it = arg_stmt_chains.rbegin(); it != arg_stmt_chains.rend(); ++it) {
-        stmt = inline_stmt_chain(std::move(*it), std::move(stmt));
-    }
-
-    // Step 5: Chain function statement if present
+    // Step 3: Chain the function-evaluation statements before the call.
     if (func_stmts) {
         stmt = inline_stmt_chain(std::move(func_stmts), std::move(stmt));
     }
