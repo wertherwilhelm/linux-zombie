@@ -71,8 +71,13 @@ static Object* num_compare(Object *args, char op) {
  * @return Result of the computation
  */
 static Object* num_compute(Object *args, char op, Object* result) {
-    // Use numeric runtime for tower-aware arithmetic
-    if (args == NULL) {
+    // Use numeric runtime for tower-aware arithmetic.
+    // The unary case: MINUS/DIVIDE call this with rest(args), which for a
+    // single-argument call is the empty list (nil), not NULL — so test for "no
+    // more args" with !pair(), otherwise (- 5) fell through and returned 5 (not
+    // -5) and (/ 2) returned 2 (not 1/2). (bytecode/CoreIR masked (- 5) via a
+    // compiler (- 0 x) rewrite, so only the tree-walk / toy VM showed it.)
+    if (args == NULL || !args->pair()) {
         // Unary operations on result
         switch (op) {
             case '-': return numeric::negate(result);

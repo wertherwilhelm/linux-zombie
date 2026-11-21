@@ -267,6 +267,13 @@ const Case kCorpus[] = {
     {"(/ 0.0 0.0)", "+nan.0", ALL},
     {"(/ 1.0 0)", "+inf.0", ALL},
     {"(nan? (/ 0.0 0.0))", "#t", ALL},
+    // unary minus / reciprocal: (- x) negates, (/ x) is 1/x. num_compute skipped
+    // the unary branch for the empty-list tail, so (- 5)->5 (tree-walk/toy VM)
+    // and (/ 2)->2 (everywhere). (bytecode/CoreIR masked (- 5) via a compiler rewrite.)
+    {"(- 5)", "-5", ALL},
+    {"(/ 2)", "1/2", ALL},
+    {"(/ 2.0)", "0.5", ALL},
+    {"(- 5/2)", "-5/2", ALL},
     // Escape continuations — supported by all three (the tree-walk's only mode).
     {"(+ 1 (call/cc (lambda (k) (k 10))))", "11", ALL},
     {"(* 2 (call/cc (lambda (k) (+ 1 (k 5)))))", "10", ALL},
