@@ -1,97 +1,42 @@
 #include "zombie_runtime_types.h"
-#include "zombie_runtime_types.h"
 #include "primitive_equivalence.h"
+#include "../native_primitive.h"
 #include "../Base.h"
+#include "../constants.h"
 #include "../atom.h"
 
 /**
  * @file primitive_equivalence.cpp
- * @brief Implementation of equivalence predicates (R5RS Section 6.2)
- * @author Inheritance-based refactoring 2026-01
- * @date 2026-01-09
+ * @brief Equivalence predicates (R7RS 6.1), table-driven.
  */
 
-// ============================================================================
-// Constructor
-// ============================================================================
+namespace {
 
-PrimitiveEquivalence::PrimitiveEquivalence(ID id)
-    : PrimitiveBase(2, 2),  // All equivalence predicates take exactly 2 arguments
-      m_id(id) {
-    // Set Primitive name based on ID
-    switch (id) {
-        case EQQ:
-            m_name = "eq?";
-            break;
+using namespace zombie::runtime;
 
-        case EQVQ:
-            m_name = "eqv?";
-            break;
-
-        case EQUALQ:
-            m_name = "equal?";
-            break;
-    }
+// (eq? a b) — pointer identity. Symbols are interned, so eq? works on symbols.
+Object* prim_eq(IEvaluator*, Object* args, Environment*) {
+    return truth(first(args) == second(args));
 }
 
-// ============================================================================
-// Primitive Application
-// ============================================================================
-
-Object* PrimitiveEquivalence::apply(IEvaluator* eval, Object* args, Environment* env) {
-    // Arity checking (inherited from PrimitiveBase)
-    // All equivalence predicates require exactly 2 arguments
-    if (!check_arity(args)) {
-        return arity_error("");
-    }
-
-    // Extract the two arguments
-    Object* x = first(args);
-    Object* y = second(args);
-
-    // Dispatch based on this group's Primitive ID
-    switch (m_id) {
-        case EQQ:
-            // (eq? obj1 obj2)
-            // Returns #t if obj1 and obj2 are the same Object (pointer equality)
-            // R5RS: eq? is the finest equivalence predicate
-            // Symbols are interned (as of 2026-01-11), so eq? works correctly with symbols
-            // All symbols with the same name share the same Object identity
-            return truth(x == y);
-
-        case EQVQ:
-            // (eqv? obj1 obj2)
-            // Returns #t if obj1 and obj2 are operationally equivalent
-            // R5RS: like eq? but handles numbers and characters specially
-            // Uses helper function from Base.h
-            return truth(eqv(x, y));
-
-        case EQUALQ:
-            // (equal? obj1 obj2)
-            // Returns #t if obj1 and obj2 are structurally equal
-            // R5RS: the coarsest equivalence predicate (recursive comparison)
-            // Uses helper function from Base.h
-            return truth(equal(x, y));
-
-        default:
-            // Should never reach here
-            return error("Unknown equivalence Primitive");
-    }
+// (eqv? a b) — identity plus number/character equivalence (Base.h eqv).
+Object* prim_eqv(IEvaluator*, Object* args, Environment*) {
+    return truth(eqv(first(args), second(args)));
 }
 
-// ============================================================================
-// Registration
-// ============================================================================
+// (equal? a b) — structural equality (Base.h equal, cycle-safe).
+Object* prim_equal(IEvaluator*, Object* args, Environment*) {
+    return truth(equal(first(args), second(args)));
+}
 
-void PrimitiveEquivalence::install(Environment* env) {
-    // Register all equivalence primitives
-    // GC Safety: Protect name string before allocating primitive
-    gc_root<a_string> name_eq(gc_new<a_string>("eq?"));
-    env->define(name_eq.get(), gc_new<PrimitiveEquivalence>(EQQ));
+}  // namespace
 
-    gc_root<a_string> name_eqv(gc_new<a_string>("eqv?"));
-    env->define(name_eqv.get(), gc_new<PrimitiveEquivalence>(EQVQ));
-
-    gc_root<a_string> name_equal(gc_new<a_string>("equal?"));
-    env->define(name_equal.get(), gc_new<PrimitiveEquivalence>(EQUALQ));
+void PrimitiveEquivalence::install(zombie::runtime::Environment* env) {
+    using namespace zombie::runtime;
+    static const NativeEntry entries[] = {
+        { "eq?",    2, 2, prim_eq    },
+        { "eqv?",   2, 2, prim_eqv   },
+        { "equal?", 2, 2, prim_equal },
+    };
+    install_natives(env, entries, sizeof(entries) / sizeof(entries[0]));
 }

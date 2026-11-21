@@ -1,13 +1,20 @@
 #include "zombie_runtime_types.h"
-#include "zombie_runtime_types.h"
 #include "primitive_system.h"
+#include "../native_primitive.h"
 #include "../Base.h"
 #include "../atom.h"
 #include "../cons_cell.h"
 #include "../../GarbageCollector/gc_ptr.h"
 #include <cstdlib>
+#include <vector>
+#include <string>
 
-// Global to store command line arguments
+/**
+ * @file primitive_system.cpp
+ * @brief System interface primitives (R7RS 6.14), table-driven.
+ */
+
+// Process argv, for (command-line).
 static std::vector<std::string> g_command_line_args;
 
 void set_command_line_args(int argc, char* argv[]) {
@@ -17,161 +24,77 @@ void set_command_line_args(int argc, char* argv[]) {
     }
 }
 
-// ============================================================================
-// Construction
-// ============================================================================
+namespace {
 
-PrimitiveSystem::PrimitiveSystem(ID id, int min_args, int max_args)
-    : PrimitiveBase(min_args, max_args)
-    , m_id(id)
-{
-    // Set Primitive name based on ID
-    switch (id) {
-        case EXIT:          m_name = "exit"; break;
-        case EMERGENCYEXIT: m_name = "emergency-exit"; break;
-        case COMMANDLINE:   m_name = "command-line"; break;
-        case FEATURES:      m_name = "features"; break;
-        case VOID:          m_name = "void"; break;
+using namespace zombie::runtime;
+
+static int exit_code_from(Object* args) {
+    if (args && args != nil) {
+        Object* x = first(args);
+        if (x && x != nil && is_int(x)) return (int)num(x);
     }
+    return 0;
 }
 
-// ============================================================================
-// Apply
-// ============================================================================
+// (exit [obj]) — normal exit with status (default 0).
+Object* prim_exit(IEvaluator*, Object* args, Environment*) {
+    std::exit(exit_code_from(args));
+    return nil;  // never reached
+}
 
-Object* PrimitiveSystem::apply(IEvaluator* eval, Object* args, Environment* env) {
-    // Extract first argument if present
-    Object* x = nullptr;
-    if (args && args != nil) {
-        x = first(args);
+// (emergency-exit [obj]) — immediate termination, bypassing cleanup.
+Object* prim_emergency_exit(IEvaluator*, Object* args, Environment*) {
+    std::_Exit(exit_code_from(args));
+    return nil;  // never reached
+}
+
+// (command-line) — list of argv strings (program name first).
+Object* prim_command_line(IEvaluator*, Object*, Environment*) {
+    Object* result = nil;
+    for (auto it = g_command_line_args.rbegin(); it != g_command_line_args.rend(); ++it) {
+        result = gc_new<ConsCell>(gc_new<a_string>(*it), result);
     }
+    return result;
+}
 
-    switch (m_id) {
-        case EXIT: {
-            // (exit) or (exit obj)
-            // Exit the program with status code
-            // If obj is provided and is an integer, use it as exit code
-            // Otherwise exit with 0
-            int exit_code = 0;
-            if (x != nullptr && x != nil) {
-                if (is_int(x)) {
-                    exit_code = (int)num(x);
-                }
-            }
-            std::exit(exit_code);
-            // Never returns
-            return nil;
-        }
-
-        case EMERGENCYEXIT: {
-            // (emergency-exit) or (emergency-exit obj)
-            // Emergency exit - similar to exit but bypasses cleanup
-            int exit_code = 0;
-            if (x != nullptr && x != nil) {
-                if (is_int(x)) {
-                    exit_code = (int)num(x);
-                }
-            }
-            // Use _Exit for immediate termination without cleanup
-            std::_Exit(exit_code);
-            // Never returns
-            return nil;
-        }
-
-        case COMMANDLINE: {
-            // (command-line)
-            // Returns a list of strings representing the command line arguments
-            // First element is typically the program name
-            if (g_command_line_args.empty()) {
-                // Return empty list if no args set
-                return nil;
-            }
-
-            // Build list of command line arguments
-            Object* result = nil;
-
-            // Build in reverse order so we can cons from front
-            for (auto it = g_command_line_args.rbegin(); it != g_command_line_args.rend(); ++it) {
-                result = gc_new<ConsCell>(
-                    gc_new<a_string>(*it),
-                    result
-                );
-            }
-
-            return result;
-        }
-
-        case FEATURES: {
-            // (features)
-            // Returns a list of symbols identifying features supported by this implementation
-            // R7RS Section 6.14
-
-            // Build list of feature identifiers
-            Object* result = nil;
-
-            // Platform features (build in reverse order for cons)
-            const char* feature_list[] = {
-                // Platform
+// (features) — implementation feature identifiers (R7RS 6.14).
+Object* prim_features(IEvaluator*, Object*, Environment*) {
+    const char* feature_list[] = {
 #ifdef _WIN32
-                "windows",
+        "windows",
 #endif
 #ifdef __linux__
-                "posix",
-                "unix",
+        "posix",
+        "unix",
 #endif
-                // Numeric features
-                "complex",           // Complex numbers supported
-                "ratios",            // Exact rational numbers (a/b)
-                "exact-closed",      // Exact arithmetic is closed
-                "ieee-float",        // IEEE 754 floating point
-                "exact-complex",     // Exact complex numbers
-                // Core features
-                "r7rs",              // R7RS-small compliant
-                "zombie-scheme",     // Implementation name
-                nullptr
-            };
-
-            // Build in reverse to get proper order
-            int count = 0;
-            while (feature_list[count] != nullptr) count++;
-
-            for (int i = count - 1; i >= 0; i--) {
-                result = gc_new<ConsCell>(
-                    gc_new<a_string>(feature_list[i]),
-                    result
-                );
-            }
-
-            return result;
-        }
-
-        case VOID:
-            // (void) - returns an unspecified value
-            // Used for procedures that don't return a meaningful value
-            return nil;
-
-        default:
-            return error("Unknown system Primitive");
+        "complex", "ratios", "exact-closed", "ieee-float", "exact-complex",
+        "r7rs", "zombie-scheme",
+        nullptr
+    };
+    int count = 0;
+    while (feature_list[count] != nullptr) count++;
+    Object* result = nil;
+    for (int i = count - 1; i >= 0; i--) {
+        result = gc_new<ConsCell>(gc_new<a_string>(feature_list[i]), result);
     }
+    return result;
 }
 
-// ============================================================================
-// Registration
-// ============================================================================
+// (void) — an unspecified value.
+Object* prim_void(IEvaluator*, Object*, Environment*) {
+    return nil;
+}
 
-void PrimitiveSystem::install(Environment* env) {
-    // GC Safety: Use macro to protect name string before allocating primitive
-    #define DEF(name, ...) do { \
-        gc_root<a_string> _n(gc_new<a_string>(name)); \
-        env->define(_n.get(), gc_new<PrimitiveSystem>(__VA_ARGS__)); \
-    } while(0)
+}  // namespace
 
-    // System interface operations
-    DEF("exit",           EXIT, 0, 1);
-    DEF("emergency-exit", EMERGENCYEXIT, 0, 1);
-    DEF("command-line",   COMMANDLINE, 0, 0);
-    DEF("features",       FEATURES, 0, 0);
-    DEF("void",           VOID, 0, 0);
-
-    #undef DEF
+void PrimitiveSystem::install(zombie::runtime::Environment* env) {
+    using namespace zombie::runtime;
+    static const NativeEntry entries[] = {
+        { "exit",           0, 1, prim_exit           },
+        { "emergency-exit", 0, 1, prim_emergency_exit },
+        { "command-line",   0, 0, prim_command_line   },
+        { "features",       0, 0, prim_features       },
+        { "void",           0, 0, prim_void           },
+    };
+    install_natives(env, entries, sizeof(entries) / sizeof(entries[0]));
 }

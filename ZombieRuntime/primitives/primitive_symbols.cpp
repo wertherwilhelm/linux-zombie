@@ -1,126 +1,60 @@
 #include "zombie_runtime_types.h"
-#include "zombie_runtime_types.h"
 #include "primitive_symbols.h"
+#include "../native_primitive.h"
 #include "../Base.h"
 #include "../atom.h"
 #include "../constants.h"  // For intern_symbol()
 
 /**
  * @file primitive_symbols.cpp
- * @brief Implementation of symbol primitives (R5RS Section 6.4)
- * @author Inheritance-based refactoring 2026-01
- * @date 2026-01-09
+ * @brief Symbol primitives (R7RS 6.5), table-driven.
  */
 
-// ============================================================================
-// Constructor
-// ============================================================================
+namespace {
 
-PrimitiveSymbols::PrimitiveSymbols(ID id)
-    // symbol=? is variadic (2+ args); the rest take exactly one argument.
-    : PrimitiveBase(id == SYMBOLEQ ? 2 : 1, id == SYMBOLEQ ? 999999 : 1),
-      m_id(id) {
-    // Set Primitive name based on ID
-    switch (id) {
-        case SYMBOLQ:
-            m_name = "symbol?";
-            break;
+using namespace zombie::runtime;
 
-        case SYMBOLTOSTRING:
-            m_name = "symbol->string";
-            break;
-
-        case STRINGTOSYMBOL:
-            m_name = "string->symbol";
-            break;
-
-        case SYMBOLEQ:
-            m_name = "symbol=?";
-            break;
-    }
+// (symbol? obj)
+Object* prim_symbolq(IEvaluator*, Object* args, Environment*) {
+    return truth(first(args)->get_type() == static_cast<int>(Type::SYMBOL));
 }
 
-// ============================================================================
-// Primitive Application
-// ============================================================================
-
-Object* PrimitiveSymbols::apply(IEvaluator* eval, Object* args, Environment* env) {
-    // Arity checking
-    if (!check_arity(args)) {
-        return arity_error("");
-    }
-
-    // Extract the single argument
+// (symbol->string sym) — fresh string with the symbol's name.
+Object* prim_symbol_to_string(IEvaluator*, Object* args, Environment*) {
     Object* x = first(args);
-
-    // Dispatch based on Primitive ID
-    switch (m_id) {
-        case SYMBOLQ: {
-            // (symbol? obj)
-            // Symbols have type SYMBOL, strings have type STRING
-            // Check specifically for SYMBOL type
-            return truth(x->get_type() == static_cast<int>(Type::SYMBOL));
-        }
-
-        case SYMBOLTOSTRING: {
-            // (symbol->string symbol)
-            // Convert symbol to string (creates a new string Object with same value)
-            if (!is_symbol(x)) {
-                return error("symbol->string: expected a symbol");
-            }
-            // Return a new string with the same value
-            return gc_new<a_string>(((a_symbol*)x)->value());
-        }
-
-        case STRINGTOSYMBOL: {
-            // (string->symbol string)
-            // Convert string to symbol
-            if (!is_string(x)) {
-                return error("string->symbol: expected a string");
-            }
-            // Return a new symbol Object
-            return intern_symbol(((a_string*)x)->value());
-        }
-
-        case SYMBOLEQ: {
-            // (symbol=? sym1 sym2 ...) - #t iff all arguments are the same symbol
-            if (!is_symbol(x)) {
-                return error("symbol=?: arguments must be symbols");
-            }
-            const std::string& s0 = ((a_symbol*)x)->value();
-            for (Object* p = rest(args); p && !p->is_nil(); p = rest(p)) {
-                Object* e = first(p);
-                if (!is_symbol(e)) {
-                    return error("symbol=?: arguments must be symbols");
-                }
-                if (((a_symbol*)e)->value() != s0) {
-                    return static_cast<Object*>(false_obj);
-                }
-            }
-            return t;
-        }
-
-        default:
-            return error("Unknown symbol Primitive");
-    }
+    if (!is_symbol(x)) return error("symbol->string: expected a symbol");
+    return gc_new<a_string>(((a_symbol*)x)->value());
 }
 
-// ============================================================================
-// Registration
-// ============================================================================
+// (string->symbol str) — interned symbol for the string's contents.
+Object* prim_string_to_symbol(IEvaluator*, Object* args, Environment*) {
+    Object* x = first(args);
+    if (!is_string(x)) return error("string->symbol: expected a string");
+    return intern_symbol(((a_string*)x)->value());
+}
 
-void PrimitiveSymbols::install(Environment* env) {
-    // Register all symbol primitives
-    // GC Safety: Protect name string before allocating primitive
-    gc_root<a_string> name_symbolq(gc_new<a_string>("symbol?"));
-    env->define(name_symbolq.get(), gc_new<PrimitiveSymbols>(SYMBOLQ));
+// (symbol=? s1 s2 ...) — #t iff all args are the same symbol (R7RS 6.5).
+Object* prim_symboleq(IEvaluator*, Object* args, Environment*) {
+    Object* x = first(args);
+    if (!is_symbol(x)) return error("symbol=?: arguments must be symbols");
+    const std::string& s0 = ((a_symbol*)x)->value();
+    for (Object* p = rest(args); p && !p->is_nil(); p = rest(p)) {
+        Object* e = first(p);
+        if (!is_symbol(e)) return error("symbol=?: arguments must be symbols");
+        if (((a_symbol*)e)->value() != s0) return static_cast<Object*>(false_obj);
+    }
+    return t;
+}
 
-    gc_root<a_string> name_sym2str(gc_new<a_string>("symbol->string"));
-    env->define(name_sym2str.get(), gc_new<PrimitiveSymbols>(SYMBOLTOSTRING));
+}  // namespace
 
-    gc_root<a_string> name_str2sym(gc_new<a_string>("string->symbol"));
-    env->define(name_str2sym.get(), gc_new<PrimitiveSymbols>(STRINGTOSYMBOL));
-
-    gc_root<a_string> name_symeq(gc_new<a_string>("symbol=?"));
-    env->define(name_symeq.get(), gc_new<PrimitiveSymbols>(SYMBOLEQ));
+void PrimitiveSymbols::install(zombie::runtime::Environment* env) {
+    using namespace zombie::runtime;
+    static const NativeEntry entries[] = {
+        { "symbol?",        1, 1,      prim_symbolq          },
+        { "symbol->string", 1, 1,      prim_symbol_to_string },
+        { "string->symbol", 1, 1,      prim_string_to_symbol },
+        { "symbol=?",       2, 999999, prim_symboleq         },
+    };
+    install_natives(env, entries, sizeof(entries) / sizeof(entries[0]));
 }
