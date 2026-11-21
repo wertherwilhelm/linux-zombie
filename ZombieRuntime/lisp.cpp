@@ -440,7 +440,8 @@ eval_result Lisp::eval_step_list(Object* x, Environment* env) {
         static const std::unordered_set<std::string> kExpanderForms = {
             "when", "unless", "and", "or", "cond", "case", "do",
             "let", "let*", "letrec", "letrec*", "let-values", "let*-values",
-            "quasiquote", "define-record-type", "define-values", "receive"
+            "quasiquote", "define-record-type", "define-values", "receive",
+            "delay", "delay-force"
         };
         if (kExpanderForms.count(fn_val)) {
             Expander expander(env);
@@ -726,12 +727,9 @@ eval_result Lisp::eval_step_list(Object* x, Environment* env) {
 
         return eval_result::make_value(gc_new<a_case_lambda>(clauses, env));
     }
-    else if (fn_val == "delay") {
-        // Transform (delay expr) to (lambda () expr) - create a promise/thunk
-        Object* expr = first(args);
-        Object* lambda_body = cons(expr, nil);
-        return eval_result::make_value(gc_new<Closure>(nil, lambda_body, env));  // nil = no parameters
-    }
+    // NOTE: `delay` / `delay-force` are desugared through the shared Expander
+    // (see kExpanderForms above) to %make-promise, so the tree-walk uses the same
+    // memoizing promise representation as every other evaluator. No native form.
     else if (fn_val == "Macro") {
         Macro* m = gc_new<Macro>(first(args), rest(args), env);
         return eval_result::make_value(m);

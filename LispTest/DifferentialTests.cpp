@@ -237,6 +237,16 @@ const Case kCorpus[] = {
     {"(guard (e (else 'caught-div)) (/ 10 0))", "caught-div", ALL},
     {"(guard (e (#t 'nope)) (+ 1 2))", "3", ALL},
     {"(let ((p (make-parameter 10))) (guard (e (else (p))) (parameterize ((p 99)) (raise 'x))))", "10", ALL},
+    // promises (delay / delay-force / force / make-promise) — delay* desugared in
+    // the shared Expander to %make-promise; force/make-promise/promise? in the
+    // prelude. Memoizing, with delay-force trampolining. All four evaluators.
+    {"(force (delay (+ 1 2)))", "3", ALL},
+    {"(force (make-promise 10))", "10", ALL},
+    {"(list (promise? (delay 1)) (promise? 5))", "(#t #f)", ALL},
+    {"(force 42)", "42", ALL},
+    {"(let ((n 0)) (let ((p (delay (begin (set! n (+ n 1)) n)))) (list (force p) (force p) n)))", "(1 1 1)", ALL},
+    {"(begin (define (ints-from k) (delay (cons k (ints-from (+ k 1))))) (define (sh s n) (if (= n 0) '() (let ((pr (force s))) (cons (car pr) (sh (cdr pr) (- n 1)))))) (sh (ints-from 1) 5))", "(1 2 3 4 5)", ALL},
+    {"(begin (define (lp n) (delay-force (if (= n 0) (delay 'done) (lp (- n 1))))) (force (lp 1000)))", "done", ALL},
     // Escape continuations — supported by all three (the tree-walk's only mode).
     {"(+ 1 (call/cc (lambda (k) (k 10))))", "11", ALL},
     {"(* 2 (call/cc (lambda (k) (+ 1 (k 5)))))", "10", ALL},

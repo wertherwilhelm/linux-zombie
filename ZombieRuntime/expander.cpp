@@ -240,6 +240,34 @@ Object* Expander::expand_list(Object* list) {
         return expand_parameterize(bindings, body);
     }
 
+    if (name == "delay" || name == "delay-force") {
+        // R7RS 4.2.5 promises, desugared to the prelude's %make-promise so all
+        // four evaluators share one (memoizing, trampolining) implementation:
+        //   (delay-force expr) => (%make-promise #f (lambda () expr))
+        //   (delay expr)       => (%make-promise #f (lambda () (%make-promise #t expr)))
+        // A lazy promise holds a thunk (done? = #f); forcing runs it once and
+        // memoizes. delay-force's thunk yields a promise (force trampolines into
+        // it, giving proper space for stream loops); delay's thunk yields an
+        // eager promise wrapping the value. expr is evaluated only when forced.
+        if (is_nil(args) || !args->pair()) {
+            throw std::runtime_error(name + ": expected (" + name + " expression)");
+        }
+        Object* expr = expand(first(args));
+        Object* inner;
+        if (name == "delay") {
+            // (lambda () (%make-promise #t expr))
+            Object* eager = cons(intern_symbol("%make-promise"),
+                                 cons(t, cons(expr, nil)));
+            inner = cons(intern_symbol("lambda"), cons(nil, cons(eager, nil)));
+        } else {
+            // (lambda () expr)
+            inner = cons(intern_symbol("lambda"), cons(nil, cons(expr, nil)));
+        }
+        // (%make-promise #f <thunk>)
+        return cons(intern_symbol("%make-promise"),
+                    cons(static_cast<Object*>(false_obj), cons(inner, nil)));
+    }
+
     if (name == "define-record-type") {
         // (define-record-type name (ctor field ...) pred (field accessor [modifier]) ...)
         return expand_define_record_type(args);

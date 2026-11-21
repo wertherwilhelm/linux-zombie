@@ -829,6 +829,36 @@ void scheme_engine::warmup_prelude() {
   (let ((h (make-hash-table)))
     (for-each (lambda (kv) (hash-table-set! h (car kv) (cdr kv))) al)
     h))
+
+;; --- R7RS promises / lazy evaluation (4.2.5) ---
+;; A promise is a mutable 3-vector #(tag done? value): done? #t -> value is the
+;; memoized result; done? #f -> value is a thunk still to be run. The `delay` /
+;; `delay-force` Expander rewrites build these via %make-promise. force runs the
+;; thunk once and memoizes; for delay-force the thunk yields another promise and
+;; force trampolines into it (SRFI-45 semantics -> proper space for stream loops).
+;; This shadows the naive C++ `force` primitive with the memoizing version.
+(define %promise-tag (cons '%promise '()))   ; unique identity for promise?
+(define (%make-promise done? value) (vector %promise-tag done? value))
+(define (promise? x)
+  (and (vector? x) (= (vector-length x) 3) (eq? (vector-ref x 0) %promise-tag)))
+(define (make-promise obj)
+  (if (promise? obj) obj (%make-promise #t obj)))
+(define (force p)
+  (if (not (promise? p)) p
+      (if (vector-ref p 1)
+          (vector-ref p 2)
+          (let ((p* ((vector-ref p 2))))        ; run the thunk
+            (if (vector-ref p 1)                ; memoized re-entrantly while running
+                (vector-ref p 2)
+                (if (promise? p*)
+                    (begin                      ; adopt p*'s state, then keep forcing
+                      (vector-set! p 1 (vector-ref p* 1))
+                      (vector-set! p 2 (vector-ref p* 2))
+                      (force p))
+                    (begin                      ; thunk returned a plain value
+                      (vector-set! p 1 #t)
+                      (vector-set! p 2 p*)
+                      p*)))))))
 )SRFI";
 
     eval_string(kPrelude);
