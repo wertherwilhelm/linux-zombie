@@ -260,6 +260,13 @@ const Case kCorpus[] = {
     {"(string->number \"#i1/2\")", "0.5", ALL},
     {"(string->number \"1/3\")", "1/3", ALL},
     {"(string->number \"nope\")", "#f", ALL},
+    // inexact division by zero is IEEE inf/nan, not an error (bytecode/CoreIR
+    // OP_DIV used to throw on any zero divisor); exact /0 still errors uniformly.
+    {"(/ 1.0 0.0)", "+inf.0", ALL},
+    {"(/ -1.0 0.0)", "-inf.0", ALL},
+    {"(/ 0.0 0.0)", "+nan.0", ALL},
+    {"(/ 1.0 0)", "+inf.0", ALL},
+    {"(nan? (/ 0.0 0.0))", "#t", ALL},
     // Escape continuations — supported by all three (the tree-walk's only mode).
     {"(+ 1 (call/cc (lambda (k) (k 10))))", "11", ALL},
     {"(* 2 (call/cc (lambda (k) (+ 1 (k 5)))))", "10", ALL},

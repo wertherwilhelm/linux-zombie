@@ -710,11 +710,11 @@ public:
             throw std::runtime_error("DIV: operands must be numbers");
         }
 
-        // Check for division by zero (compare with 0)
-        if (numeric::to_double(b) == 0.0) {
-            throw std::runtime_error("DIV: division by zero");
-        }
-
+        // Delegate to numeric::div for the zero-divisor policy: inexact /0 yields
+        // IEEE +inf.0 / -inf.0 / +nan.0 (NOT an error, per R7RS), while exact /0
+        // throws "Division by zero" from a_rational::div — matching the runtime
+        // primitive the tree-walk / toy VM use. (The old fast-path check rejected
+        // every zero divisor, so (/ 1.0 0.0) wrongly errored on --bytecode/--coreir.)
         Object* result = numeric::div(a, b);
         ctx.push(result);
         ctx.ip += size();
