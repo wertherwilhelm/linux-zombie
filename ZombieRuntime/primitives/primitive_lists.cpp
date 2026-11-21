@@ -1,65 +1,46 @@
 #include "zombie_runtime_types.h"
-#include "zombie_runtime_types.h"
 #include "primitive_lists.h"
+#include "../native_primitive.h"
 #include "../Base.h"
 #include "../cons_cell.h"
 #include "../atom.h"
 #include "../numeric_runtime.h"
 #include "../procedure.h"
 #include "../i_evaluator.h"
+#include <cstring>
 
 /**
  * @file primitive_lists.cpp
- * @brief Implementation of list and pair primitives (R5RS Section 6.3)
- * @author Inheritance-based refactoring 2026-01
- * @date 2026-01-09
+ * @brief List / pair primitives (R7RS 6.4), table-driven.
  */
 
-// ============================================================================
-// Helper Functions
-// ============================================================================
+namespace {
 
-/**
- * @brief Helper for member/assoc family of functions
- * @param obj Object to search for
- * @param List List to search in
- * @param m 'm' for member, 'a' for assoc
- * @param eq 'q' for eq?, 'v' for eqv?, ' ' for equal?
- * @return Tail of list starting with found element, or #f
- */
-static Object* member_assoc(Object *obj, Object *List, char m, char eq) {
+using namespace zombie::runtime;
+
+// member/assoc with built-in equality. m: 'm' member (whole tail on match),
+// 'a' assoc (matching pair). eq: 'q' eq?, 'v' eqv?, ' ' equal?.
+Object* member_assoc(Object* obj, Object* List, char m, char eq) {
     while (!List->is_atom()) {
-        Object *target = (m == 'm') ? first(List) : first(first(List));
+        Object* target = (m == 'm') ? first(List) : first(first(List));
         bool found;
         switch (eq) {
-            case 'q':
-                found = ::eq(target, obj);
-                break;
-            case 'v':
-                found = eqv(target, obj);
-                break;
-            case ' ':
-                found = equal(target, obj);
-                break;
-            default:
-                warn("Bad option to member_assoc:" + eq);
-                return false_obj;
+            case 'q': found = ::eq(target, obj); break;
+            case 'v': found = eqv(target, obj); break;
+            case ' ': found = equal(target, obj); break;
+            default:  warn("Bad option to member_assoc:" + eq); return false_obj;
         }
         if (found) return (m == 'm') ? List : first(List);
         List = rest(List);
     }
-    return false_obj;  // Return #f when not found (R5RS compliant)
+    return false_obj;
 }
 
-// member / assoc with a user-supplied comparator (R7RS): the predicate is
-// called as (compare obj element). m=='m' for member (whole list on match),
-// m=='a' for assoc (the matching pair on match).
-static Object* member_assoc_cmp(IEvaluator* eval, Environment* env,
-                                Object* obj, Object* list, Object* cmp, char m) {
+// member/assoc with a user comparator (R7RS): called as (compare obj element).
+Object* member_assoc_cmp(IEvaluator* eval, Environment* env,
+                         Object* obj, Object* list, Object* cmp, char m) {
     Procedure* proc = dynamic_cast<Procedure*>(cmp);
-    if (!proc) {
-        return error("member/assoc: comparator must be a procedure");
-    }
+    if (!proc) return error("member/assoc: comparator must be a procedure");
     gc_root<Object> lguard(list);
     gc_root<Object> oguard(obj);
     while (!list->is_atom()) {
@@ -73,445 +54,192 @@ static Object* member_assoc_cmp(IEvaluator* eval, Environment* env,
     return false_obj;
 }
 
-// ============================================================================
-// Constructor
-// ============================================================================
-
-PrimitiveLists::PrimitiveLists(ID id, int minArgs, int maxArgs)
-    : PrimitiveBase(minArgs, maxArgs), m_id(id) {
-    // Set Primitive name based on ID
-    switch (id) {
-        case PAIRQ:    m_name = "pair?"; break;
-        case LISTQ:    m_name = "list?"; break;
-        case CXR:      m_name = "cxr"; break;  // Will be overridden with specific name
-        case CONS:     m_name = "cons"; break;
-        case CAR:      m_name = "car"; break;
-        case CDR:      m_name = "cdr"; break;
-        case SETCAR:   m_name = "set-car!"; break;
-        case SETCDR:   m_name = "set-cdr!"; break;
-        case SECOND:   m_name = "second"; break;
-        case THIRD:    m_name = "third"; break;
-        case NULLQ:    m_name = "null?"; break;
-        case LIST:     m_name = "list"; break;
-        case LENGTH:   m_name = "length"; break;
-        case APPEND:   m_name = "append"; break;
-        case REVERSE:  m_name = "reverse"; break;
-        case ListTAIL: m_name = "list-tail"; break;
-        case ListREF:  m_name = "list-ref"; break;
-        case MEMQ:     m_name = "memq"; break;
-        case MEMV:     m_name = "memv"; break;
-        case MEMBER:   m_name = "member"; break;
-        case ASSQ:     m_name = "assq"; break;
-        case ASSV:     m_name = "assv"; break;
-        case ASSOC:    m_name = "assoc"; break;
-        case MAKELIST: m_name = "make-list"; break;
-        case LISTCOPY: m_name = "list-copy"; break;
-        case LISTSET:  m_name = "list-set!"; break;
-        case LASTPAIR: m_name = "last-pair"; break;
+// cXr: the pattern is read right to left ("cadr" = cdr then car). Out-of-bounds
+// access (nil/atom) yields nil.
+Object* cxr(Object* x, const char* name) {
+    for (int i = static_cast<int>(std::strlen(name)) - 2; i >= 1; i--) {
+        if (x == nil || x->is_nil() || x->is_atom()) return nil;
+        x = (name[i] == 'a') ? first(x) : rest(x);
     }
+    return x;
 }
 
-// ============================================================================
-// Primitive Application
-// ============================================================================
-
-Object* PrimitiveLists::apply(IEvaluator* eval, Object* args, Environment* env) {
-    // Arity checking (inherited from PrimitiveBase)
-    if (!check_arity(args)) {
-        return arity_error("");
-    }
-
-    // Extract common arguments
-    Object* x = (args && !args->is_nil()) ? first(args) : nil;
-    Object* y = (args && !args->is_nil() && rest(args) && !rest(args)->is_nil()) ? second(args) : nil;
-    // Optional third argument (e.g. the comparator for member/assoc).
-    Object* rest2 = (args && !args->is_nil() && rest(args) && !rest(args)->is_nil()) ? rest(rest(args)) : nil;
-    Object* z = (rest2 && rest2->pair()) ? first(rest2) : nil;
-
-    // Dispatch based on Primitive ID
-    switch (m_id) {
-        case PAIRQ:
-            // (pair? obj) - returns #t if obj is a pair
-            return truth(!x->is_atom());
-
-        case LISTQ:
-            // (list? obj) - returns #t if obj is a proper list
-            return truth(::is_list(x));
-
-        case CXR: {
-            // CXR operations (cadr, caddr, etc.)
-            // Pattern is read right to left: "cadr" means cdr then car
-            // Loop from second-to-last char (index length-2) down to index 1
-            for (int i = static_cast<int>(m_name.length()) - 2; i >= 1; i--) {
-                // If we hit nil or an atom, return nil (accessing beyond list bounds)
-                if (x == nil || x->is_nil() || x->is_atom()) {
-                    return nil;
-                }
-                x = (m_name[i] == 'a') ? first(x) : rest(x);
-            }
-            return x;
-        }
-
-        case CONS:
-            // (cons obj1 obj2) - construct a pair
-            return cons(x, y);
-
-        case LASTPAIR:
-            // (last-pair list) - return the last pair (cons cell) of a non-empty
-            // list. Walks until the cdr is no longer a pair (handles improper
-            // lists too).
-            if (x == NULL || x->is_atom()) {
-                return error("last-pair: argument must be a pair");
-            }
-            while (!rest(x)->is_atom()) {
-                x = rest(x);
-            }
-            return x;
-
-        case CAR:
-            // (car pair) - return first element
-            return first(x);
-
-        case CDR:
-            // (cdr pair) - return rest
-            return rest(x);
-
-        case SETCAR:
-            // (set-car! pair obj) - mutate first element
-            return set_first(x, y);
-
-        case SETCDR:
-            // (set-cdr! pair obj) - mutate rest
-            return set_rest(x, y);
-
-        case SECOND:
-            // (second list) - return second element (cadr)
-            return second(x);
-
-        case THIRD:
-            // (third list) - return third element (caddr)
-            return third(x);
-
-        case NULLQ:
-            // (null? obj) - returns #t if obj is nil
-            return truth(x == NULL || x == nil || x->is_nil());
-
-        case LIST:
-            // (list obj ...) - return list of arguments
-            return args;
-
-        case LENGTH: {
-            // (length list) - return length of list
-            if (x == NULL || x->is_nil()) {
-                return numeric::make_integer(0);
-            }
-            return numeric::make_integer(length(x));
-        }
-
-        case APPEND: {
-            // (append list ...) - concatenate lists
-            if (args == NULL || args->is_nil()) {
-                return nil;
-            }
-            // Start with the first list
-            Object* result = first(args);
-            Object* remaining = rest(args);
-
-            // Append each subsequent list
-            while (remaining != NULL && !remaining->is_nil()) {
-                result = append(result, first(remaining));
-                remaining = rest(remaining);
-            }
-            return result;
-        }
-
-        case REVERSE: {
-            // (reverse list) - reverse a list
-            if (x == NULL || x->is_nil()) {
-                return nil;
-            }
-            return reverse(x);
-        }
-
-        case ListTAIL: {
-            // (list-tail list k) - return list after k elements
-            int k = (int)(((a_int*)y)->value());
-            for (; k > 0; k--) {
-                x = rest(x);
-            }
-            return x;
-        }
-
-        case ListREF: {
-            // (list-ref list k) - return the kth element of list (0-indexed)
-            if (x == NULL || x->is_nil()) {
-                return error("list-ref: list is empty");
-            }
-            if (y == NULL || y->is_nil()) {
-                return error("list-ref: index required");
-            }
-
-            int k = (int)num(y);
-            if (k < 0) {
-                return error("list-ref: index must be non-negative");
-            }
-
-            Object* current = x;
-            for (int i = 0; i < k; i++) {
-                if (current == NULL || current->is_nil()) {
-                    return error("list-ref: index out of bounds");
-                }
-                current = rest(current);
-            }
-
-            if (current == NULL || current->is_nil()) {
-                return error("list-ref: index out of bounds");
-            }
-
-            return first(current);
-        }
-
-        case MEMQ:
-            // (memq obj list) - search using eq?
-            return member_assoc(x, y, 'm', 'q');
-
-        case MEMV:
-            // (memv obj list) - search using eqv?
-            return member_assoc(x, y, 'm', 'v');
-
-        case MEMBER:
-            // (member obj list [compare]) - equal?, or a user comparator
-            if (z && !z->is_nil()) {
-                return member_assoc_cmp(eval, env, x, y, z, 'm');
-            }
-            return member_assoc(x, y, 'm', ' ');
-
-        case ASSQ:
-            // (assq obj alist) - association list search using eq?
-            return member_assoc(x, y, 'a', 'q');
-
-        case ASSV:
-            // (assv obj alist) - association list search using eqv?
-            return member_assoc(x, y, 'a', 'v');
-
-        case ASSOC:
-            // (assoc obj alist [compare]) - equal?, or a user comparator
-            if (z && !z->is_nil()) {
-                return member_assoc_cmp(eval, env, x, y, z, 'a');
-            }
-            return member_assoc(x, y, 'a', ' ');
-
-        case MAKELIST: {
-            // (make-list k [fill]) - create list of k elements with optional fill value
-            // R7RS Section 6.4
-            if (x == NULL || x->is_nil()) {
-                return error("make-list: requires integer argument");
-            }
-
-            int k = (int)num(x);
-            if (k < 0) {
-                return error("make-list: count must be non-negative");
-            }
-
-            // Optional fill value (defaults to nil)
-            Object* fill = (y && !y->is_nil()) ? y : nil;
-
-            // Build list of k elements
-            Object* result = nil;
-            for (int i = 0; i < k; i++) {
-                result = cons(fill, result);
-            }
-            return result;
-        }
-
-        case LISTCOPY: {
-            // (list-copy list) - create shallow copy of list
-            // R7RS Section 6.4
-            if (x == NULL || x->is_nil()) {
-                return nil;
-            }
-
-            // Build new list with same elements
-            Object* result = nil;
-            Object* tail = nil;
-
-            Object* current = x;
-            while (current && !current->is_nil()) {
-                if (!current->pair()) {
-                    // Improper list: copy the dotted tail
-                    if (tail) {
-                        set_rest(tail, current);
-                    } else {
-                        result = current;
-                    }
-                    break;
-                }
-
-                Object* element = first(current);
-                Object* new_cell = cons(element, nil);
-
-                if (result == nil) {
-                    result = new_cell;
-                    tail = new_cell;
-                } else {
-                    set_rest(tail, new_cell);
-                    tail = new_cell;
-                }
-
-                current = rest(current);
-            }
-
-            return result;
-        }
-
-        case LISTSET: {
-            // (list-set! list k obj) - mutate kth element of list
-            // R7RS Section 6.4
-            if (x == NULL || x->is_nil()) {
-                return error("list-set!: list is empty");
-            }
-            if (y == NULL || y->is_nil()) {
-                return error("list-set!: index required");
-            }
-
-            int k = (int)num(y);
-            if (k < 0) {
-                return error("list-set!: index must be non-negative");
-            }
-
-            // Get third argument (the new value)
-            Object* obj = (args && !args->is_nil() &&
-                          rest(args) && !rest(args)->is_nil() &&
-                          rest(rest(args)) && !rest(rest(args))->is_nil())
-                ? first(rest(rest(args)))
-                : nil;
-
-            // Find the kth element and mutate it
-            Object* current = x;
-            for (int i = 0; i < k; i++) {
-                if (current == NULL || current->is_nil() || !current->pair()) {
-                    return error("list-set!: index out of bounds");
-                }
-                current = rest(current);
-            }
-
-            if (current == NULL || current->is_nil() || !current->pair()) {
-                return error("list-set!: index out of bounds");
-            }
-
-            // Mutate the car of the kth cons cell
-            set_first(current, obj);
-            return nil;  // R7RS: list-set! returns unspecified value
-        }
-
-        default:
-            return error("Unknown list Primitive");
-    }
+// Helpers to pull args that may be absent.
+inline Object* arg1(Object* a) { return (a && !a->is_nil()) ? first(a) : nil; }
+inline Object* arg2(Object* a) { return (a && !a->is_nil() && rest(a) && !rest(a)->is_nil()) ? second(a) : nil; }
+inline Object* arg3(Object* a) {
+    Object* r2 = (a && !a->is_nil() && rest(a) && !rest(a)->is_nil()) ? rest(rest(a)) : nil;
+    return (r2 && r2->pair()) ? first(r2) : nil;
 }
 
-// ============================================================================
-// Registration
-// ============================================================================
+Object* prim_pairq(IEvaluator*, Object* a, Environment*) { return truth(!arg1(a)->is_atom()); }
+Object* prim_listq(IEvaluator*, Object* a, Environment*) { return truth(::is_list(arg1(a))); }
+Object* prim_nullq(IEvaluator*, Object* a, Environment*) { Object* x=arg1(a); return truth(x == NULL || x == nil || x->is_nil()); }
+Object* prim_cons(IEvaluator*, Object* a, Environment*) { return cons(arg1(a), arg2(a)); }
+Object* prim_car(IEvaluator*, Object* a, Environment*) { return first(arg1(a)); }
+Object* prim_cdr(IEvaluator*, Object* a, Environment*) { return rest(arg1(a)); }
+Object* prim_set_car(IEvaluator*, Object* a, Environment*) { return set_first(arg1(a), arg2(a)); }
+Object* prim_set_cdr(IEvaluator*, Object* a, Environment*) { return set_rest(arg1(a), arg2(a)); }
+Object* prim_second(IEvaluator*, Object* a, Environment*) { return second(arg1(a)); }
+Object* prim_third(IEvaluator*, Object* a, Environment*) { return third(arg1(a)); }
+Object* prim_list(IEvaluator*, Object* a, Environment*) { return a; }
 
-void PrimitiveLists::install(Environment* env) {
-    const int n = 999999;  // Unlimited arguments marker
+Object* prim_length(IEvaluator*, Object* a, Environment*) {
+    Object* x = arg1(a);
+    if (x == NULL || x->is_nil()) return numeric::make_integer(0);
+    return numeric::make_integer(length(x));
+}
 
-    // GC Safety: Use macro to protect name string before allocating primitive
-    #define DEF(name, ...) do { \
-        gc_root<a_string> _n(gc_new<a_string>(name)); \
-        env->define(_n.get(), gc_new<PrimitiveLists>(__VA_ARGS__)); \
-    } while(0)
+Object* prim_append(IEvaluator*, Object* a, Environment*) {
+    if (a == NULL || a->is_nil()) return nil;
+    Object* result = first(a);
+    for (Object* rem = rest(a); rem != NULL && !rem->is_nil(); rem = rest(rem)) {
+        result = append(result, first(rem));
+    }
+    return result;
+}
 
-    // Predicates
-    DEF("pair?",  PAIRQ, 1, 1);
-    DEF("list?",  LISTQ, 1, 1);
-    DEF("null?",  NULLQ, 1, 1);
+Object* prim_reverse(IEvaluator*, Object* a, Environment*) {
+    Object* x = arg1(a);
+    return (x == NULL || x->is_nil()) ? nil : reverse(x);
+}
 
-    // Basic constructors and accessors
-    DEF("cons",   CONS, 2, 2);
-    DEF("car",    CAR, 1, 1);
-    DEF("cdr",    CDR, 1, 1);
-    DEF("first",  CAR, 1, 1);  // Alias for car
-    DEF("rest",   CDR, 1, 1);  // Alias for cdr
-    DEF("set-car!", SETCAR, 2, 2);
-    DEF("set-cdr!", SETCDR, 2, 2);
+Object* prim_last_pair(IEvaluator*, Object* a, Environment*) {
+    Object* x = arg1(a);
+    if (x == NULL || x->is_atom()) return error("last-pair: argument must be a pair");
+    while (!rest(x)->is_atom()) x = rest(x);
+    return x;
+}
 
-    // List operations
-    DEF("list",    LIST, 0, n);
-    DEF("length",  LENGTH, 1, 1);
-    DEF("append",  APPEND, 0, n);
-    DEF("reverse", REVERSE, 1, 1);
-    DEF("list-tail", ListTAIL, 2, 2);
-    DEF("list-ref", ListREF, 2, 2);
-    DEF("last-pair", LASTPAIR, 1, 1);
+Object* prim_list_tail(IEvaluator*, Object* a, Environment*) {
+    Object* x = arg1(a);
+    int k = (int)(((a_int*)arg2(a))->value());
+    for (; k > 0; k--) x = rest(x);
+    return x;
+}
 
-    // Additional accessors
-    DEF("second",  SECOND, 1, 1);
-    DEF("third",   THIRD, 1, 1);
+Object* prim_list_ref(IEvaluator*, Object* a, Environment*) {
+    Object* x = arg1(a), *y = arg2(a);
+    if (x == NULL || x->is_nil()) return error("list-ref: list is empty");
+    if (y == NULL || y->is_nil()) return error("list-ref: index required");
+    int k = (int)num(y);
+    if (k < 0) return error("list-ref: index must be non-negative");
+    Object* cur = x;
+    for (int i = 0; i < k; i++) {
+        if (cur == NULL || cur->is_nil()) return error("list-ref: index out of bounds");
+        cur = rest(cur);
+    }
+    if (cur == NULL || cur->is_nil()) return error("list-ref: index out of bounds");
+    return first(cur);
+}
 
-    #undef DEF
+Object* prim_memq(IEvaluator*, Object* a, Environment*) { return member_assoc(arg1(a), arg2(a), 'm', 'q'); }
+Object* prim_memv(IEvaluator*, Object* a, Environment*) { return member_assoc(arg1(a), arg2(a), 'm', 'v'); }
+Object* prim_member(IEvaluator* e, Object* a, Environment* v) {
+    Object* z = arg3(a);
+    if (z && !z->is_nil()) return member_assoc_cmp(e, v, arg1(a), arg2(a), z, 'm');
+    return member_assoc(arg1(a), arg2(a), 'm', ' ');
+}
+Object* prim_assq(IEvaluator*, Object* a, Environment*) { return member_assoc(arg1(a), arg2(a), 'a', 'q'); }
+Object* prim_assv(IEvaluator*, Object* a, Environment*) { return member_assoc(arg1(a), arg2(a), 'a', 'v'); }
+Object* prim_assoc(IEvaluator* e, Object* a, Environment* v) {
+    Object* z = arg3(a);
+    if (z && !z->is_nil()) return member_assoc_cmp(e, v, arg1(a), arg2(a), z, 'a');
+    return member_assoc(arg1(a), arg2(a), 'a', ' ');
+}
 
-    // CXR operations (cadr, caddr, etc.)
-    // These need special handling because they use the name to determine the operation
-    // GC Safety: Protect both primitive and name string during allocation
-    auto register_cxr = [env](const char* name) {
-        gc_root<PrimitiveLists> prim(gc_new<PrimitiveLists>(PrimitiveLists::CXR, 1, 1));
-        prim.get()->m_name = name;  // Override name for CXR pattern matching
-        gc_root<a_string> name_str(gc_new<a_string>(name));
-        env->define(name_str.get(), prim.get());
+Object* prim_make_list(IEvaluator*, Object* a, Environment*) {
+    Object* x = arg1(a), *y = arg2(a);
+    if (x == NULL || x->is_nil()) return error("make-list: requires integer argument");
+    int k = (int)num(x);
+    if (k < 0) return error("make-list: count must be non-negative");
+    Object* fill = (y && !y->is_nil()) ? y : nil;
+    Object* result = nil;
+    for (int i = 0; i < k; i++) result = cons(fill, result);
+    return result;
+}
+
+Object* prim_list_copy(IEvaluator*, Object* a, Environment*) {
+    Object* x = arg1(a);
+    if (x == NULL || x->is_nil()) return nil;
+    Object* result = nil, *tail = nil, *cur = x;
+    while (cur && !cur->is_nil()) {
+        if (!cur->pair()) {  // improper list: attach the dotted tail
+            if (tail) set_rest(tail, cur); else result = cur;
+            break;
+        }
+        Object* cell = cons(first(cur), nil);
+        if (result == nil) { result = cell; tail = cell; }
+        else { set_rest(tail, cell); tail = cell; }
+        cur = rest(cur);
+    }
+    return result;
+}
+
+Object* prim_list_set(IEvaluator*, Object* a, Environment*) {
+    Object* x = arg1(a), *y = arg2(a);
+    if (x == NULL || x->is_nil()) return error("list-set!: list is empty");
+    if (y == NULL || y->is_nil()) return error("list-set!: index required");
+    int k = (int)num(y);
+    if (k < 0) return error("list-set!: index must be non-negative");
+    Object* obj = arg3(a);
+    Object* cur = x;
+    for (int i = 0; i < k; i++) {
+        if (cur == NULL || cur->is_nil() || !cur->pair()) return error("list-set!: index out of bounds");
+        cur = rest(cur);
+    }
+    if (cur == NULL || cur->is_nil() || !cur->pair()) return error("list-set!: index out of bounds");
+    set_first(cur, obj);
+    return nil;
+}
+
+// The cXr family (R7RS 6.4): two-, three-, and four-level compositions.
+#define CXR_LIST(X) \
+    X(caar) X(cadr) X(cdar) X(cddr) \
+    X(caaar) X(caadr) X(cadar) X(caddr) X(cdaar) X(cdadr) X(cddar) X(cdddr) \
+    X(caaaar) X(caaadr) X(caadar) X(caaddr) X(cadaar) X(cadadr) X(caddar) X(cadddr) \
+    X(cdaaar) X(cdaadr) X(cdadar) X(cdaddr) X(cddaar) X(cddadr) X(cdddar) X(cddddr)
+
+#define DEF_CXR(nm) Object* prim_##nm(IEvaluator*, Object* a, Environment*) { return cxr(arg1(a), #nm); }
+CXR_LIST(DEF_CXR)
+#undef DEF_CXR
+
+}  // namespace
+
+void PrimitiveLists::install(zombie::runtime::Environment* env) {
+    using namespace zombie::runtime;
+    static const NativeEntry entries[] = {
+        { "pair?",     1, 1,      prim_pairq    },
+        { "list?",     1, 1,      prim_listq    },
+        { "null?",     1, 1,      prim_nullq    },
+        { "cons",      2, 2,      prim_cons     },
+        { "car",       1, 1,      prim_car      },
+        { "cdr",       1, 1,      prim_cdr      },
+        { "first",     1, 1,      prim_car      },  // alias
+        { "rest",      1, 1,      prim_cdr      },  // alias
+        { "set-car!",  2, 2,      prim_set_car  },
+        { "set-cdr!",  2, 2,      prim_set_cdr  },
+        { "list",      0, 999999, prim_list     },
+        { "length",    1, 1,      prim_length   },
+        { "append",    0, 999999, prim_append   },
+        { "reverse",   1, 1,      prim_reverse  },
+        { "list-tail", 2, 2,      prim_list_tail},
+        { "list-ref",  2, 2,      prim_list_ref },
+        { "last-pair", 1, 1,      prim_last_pair},
+        { "second",    1, 1,      prim_second   },
+        { "third",     1, 1,      prim_third    },
+        { "memq",      2, 2,      prim_memq     },
+        { "memv",      2, 2,      prim_memv     },
+        { "member",    2, 3,      prim_member   },
+        { "assq",      2, 2,      prim_assq     },
+        { "assv",      2, 2,      prim_assv     },
+        { "assoc",     2, 3,      prim_assoc    },
+        { "make-list", 1, 2,      prim_make_list},
+        { "list-copy", 1, 1,      prim_list_copy},
+        { "list-set!", 3, 3,      prim_list_set },
+#define ROW_CXR(nm) { #nm, 1, 1, prim_##nm },
+        CXR_LIST(ROW_CXR)
+#undef ROW_CXR
     };
-
-    // Two-level CXR (cXr)
-    register_cxr("caar");
-    register_cxr("cadr");
-    register_cxr("cdar");
-    register_cxr("cddr");
-
-    // Three-level CXR (cXXr)
-    register_cxr("caaar");
-    register_cxr("caadr");
-    register_cxr("cadar");
-    register_cxr("caddr");
-    register_cxr("cdaar");
-    register_cxr("cdadr");
-    register_cxr("cddar");
-    register_cxr("cdddr");
-
-    // Four-level CXR (cXXXr)
-    register_cxr("caaaar");
-    register_cxr("caaadr");
-    register_cxr("caadar");
-    register_cxr("caaddr");
-    register_cxr("cadaar");
-    register_cxr("cadadr");
-    register_cxr("caddar");
-    register_cxr("cadddr");
-    register_cxr("cdaaar");
-    register_cxr("cdaadr");
-    register_cxr("cdadar");
-    register_cxr("cdaddr");
-    register_cxr("cddaar");
-    register_cxr("cddadr");
-    register_cxr("cdddar");
-    register_cxr("cddddr");
-
-    // Search operations - use inline gc_root for remaining primitives
-    #define DEF(name, ...) do { \
-        gc_root<a_string> _n(gc_new<a_string>(name)); \
-        env->define(_n.get(), gc_new<PrimitiveLists>(__VA_ARGS__)); \
-    } while(0)
-
-    DEF("memq",   MEMQ, 2, 2);
-    DEF("memv",   MEMV, 2, 2);
-    DEF("member", MEMBER, 2, 3);
-    DEF("assq",   ASSQ, 2, 2);
-    DEF("assv",   ASSV, 2, 2);
-    DEF("assoc",  ASSOC, 2, 3);
-
-    // R7RS additions
-    DEF("make-list",  MAKELIST, 1, 2);
-    DEF("list-copy",  LISTCOPY, 1, 1);
-    DEF("list-set!",  LISTSET, 3, 3);
-
-    #undef DEF
+    install_natives(env, entries, sizeof(entries) / sizeof(entries[0]));
 }
