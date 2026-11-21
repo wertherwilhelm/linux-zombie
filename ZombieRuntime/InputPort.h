@@ -54,6 +54,7 @@ public:
      * @brief Ports are not cloneable (returns self).
      */
     Object* clone() const override { return const_cast<InputPort*>(this); }  // Ports should not be cloned
+    void print(std::ostream& os) const override { os << "#<input-port>"; }
 
     /**
      * @brief Bind to a new input stream.

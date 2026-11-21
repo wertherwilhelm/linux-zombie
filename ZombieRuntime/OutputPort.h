@@ -18,6 +18,7 @@ public:
 
     int instance_of() override { return static_cast<int>(Base::atype::OUTPUTPORT); }
     Object* clone() const override { return const_cast<OutputPort*>(this); }  // Ports should not be cloned
+    void print(std::ostream& os) const override { os << "#<output-port>"; }
 
     void set_stream(std::ostream& port = std::cout);
 
