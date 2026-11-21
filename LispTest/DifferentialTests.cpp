@@ -281,6 +281,13 @@ const Case kCorpus[] = {
     {"(<= 1 +nan.0)", "#f", ALL},
     {"(>= +nan.0 1)", "#f", ALL},
     {"(= 1.0 1.0)", "#t", ALL},
+    // integer?/rational? accept inexact reals (R7RS): 2.0 is an integer, 2.5 is
+    // rational; only inf/nan are neither. exact-integer? stays exact-only.
+    {"(integer? 2.0)", "#t", ALL},
+    {"(integer? 2.5)", "#f", ALL},
+    {"(rational? 2.5)", "#t", ALL},
+    {"(rational? +inf.0)", "#f", ALL},
+    {"(exact-integer? 2.0)", "#f", ALL},
     // Escape continuations — supported by all three (the tree-walk's only mode).
     {"(+ 1 (call/cc (lambda (k) (k 10))))", "11", ALL},
     {"(* 2 (call/cc (lambda (k) (+ 1 (k 5)))))", "10", ALL},

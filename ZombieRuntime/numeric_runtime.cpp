@@ -58,6 +58,13 @@ bool is_integer_value(const Object* obj) {
         return r && r->is_integer();
     }
 
+    // R7RS: an inexact real with no fractional part is an integer, e.g.
+    // (integer? 2.0) => #t. inf / nan are not integers.
+    if (t == static_cast<int>(Type::DOUBLE)) {
+        double d = to_double(const_cast<Object*>(obj));
+        return std::isfinite(d) && std::floor(d) == d;
+    }
+
     return false;
 }
 
@@ -65,8 +72,19 @@ bool is_rational_value(const Object* obj) {
     if (!obj) return false;
     int t = obj->get_type();
 
-    // Rationals include integers
-    return t == static_cast<int>(Type::INT) || t == static_cast<int>(Type::LONG) || t == static_cast<int>(Type::RATIONAL);
+    // Exact integers and rationals are rational.
+    if (t == static_cast<int>(Type::INT) || t == static_cast<int>(Type::LONG) ||
+        t == static_cast<int>(Type::RATIONAL)) {
+        return true;
+    }
+
+    // R7RS: every finite inexact real is rational (e.g. (rational? 2.5) => #t);
+    // only +inf.0 / -inf.0 / +nan.0 are not.
+    if (t == static_cast<int>(Type::DOUBLE)) {
+        return std::isfinite(to_double(const_cast<Object*>(obj)));
+    }
+
+    return false;
 }
 
 bool is_real_value(const Object* obj) {
