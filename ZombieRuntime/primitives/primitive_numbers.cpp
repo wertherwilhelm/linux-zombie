@@ -1,6 +1,6 @@
 #include "zombie_runtime_types.h"
-#include "zombie_runtime_types.h"
 #include "primitive_numbers.h"
+#include "../native_primitive.h"
 #include "../Base.h"
 #include "../atom.h"
 #include "../numeric_runtime.h"
@@ -15,9 +15,7 @@
 
 /**
  * @file primitive_numbers.cpp
- * @brief Implementation of numeric primitives (R5RS Section 6.5)
- * @author Inheritance-based refactoring 2026-01
- * @date 2026-01-09
+ * @brief Numeric primitives (R7RS 6.2), table-driven.
  */
 
 // Constants for arithmetic operations
@@ -25,23 +23,17 @@
 #define ONE numeric::make_integer(1)
 
 // ============================================================================
-// Helper Functions
+// Shared helpers (comparison / arithmetic folds, number<->string, gcd/lcm)
 // ============================================================================
 
-/**
- * @brief Compare numbers using the specified operation
- * @param args List of numbers to compare
- * @param op Comparison operator: '<', '>', '=', 'L' (<=), 'G' (>=)
- * @return #t if comparison holds for all adjacent pairs, #f otherwise
- */
+// Compare numbers: op '<' '>' '=' 'L'(<=) 'G'(>=). Holds iff it holds for every
+// adjacent pair (R7RS). Any NaN operand makes it #f (IEEE).
 static Object* num_compare(Object *args, char op) {
-    // Use numeric runtime for tower-aware comparison
     while (rest(args)->pair()) {
         Object* x = first(args);
         args = rest(args);
         Object* y = first(args);
 
-        // Validate both are numbers
         if (!numeric::is_number(x) || !numeric::is_number(y)) {
             return error("comparison requires numbers");
         }
@@ -53,10 +45,7 @@ static Object* num_compare(Object *args, char op) {
             return false_obj;
         }
 
-        // Use numeric::compare (returns -1 if x<y, 0 if x==y, 1 if x>y)
-        // For equality, use numeric::equal which works with complex too
         int cmp = (op == '=') ? (numeric::equal(x, y) ? 0 : 1) : numeric::compare(x, y);
-
         switch (op) {
             case '>': if (!(cmp > 0)) return false_obj; break;
             case '<': if (!(cmp < 0)) return false_obj; break;
@@ -66,60 +55,30 @@ static Object* num_compare(Object *args, char op) {
             default: error("internal error: unrecognized op: " + op); break;
         }
     }
-    // R5RS: return #t singleton
     return t;
 }
 
-/**
- * @brief Compute arithmetic operations on a list of numbers
- * @param args List of arguments
- * @param op Operator: '+', '-', '*', '/', 'X' (max), 'N' (min)
- * @param result Initial accumulator value
- * @return Result of the computation
- */
+// Fold arithmetic over args: op '+' '-' '*' '/' 'X'(max) 'N'(min), starting from
+// `result`. The unary case ((- x) / (/ x)) arrives as rest(args) == nil, so test
+// "no more args" with !pair() (negate / reciprocal), not args==NULL.
 static Object* num_compute(Object *args, char op, Object* result) {
-    // Use numeric runtime for tower-aware arithmetic.
-    // The unary case: MINUS/DIVIDE call this with rest(args), which for a
-    // single-argument call is the empty list (nil), not NULL — so test for "no
-    // more args" with !pair(), otherwise (- 5) fell through and returned 5 (not
-    // -5) and (/ 2) returned 2 (not 1/2). (bytecode/CoreIR masked (- 5) via a
-    // compiler (- 0 x) rewrite, so only the tree-walk / toy VM showed it.)
     if (args == NULL || !args->pair()) {
-        // Unary operations on result
         switch (op) {
             case '-': return numeric::negate(result);
-            case '/': {
-                // 1/x
-                Object* one = numeric::make_integer(1);
-                return numeric::div(one, result);
-            }
-            default:  return result;  // Identity
+            case '/': { Object* one = numeric::make_integer(1); return numeric::div(one, result); }
+            default:  return result;  // identity
         }
     } else {
         Object* acc = result;
         bool any_inexact = false;  // for min/max inexactness contagion
-
         while (args->pair()) {
             Object* x = first(args);
             args = rest(args);
-
-            // Validate it's a number
-            if (!numeric::is_number(x)) {
-                return error("arithmetic operation requires numbers");
-            }
+            if (!numeric::is_number(x)) return error("arithmetic operation requires numbers");
             if (!numeric::is_exact(x)) any_inexact = true;
-
             switch (op) {
-                case 'X': {  // max
-                    int cmp = numeric::compare(x, acc);
-                    if (cmp > 0) acc = x;
-                    break;
-                }
-                case 'N': {  // min
-                    int cmp = numeric::compare(x, acc);
-                    if (cmp < 0) acc = x;
-                    break;
-                }
+                case 'X': { int cmp = numeric::compare(x, acc); if (cmp > 0) acc = x; break; }
+                case 'N': { int cmp = numeric::compare(x, acc); if (cmp < 0) acc = x; break; }
                 case '+': acc = numeric::add(acc, x); break;
                 case '-': acc = numeric::sub(acc, x); break;
                 case '*': acc = numeric::mul(acc, x); break;
@@ -127,8 +86,7 @@ static Object* num_compute(Object *args, char op, Object* result) {
                 default: error("internal error: unrecognized op: " + op); break;
             }
         }
-        // R7RS: min/max return an inexact result if any argument is inexact,
-        // even when the chosen extremum happens to be an exact value.
+        // R7RS: min/max return inexact if any argument is inexact.
         if ((op == 'X' || op == 'N') && any_inexact && numeric::is_exact(acc)) {
             acc = numeric::make_inexact(numeric::to_double(acc));
         }
@@ -136,39 +94,26 @@ static Object* num_compute(Object *args, char op, Object* result) {
     }
 }
 
-/**
- * @brief Convert number to string representation
- * @param x Number to convert
- * @param y Optional radix (2, 8, 10, or 16)
- * @return String representation
- */
 static Object* numberToString(Object* x, Object* y) {
     if (!numeric::is_number(x)) {
         return error("number->string: expected a number");
     }
-
     int radix = 10;
     if (y != NULL && y != nil) {
-        if (!numeric::is_number(y)) {
-            return error("number->string: radix must be a number");
-        }
+        if (!numeric::is_number(y)) return error("number->string: radix must be a number");
         radix = (int)num(y);
         if (radix != 2 && radix != 8 && radix != 10 && radix != 16) {
             return error("number->string: radix must be 2, 8, 10, or 16");
         }
     }
-
     long long value = (long long)num(x);
     std::ostringstream oss;
-
     if (radix == 10) {
-        // Delegate to the value's own printer: exact integers/rationals print
-        // canonically ("2", "1/2") and inexact reals keep their decimal point
-        // ("2.0", "+inf.0") so the exact/inexact distinction survives.
+        // The value's own printer keeps the exact/inexact distinction ("2", "1/2",
+        // "2.0", "+inf.0").
         x->print(oss);
     } else {
-        // Non-decimal radix: format the MAGNITUDE and prepend a '-' for negatives
-        // (R7RS gives "-ff", not the 64-bit two's-complement the old std::hex did).
+        // Non-decimal radix: format the MAGNITUDE and prepend '-' (R7RS "-ff").
         bool neg = value < 0;
         unsigned long long mag = neg ? (unsigned long long)(-(value + 1)) + 1ULL
                                      : (unsigned long long)value;
@@ -184,42 +129,24 @@ static Object* numberToString(Object* x, Object* y) {
         }
         return gc_new<a_string>(neg ? "-" + digits : digits);
     }
-
     return gc_new<a_string>(oss.str());
 }
 
-/**
- * @brief Convert string to number
- * @param x String to convert
- * @param y Optional radix (2, 8, 10, or 16)
- * @return Number or #f if conversion fails
- */
 static Object* stringToNumber(Object* x, Object* y) {
-    if (!is_string(x)) {
-        return error("string->number: expected a string");
-    }
-
+    if (!is_string(x)) return error("string->number: expected a string");
     int radix = 10;
     if (y != NULL && y != nil) {
-        // The radix is an exact integer (2/8/10/16); it is not a double, so the
-        // old is_double() check rejected every explicit radix.
-        if (!numeric::is_number(y)) {
-            return error("string->number: radix must be a number");
-        }
+        if (!numeric::is_number(y)) return error("string->number: radix must be a number");
         radix = (int)numeric::to_int64(y);
         if (radix != 2 && radix != 8 && radix != 10 && radix != 16) {
             return error("string->number: radix must be 2, 8, 10, or 16");
         }
     }
-
     std::string str = ((a_string*)x)->value();
     if (str.empty()) return false_obj;
 
-    // R7RS 6.2.6: the string itself may carry radix / exactness prefixes
-    // (#x #b #o #d #e #i, combinable in any order, e.g. "#e#xff"). These parse
-    // the same numeric syntax the reader accepts — rationals, decimals, radixed
-    // integers — so mirror parse_number_token here rather than the old
-    // stoll/stod-only parse that rejected "#xff", "1/3", "#e1.5", ...
+    // R7RS 6.2.6: the string may carry radix / exactness prefixes (#x #b #o #d
+    // #e #i, combinable, e.g. "#e#xff"); the same grammar the reader accepts.
     int exactness = 0;  // 0 = as-written, 1 = exact (#e), -1 = inexact (#i)
     size_t i = 0;
     while (i + 1 < str.size() && str[i] == '#') {
@@ -230,1048 +157,483 @@ static Object* stringToNumber(Object* x, Object* y) {
         else if (c == 'd') radix = 10;
         else if (c == 'e') exactness = 1;
         else if (c == 'i') exactness = -1;
-        else return false_obj;   // unknown # prefix
+        else return false_obj;
         i += 2;
     }
     std::string tok = str.substr(i);
     if (tok.empty()) return false_obj;
 
-    // Infinity / NaN literals.
     if (tok == "+inf.0") return numeric::make_inexact(std::numeric_limits<double>::infinity());
     if (tok == "-inf.0") return numeric::make_inexact(-std::numeric_limits<double>::infinity());
     if (tok == "+nan.0" || tok == "-nan.0") return numeric::make_inexact(std::numeric_limits<double>::quiet_NaN());
 
-    // Shared numeric-token parser (same one the reader uses). R7RS: return #f on
-    // failure (not nil — nil is the empty list and TRUTHY, which would break the
-    // (or (string->number s) default) idiom).
     Object* val = numeric::parse_number_token(tok, radix, exactness);
     return val ? val : static_cast<Object*>(false_obj);
 }
 
-/**
- * @brief Compute GCD of two numbers
- */
 static long long gcd_helper(long long a, long long b) {
-    a = std::abs(a);
-    b = std::abs(b);
-    while (b != 0) {
-        long long temp = b;
-        b = a % b;
-        a = temp;
-    }
+    a = std::abs(a); b = std::abs(b);
+    while (b != 0) { long long t = b; b = a % b; a = t; }
     return a;
 }
 
-/**
- * @brief Compute GCD of multiple numbers
- */
 static Object* gcd(Object* args) {
-    if (args == NULL || args == nil) {
-        return ZERO;
-    }
-
-    // Get first number
-    if (!numeric::is_number(first(args))) {
-        return error("gcd: expected numbers");
-    }
-
+    if (args == NULL || args == nil) return ZERO;
+    if (!numeric::is_number(first(args))) return error("gcd: expected numbers");
     long long result = (long long)num(first(args));
     args = rest(args);
-
     while (args != NULL && args != nil) {
-        if (!numeric::is_number(first(args))) {
-            return error("gcd: expected numbers");
-        }
-        long long next = (long long)num(first(args));
-        result = gcd_helper(result, next);
+        if (!numeric::is_number(first(args))) return error("gcd: expected numbers");
+        result = gcd_helper(result, (long long)num(first(args)));
         args = rest(args);
     }
-
     return numeric::make_integer(std::abs(result));
 }
 
-/**
- * @brief Compute LCM of two numbers
- */
 static long long lcm_helper(long long a, long long b) {
-    if (a == 0 || b == 0) {
-        return 0;
-    }
+    if (a == 0 || b == 0) return 0;
     return std::abs(a * b) / gcd_helper(a, b);
 }
 
-/**
- * @brief Compute LCM of multiple numbers
- */
 static Object* lcm(Object* args) {
-    if (args == NULL || args == nil) {
-        return ONE;
-    }
-
-    // Get first number
-    if (!numeric::is_number(first(args))) {
-        return error("lcm: expected numbers");
-    }
-
+    if (args == NULL || args == nil) return ONE;
+    if (!numeric::is_number(first(args))) return error("lcm: expected numbers");
     long long result = (long long)num(first(args));
     args = rest(args);
-
     while (args != NULL && args != nil) {
-        if (!numeric::is_number(first(args))) {
-            return error("lcm: expected numbers");
-        }
-        long long next = (long long)num(first(args));
-        result = lcm_helper(result, next);
+        if (!numeric::is_number(first(args))) return error("lcm: expected numbers");
+        result = lcm_helper(result, (long long)num(first(args)));
         args = rest(args);
     }
-
     return numeric::make_integer(std::abs(result));
 }
 
-/**
- * @brief Check if a number is exact
- */
-static bool isExact(Object* x) {
-    return numeric::is_exact(x);
+// ============================================================================
+// Primitives (table-driven)
+// ============================================================================
+
+namespace {
+
+using namespace zombie::runtime;
+
+inline Object* arg1(Object* a) { return (a && !a->is_nil()) ? first(a) : nil; }
+inline Object* arg2(Object* a) {
+    return (a && !a->is_nil() && rest(a) && !rest(a)->is_nil()) ? second(a) : nil;
 }
 
-// ============================================================================
-// Constructor
-// ============================================================================
+// ---- Predicates ----
+Object* prim_numberq(IEvaluator*, Object* a, Environment*) {
+    Object* x = arg1(a);
+    return truth(x->get_type() == static_cast<int>(Type::DOUBLE) ||
+                 x->get_type() == static_cast<int>(Type::INT) ||
+                 x->get_type() == static_cast<int>(Type::LONG));
+}
+Object* prim_oddq(IEvaluator*, Object* a, Environment*) {
+    Object* x = arg1(a);
+    if (x->get_type() == static_cast<int>(Type::DOUBLE)) return truth(std::fmod(std::abs(((a_double*)x)->value()), 2.0) == 1.0);
+    if (x->get_type() == static_cast<int>(Type::LONG)) return truth(std::abs(((a_long*)x)->value()) % 2 != 0);
+    if (x->get_type() == static_cast<int>(Type::INT)) return truth(std::abs(((a_int*)x)->value()) % 2 != 0);
+    return nil;
+}
+Object* prim_evenq(IEvaluator*, Object* a, Environment*) {
+    Object* x = arg1(a);
+    if (x->get_type() == static_cast<int>(Type::DOUBLE)) return truth(std::fmod(std::abs(((a_double*)x)->value()), 2.0) == 0.0);
+    if (x->get_type() == static_cast<int>(Type::LONG)) return truth(std::abs(((a_long*)x)->value()) % 2 == 0);
+    if (x->get_type() == static_cast<int>(Type::INT)) return truth(std::abs(((a_int*)x)->value()) % 2 == 0);
+    return nil;
+}
+Object* prim_zeroq(IEvaluator*, Object* a, Environment*) {
+    Object* x = arg1(a);
+    if (x->get_type() == static_cast<int>(Type::DOUBLE)) return truth((abs(((a_double*)x)->value())) == 0);
+    if (x->get_type() == static_cast<int>(Type::LONG)) return truth((std::abs(((a_long*)x)->value())) == 0);
+    if (x->get_type() == static_cast<int>(Type::INT)) return truth((abs(((a_int*)x)->value())) == 0);
+    return nil;
+}
+Object* prim_positiveq(IEvaluator*, Object* a, Environment*) {
+    Object* x = arg1(a);
+    if (x->get_type() == static_cast<int>(Type::DOUBLE)) return truth(((a_double*)x)->value() > 0);
+    if (x->get_type() == static_cast<int>(Type::LONG)) return truth(((a_long*)x)->value() > 0);
+    if (x->get_type() == static_cast<int>(Type::INT)) return truth(((a_int*)x)->value() > 0);
+    return nil;
+}
+Object* prim_negativeq(IEvaluator*, Object* a, Environment*) {
+    Object* x = arg1(a);
+    if (x->get_type() == static_cast<int>(Type::DOUBLE)) return truth(((a_double*)x)->value() < 0);
+    if (x->get_type() == static_cast<int>(Type::LONG)) return truth(((a_long*)x)->value() < 0);
+    if (x->get_type() == static_cast<int>(Type::INT)) return truth(((a_int*)x)->value() < 0);
+    return nil;
+}
+Object* prim_integerq(IEvaluator*, Object* a, Environment*) { return truth(numeric::is_integer_value(arg1(a))); }
+Object* prim_exact_integerq(IEvaluator*, Object* a, Environment*) {
+    Object* x = arg1(a);
+    return truth(x != nullptr && (x->get_type() == static_cast<int>(Type::INT) ||
+                                  x->get_type() == static_cast<int>(Type::LONG)));
+}
+Object* prim_nanq(IEvaluator*, Object* a, Environment*) { Object* x = arg1(a); return truth(numeric::is_number(x) && std::isnan(num(x))); }
+Object* prim_infiniteq(IEvaluator*, Object* a, Environment*) { Object* x = arg1(a); return truth(numeric::is_number(x) && std::isinf(num(x))); }
+Object* prim_finiteq(IEvaluator*, Object* a, Environment*) { Object* x = arg1(a); return truth(numeric::is_number(x) && std::isfinite(num(x))); }
+Object* prim_exactq(IEvaluator*, Object* a, Environment*) { return truth(numeric::is_exact(arg1(a))); }
+Object* prim_inexactq(IEvaluator*, Object* a, Environment*) { return truth(numeric::is_inexact(arg1(a))); }
+Object* prim_rationalq(IEvaluator*, Object* a, Environment*) { return truth(numeric::is_rational_value(arg1(a))); }
+Object* prim_realq(IEvaluator*, Object* a, Environment*) { return truth(numeric::is_real_value(arg1(a))); }
+Object* prim_complexq(IEvaluator*, Object* a, Environment*) { return truth(numeric::is_complex_value(arg1(a))); }
 
-PrimitiveNumbers::PrimitiveNumbers(ID id, int minArgs, int maxArgs)
-    : PrimitiveBase(minArgs, maxArgs), m_id(id) {
-    // Set Primitive name based on ID
-    switch (id) {
+// ---- Comparisons ----
+Object* prim_num_eq(IEvaluator*, Object* a, Environment*) { return num_compare(a, '='); }
+Object* prim_num_lt(IEvaluator*, Object* a, Environment*) { return num_compare(a, '<'); }
+Object* prim_num_gt(IEvaluator*, Object* a, Environment*) { return num_compare(a, '>'); }
+Object* prim_num_le(IEvaluator*, Object* a, Environment*) { return num_compare(a, 'L'); }
+Object* prim_num_ge(IEvaluator*, Object* a, Environment*) { return num_compare(a, 'G'); }
+
+// ---- Arithmetic ----
+Object* prim_plus(IEvaluator*, Object* a, Environment*) { return num_compute(a, '+', ZERO); }
+Object* prim_minus(IEvaluator*, Object* a, Environment*) { return num_compute(rest(a), '-', arg1(a)); }
+Object* prim_times(IEvaluator*, Object* a, Environment*) { return num_compute(a, '*', ONE); }
+Object* prim_divide(IEvaluator*, Object* a, Environment*) { return num_compute(rest(a), '/', arg1(a)); }
+Object* prim_max(IEvaluator*, Object* a, Environment*) { return num_compute(a, 'X', arg1(a)); }
+Object* prim_min(IEvaluator*, Object* a, Environment*) { return num_compute(a, 'N', arg1(a)); }
+
+// ---- Division ----
+Object* prim_quotient(IEvaluator*, Object* a, Environment*) {
+    Object* x = arg1(a), *y = arg2(a);
+    if (!numeric::is_number(x) || !numeric::is_number(y)) return error("quotient: expected two numbers");
+    return numeric::quotient(x, y);
+}
+Object* prim_remainder(IEvaluator*, Object* a, Environment*) {
+    Object* x = arg1(a), *y = arg2(a);
+    if (!numeric::is_number(x) || !numeric::is_number(y)) return error("remainder: expected two numbers");
+    return numeric::remainder(x, y);
+}
+Object* prim_modulo(IEvaluator*, Object* a, Environment*) {
+    Object* x = arg1(a), *y = arg2(a);
+    if (!numeric::is_number(x) || !numeric::is_number(y)) return error("modulo: expected two numbers");
+    return numeric::modulo(x, y);
+}
+Object* prim_gcd(IEvaluator*, Object* a, Environment*) { return (a == NULL || a->is_nil()) ? ZERO : gcd(a); }
+Object* prim_lcm(IEvaluator*, Object* a, Environment*) { return (a == NULL || a->is_nil()) ? ONE : lcm(a); }
+
+// ---- Rounding (exactness-preserving) ----
+Object* prim_round(IEvaluator*, Object* a, Environment*) {
+    Object* x = arg1(a);
+    if (!numeric::is_number(x)) return error("round: expected a number");
+    if (numeric::is_integer_value(x)) return x;
+    // ties-to-even (nearbyint under FE_TONEAREST), not std::round's away-from-zero.
+    double r = std::nearbyint(numeric::to_double(x));
+    return numeric::is_exact(x) ? numeric::make_integer(static_cast<int64_t>(r)) : numeric::make_inexact(r);
+}
+Object* prim_floor(IEvaluator*, Object* a, Environment*) {
+    Object* x = arg1(a);
+    if (!numeric::is_number(x)) return error("floor: expected a number");
+    if (numeric::is_integer_value(x)) return x;
+    double r = std::floor(numeric::to_double(x));
+    return numeric::is_exact(x) ? numeric::make_integer((int64_t)r) : numeric::make_inexact(r);
+}
+Object* prim_ceiling(IEvaluator*, Object* a, Environment*) {
+    Object* x = arg1(a);
+    if (!numeric::is_number(x)) return error("ceiling: expected a number");
+    if (numeric::is_integer_value(x)) return x;
+    double r = std::ceil(numeric::to_double(x));
+    return numeric::is_exact(x) ? numeric::make_integer((int64_t)r) : numeric::make_inexact(r);
+}
+Object* prim_truncate(IEvaluator*, Object* a, Environment*) {
+    Object* x = arg1(a);
+    if (!numeric::is_number(x)) return error("truncate: expected a number");
+    if (numeric::is_integer_value(x)) return x;
+    double r = std::trunc(numeric::to_double(x));
+    return numeric::is_exact(x) ? numeric::make_integer((int64_t)r) : numeric::make_inexact(r);
+}
+
+// ---- Math ----
+Object* prim_abs(IEvaluator*, Object* a, Environment*) {
+    Object* x = arg1(a);
+    if (!numeric::is_number(x)) return error("abs: expected a number");
+    return numeric::abs_value(x);
+}
+Object* prim_sqrt(IEvaluator*, Object* a, Environment*) {
+    Object* x = arg1(a);
+    if (!numeric::is_number(x)) return error("sqrt: expected a number");
+    return numeric::make_inexact(std::sqrt(numeric::to_double(x)));
+}
+Object* prim_expt(IEvaluator*, Object* a, Environment*) {
+    Object* x = arg1(a), *y = arg2(a);
+    if (!numeric::is_number(x) || !numeric::is_number(y)) return error("expt: expected two numbers");
+    // Exact base + exact integer exponent -> exact result (R7RS).
+    if (numeric::is_exact(x) && numeric::is_exact(y) && numeric::is_integer_value(y)) {
+        int64_t e = numeric::to_int64(y);
+        int64_t n = e < 0 ? -e : e;
+        Object* acc = numeric::make_integer(1);
+        gc_root<Object> aguard(acc);
+        for (int64_t i = 0; i < n; ++i) { acc = numeric::mul(acc, x); aguard = gc_root<Object>(acc); }
+        if (e < 0) return numeric::div(numeric::make_integer(1), acc);  // exact 1/x^|e|
+        return acc;
+    }
+    return numeric::make_inexact(std::pow(numeric::to_double(x), numeric::to_double(y)));
+}
+
+// ---- Transcendental (all inexact) ----
+#define UNARY_MATH(fn, who, cfn) \
+    Object* fn(IEvaluator*, Object* a, Environment*) { \
+        Object* x = arg1(a); \
+        if (!numeric::is_number(x)) return error(who ": expected a number"); \
+        return numeric::make_inexact(cfn(numeric::to_double(x))); \
+    }
+UNARY_MATH(prim_exp,  "exp",  std::exp)
+UNARY_MATH(prim_log,  "log",  std::log)
+UNARY_MATH(prim_sin,  "sin",  std::sin)
+UNARY_MATH(prim_cos,  "cos",  std::cos)
+UNARY_MATH(prim_tan,  "tan",  std::tan)
+UNARY_MATH(prim_asin, "asin", std::asin)
+UNARY_MATH(prim_acos, "acos", std::acos)
+UNARY_MATH(prim_atan, "atan", std::atan)
+#undef UNARY_MATH
+
+// ---- Tower conversions ----
+Object* prim_exact_to_inexact(IEvaluator*, Object* a, Environment*) {
+    Object* x = arg1(a);
+    if (!numeric::is_number(x)) return error("exact->inexact: expected a number");
+    return numeric::to_inexact(x);
+}
+Object* prim_inexact_to_exact(IEvaluator*, Object* a, Environment*) {
+    Object* x = arg1(a);
+    if (!numeric::is_number(x)) return error("inexact->exact: expected a number");
+    try { return numeric::to_exact(x); }
+    catch (const std::exception& e) { return error(std::string("inexact->exact: ") + e.what()); }
+}
+
+// ---- Rational ----
+Object* prim_numerator(IEvaluator*, Object* a, Environment*) {
+    Object* x = arg1(a);
+    if (!numeric::is_rational_value(x)) return error("numerator: expected a rational number");
+    if (x->get_type() == static_cast<int>(Type::RATIONAL)) return numeric::make_integer(static_cast<a_rational*>(x)->numerator());
+    return x;
+}
+Object* prim_denominator(IEvaluator*, Object* a, Environment*) {
+    Object* x = arg1(a);
+    if (!numeric::is_rational_value(x)) return error("denominator: expected a rational number");
+    if (x->get_type() == static_cast<int>(Type::RATIONAL)) return numeric::make_integer(static_cast<a_rational*>(x)->denominator());
+    return ONE;
+}
+Object* prim_rationalize(IEvaluator*, Object* a, Environment*) {
+    Object* x = arg1(a), *y = arg2(a);
+    if (!numeric::is_number(x) || !numeric::is_number(y)) return error("rationalize: expected two numbers");
+    double val = numeric::to_double(x);
+    double eps = numeric::to_double(y);
+    if (eps < 0) eps = -eps;
+    if (eps == 0) return x;
+    double lower = val - eps, upper = val + eps;
+    int64_t p0 = 0, q0 = 1, p1 = 1, q1 = 0;  // Stern-Brocot mediant search
+    while (true) {
+        int64_t p = p0 + p1, q = q0 + q1;
+        if (q > 1000000) break;
+        double mediant = (double)p / (double)q;
+        if (mediant < lower) { p0 = p; q0 = q; }
+        else if (mediant > upper) { p1 = p; q1 = q; }
+        else return numeric::make_inexact(mediant);
+    }
+    return x;
+}
+
+// ---- Complex ----
+Object* prim_real_part(IEvaluator*, Object* a, Environment*) {
+    Object* x = arg1(a);
+    if (!numeric::is_number(x)) return error("real-part: expected a number");
+    return numeric::real_part(x);
+}
+Object* prim_imag_part(IEvaluator*, Object* a, Environment*) {
+    Object* x = arg1(a);
+    if (!numeric::is_number(x)) return error("imag-part: expected a number");
+    return numeric::imag_part(x);
+}
+Object* prim_make_rectangular(IEvaluator*, Object* a, Environment*) {
+    Object* x = arg1(a), *y = arg2(a);
+    if (!numeric::is_number(x)) return error("make-rectangular: expected a number for real part");
+    if (!numeric::is_number(y)) return error("make-rectangular: expected a number for imaginary part");
+    if (numeric::equal(y, ZERO)) return x;
+    return gc_new<a_complex>(x, y);
+}
+Object* prim_make_polar(IEvaluator*, Object* a, Environment*) {
+    Object* x = arg1(a), *y = arg2(a);
+    if (!numeric::is_number(x)) return error("make-polar: expected a number for magnitude");
+    if (!numeric::is_number(y)) return error("make-polar: expected a number for angle");
+    double mag = numeric::to_double(x), angle = numeric::to_double(y);
+    Object* real_part = gc_new<a_double>(mag * std::cos(angle));
+    Object* imag_part = gc_new<a_double>(mag * std::sin(angle));
+    if (std::abs(mag * std::sin(angle)) < 1e-10) return real_part;
+    return gc_new<a_complex>(real_part, imag_part);
+}
+Object* prim_magnitude(IEvaluator*, Object* a, Environment*) {
+    Object* x = arg1(a);
+    if (!numeric::is_number(x)) return error("magnitude: expected a number");
+    if (is_complex(x)) {
+        a_complex* c = as_complex(x);
+        double real = numeric::to_double(c->real_part()), imag = numeric::to_double(c->imag_part());
+        return gc_new<a_double>(std::sqrt(real * real + imag * imag));
+    }
+    return numeric::abs_value(x);
+}
+Object* prim_angle(IEvaluator*, Object* a, Environment*) {
+    Object* x = arg1(a);
+    if (!numeric::is_number(x)) return error("angle: expected a number");
+    if (is_complex(x)) {
+        a_complex* c = as_complex(x);
+        return gc_new<a_double>(std::atan2(numeric::to_double(c->imag_part()), numeric::to_double(c->real_part())));
+    }
+    double val = numeric::to_double(x);
+    return gc_new<a_double>(val >= 0 ? 0.0 : 3.14159265358979323846);
+}
+
+// ---- String conversions ----
+Object* prim_number_to_string(IEvaluator*, Object* a, Environment*) { return numberToString(arg1(a), arg2(a)); }
+Object* prim_string_to_number(IEvaluator*, Object* a, Environment*) { return stringToNumber(arg1(a), arg2(a)); }
+
+// ---- R7RS additions ----
+Object* prim_exact(IEvaluator*, Object* a, Environment*) {
+    Object* x = arg1(a);
+    if (!numeric::is_number(x)) return error("exact: expected a number");
+    try { return numeric::to_exact(x); }
+    catch (const std::exception& e) { return error(std::string("exact: ") + e.what()); }
+}
+Object* prim_inexact(IEvaluator*, Object* a, Environment*) {
+    Object* x = arg1(a);
+    if (!numeric::is_number(x)) return error("inexact: expected a number");
+    return numeric::to_inexact(x);
+}
+Object* prim_square(IEvaluator*, Object* a, Environment*) {
+    Object* x = arg1(a);
+    if (!x || x->is_nil()) return error("square: requires one argument");
+    if (!numeric::is_number(x)) return error("square: expected a number");
+    return num_compute(cons(x, cons(x, nil)), '*', ONE);
+}
+Object* prim_exact_integer_sqrt(IEvaluator*, Object* a, Environment*) {
+    Object* x = arg1(a);
+    if (!x || x->is_nil()) return error("exact-integer-sqrt: requires one argument");
+    if (!numeric::is_integer_value(x)) return error("exact-integer-sqrt: argument must be an exact non-negative integer");
+    double val = num(x);
+    if (val < 0) return error("exact-integer-sqrt: argument must be non-negative");
+    int s = (int)std::floor(std::sqrt(val));
+    int r = (int)val - (s * s);
+    // R7RS: returns TWO values (s and r).
+    return gc_new<ValuesObject>(cons(numeric::make_integer(s), cons(numeric::make_integer(r), nil)));
+}
+// Shared body for floor/ and truncate/ (both return two values: quotient, remainder).
+Object* div_two_values(Object* a, const char* who, double (*qfn)(double)) {
+    Object* x = arg1(a), *y = arg2(a);
+    if (!x || x->is_nil() || !y || y->is_nil()) return error(std::string(who) + ": requires two arguments");
+    double dividend = num(x), divisor = num(y);
+    if (divisor == 0.0) return error(std::string(who) + ": division by zero");
+    bool exact = numeric::is_integer_value(x) && numeric::is_integer_value(y);
+    double q = qfn(dividend / divisor);
+    double r = dividend - divisor * q;
+    Object* qo = exact ? numeric::make_integer((long long)q) : numeric::make_inexact(q);
+    Object* ro = exact ? numeric::make_integer((long long)r) : numeric::make_inexact(r);
+    return gc_new<ValuesObject>(cons(qo, cons(ro, nil)));
+}
+Object* prim_floor_div(IEvaluator*, Object* a, Environment*) { return div_two_values(a, "floor/", std::floor); }
+Object* prim_truncate_div(IEvaluator*, Object* a, Environment*) { return div_two_values(a, "truncate/", std::trunc); }
+
+// Shared body for floor-quotient/remainder and truncate-quotient/remainder.
+Object* div_single(Object* a, const char* who, double (*qfn)(double), bool want_remainder) {
+    Object* x = arg1(a), *y = arg2(a);
+    if (!x || x->is_nil() || !y || y->is_nil()) return error(std::string(who) + ": requires two arguments");
+    double dividend = num(x), divisor = num(y);
+    if (divisor == 0.0) return error(std::string(who) + ": division by zero");
+    double q = qfn(dividend / divisor);
+    double result = want_remainder ? (dividend - divisor * q) : q;
+    if (numeric::is_integer_value(x) && numeric::is_integer_value(y)) return numeric::make_integer((int)result);
+    return numeric::make_inexact(result);
+}
+Object* prim_floor_quotient(IEvaluator*, Object* a, Environment*) { return div_single(a, "floor-quotient", std::floor, false); }
+Object* prim_floor_remainder(IEvaluator*, Object* a, Environment*) { return div_single(a, "floor-remainder", std::floor, true); }
+Object* prim_truncate_quotient(IEvaluator*, Object* a, Environment*) { return div_single(a, "truncate-quotient", std::trunc, false); }
+Object* prim_truncate_remainder(IEvaluator*, Object* a, Environment*) { return div_single(a, "truncate-remainder", std::trunc, true); }
+
+}  // namespace
+
+void PrimitiveNumbers::install(zombie::runtime::Environment* env) {
+    using namespace zombie::runtime;
+    static const NativeEntry entries[] = {
         // Predicates
-        case NUMBERQ:    m_name = "number?"; break;
-        case ODDQ:       m_name = "odd?"; break;
-        case EVENQ:      m_name = "even?"; break;
-        case ZEROQ:      m_name = "zero?"; break;
-        case POSITIVEQ:  m_name = "positive?"; break;
-        case NEGATIVEQ:  m_name = "negative?"; break;
-        case INTEGERQ:   m_name = "integer?"; break;
-        case EXACTINTEGERQ: m_name = "exact-integer?"; break;
-        case NANQ:       m_name = "nan?"; break;
-        case INFINITEQ:  m_name = "infinite?"; break;
-        case FINITEQ:    m_name = "finite?"; break;
-        case EXACTQ:     m_name = "exact?"; break;
-        case INEXACTQ:   m_name = "inexact?"; break;
-        case RATIONALQ:  m_name = "rational?"; break;
-        case REALQ:      m_name = "real?"; break;
-        case COMPLEXQ:   m_name = "complex?"; break;
-
+        { "number?",   1, 1, prim_numberq },
+        { "odd?",      1, 1, prim_oddq },
+        { "even?",     1, 1, prim_evenq },
+        { "zero?",     1, 1, prim_zeroq },
+        { "positive?", 1, 1, prim_positiveq },
+        { "negative?", 1, 1, prim_negativeq },
+        { "integer?",  1, 1, prim_integerq },
+        { "exact-integer?", 1, 1, prim_exact_integerq },
+        { "nan?",      1, 1, prim_nanq },
+        { "infinite?", 1, 1, prim_infiniteq },
+        { "finite?",   1, 1, prim_finiteq },
+        { "exact?",    1, 1, prim_exactq },
+        { "inexact?",  1, 1, prim_inexactq },
+        { "rational?", 1, 1, prim_rationalq },
+        { "real?",     1, 1, prim_realq },
+        { "complex?",  1, 1, prim_complexq },
         // Comparisons
-        case EQ:         m_name = "="; break;
-        case LT:         m_name = "<"; break;
-        case GT:         m_name = ">"; break;
-        case LE:         m_name = "<="; break;
-        case GE:         m_name = ">="; break;
-
+        { "=",  2, 999999, prim_num_eq },
+        { "<",  2, 999999, prim_num_lt },
+        { ">",  2, 999999, prim_num_gt },
+        { "<=", 2, 999999, prim_num_le },
+        { ">=", 2, 999999, prim_num_ge },
         // Arithmetic
-        case PLUS:       m_name = "+"; break;
-        case MINUS:      m_name = "-"; break;
-        case TIMES:      m_name = "*"; break;
-        case DIVIDE:     m_name = "/"; break;
-        case MAX:        m_name = "max"; break;
-        case MIN:        m_name = "min"; break;
-
+        { "+",   0, 999999, prim_plus },
+        { "-",   1, 999999, prim_minus },
+        { "*",   0, 999999, prim_times },
+        { "/",   1, 999999, prim_divide },
+        { "max", 1, 999999, prim_max },
+        { "min", 1, 999999, prim_min },
         // Division
-        case QUOTIENT:   m_name = "quotient"; break;
-        case REMAINDER:  m_name = "remainder"; break;
-        case MODULO:     m_name = "modulo"; break;
-        case GCD:        m_name = "gcd"; break;
-        case LCM:        m_name = "lcm"; break;
-
+        { "quotient",  2, 2, prim_quotient },
+        { "remainder", 2, 2, prim_remainder },
+        { "modulo",    2, 2, prim_modulo },
+        { "gcd",       0, 999999, prim_gcd },
+        { "lcm",       0, 999999, prim_lcm },
         // Rounding
-        case ROUND:      m_name = "round"; break;
-        case FLOOR:      m_name = "floor"; break;
-        case CEILING:    m_name = "ceiling"; break;
-        case TRUNCATE:   m_name = "truncate"; break;
-
+        { "round",    1, 1, prim_round },
+        { "floor",    1, 1, prim_floor },
+        { "ceiling",  1, 1, prim_ceiling },
+        { "truncate", 1, 1, prim_truncate },
         // Math
-        case ABS:        m_name = "abs"; break;
-        case SQRT:       m_name = "sqrt"; break;
-        case EXPT:       m_name = "expt"; break;
-
+        { "abs",  1, 1, prim_abs },
+        { "sqrt", 1, 1, prim_sqrt },
+        { "expt", 2, 2, prim_expt },
         // Transcendental
-        case EXP:        m_name = "exp"; break;
-        case LOG:        m_name = "log"; break;
-        case SIN:        m_name = "sin"; break;
-        case COS:        m_name = "cos"; break;
-        case TAN:        m_name = "tan"; break;
-        case ASIN:       m_name = "asin"; break;
-        case ACOS:       m_name = "acos"; break;
-        case ATAN:       m_name = "atan"; break;
-
+        { "exp",  1, 1, prim_exp },
+        { "log",  1, 1, prim_log },
+        { "sin",  1, 1, prim_sin },
+        { "cos",  1, 1, prim_cos },
+        { "tan",  1, 1, prim_tan },
+        { "asin", 1, 1, prim_asin },
+        { "acos", 1, 1, prim_acos },
+        { "atan", 1, 1, prim_atan },
         // Conversions
-        case EXACTTOINEXACT: m_name = "exact->inexact"; break;
-        case INEXACTTOEXACT: m_name = "inexact->exact"; break;
-
+        { "exact->inexact", 1, 1, prim_exact_to_inexact },
+        { "inexact->exact", 1, 1, prim_inexact_to_exact },
         // Rational
-        case NUMERATOR:   m_name = "numerator"; break;
-        case DENOMINATOR: m_name = "denominator"; break;
-        case RATIONALIZE: m_name = "rationalize"; break;
-
+        { "numerator",   1, 1, prim_numerator },
+        { "denominator", 1, 1, prim_denominator },
+        { "rationalize", 2, 2, prim_rationalize },
         // Complex
-        case REALPART:        m_name = "real-part"; break;
-        case IMAGPART:        m_name = "imag-part"; break;
-        case MAKERECTANGULAR: m_name = "make-rectangular"; break;
-        case MAKEPOLAR:       m_name = "make-polar"; break;
-        case MAGNITUDE:       m_name = "magnitude"; break;
-        case ANGLE:           m_name = "angle"; break;
-
+        { "real-part",        1, 1, prim_real_part },
+        { "imag-part",        1, 1, prim_imag_part },
+        { "make-rectangular", 2, 2, prim_make_rectangular },
+        { "make-polar",       2, 2, prim_make_polar },
+        { "magnitude",        1, 1, prim_magnitude },
+        { "angle",            1, 1, prim_angle },
         // String conversions
-        case NUMBERTOSTRING: m_name = "number->string"; break;
-        case STRINGTONUMBER: m_name = "string->number"; break;
-
+        { "number->string", 1, 2, prim_number_to_string },
+        { "string->number", 1, 2, prim_string_to_number },
         // R7RS additions
-        case EXACT:          m_name = "exact"; break;
-        case INEXACT:        m_name = "inexact"; break;
-        case SQUARE:         m_name = "square"; break;
-        case EXACTINTEGERSQRT: m_name = "exact-integer-sqrt"; break;
-        case FLOORDIV:       m_name = "floor/"; break;
-        case TRUNCATEDIV:    m_name = "truncate/"; break;
-        case FLOORQUOTIENT:  m_name = "floor-quotient"; break;
-        case FLOORREMAINDER: m_name = "floor-remainder"; break;
-        case TRUNCATEQUOTIENT: m_name = "truncate-quotient"; break;
-        case TRUNCATEREMAINDER: m_name = "truncate-remainder"; break;
-    }
-}
-
-// ============================================================================
-// Primitive Application
-// ============================================================================
-
-Object* PrimitiveNumbers::apply(IEvaluator* eval, Object* args, Environment* env) {
-    // Arity checking
-    if (!check_arity(args)) {
-        return arity_error("");
-    }
-
-    // Extract common arguments
-    Object* x = (args && !args->is_nil()) ? first(args) : nil;
-    Object* y = (args && !args->is_nil() && rest(args) && !rest(args)->is_nil()) ? second(args) : nil;
-
-    // Dispatch based on Primitive ID
-    switch (m_id) {
-        // ====================================================================
-        // Predicates
-        // ====================================================================
-
-        case NUMBERQ:
-            return truth(x->get_type() == static_cast<int>(Type::DOUBLE) ||
-                        x->get_type() == static_cast<int>(Type::INT) ||
-                        x->get_type() == static_cast<int>(Type::LONG));
-
-        case ODDQ: {
-            if (x->get_type() == static_cast<int>(Type::DOUBLE)) {
-                double val = ((atom<double>*)x)->value();
-                return truth(std::fmod(std::abs(val), 2.0) == 1.0);
-            }
-            if (x->get_type() == static_cast<int>(Type::LONG))
-                return truth(std::abs(((atom<long long>*)x)->value()) % 2 != 0);
-            if (x->get_type() == static_cast<int>(Type::INT))
-                return truth(std::abs(((atom<int>*)x)->value()) % 2 != 0);
-            return nil;
-        }
-
-        case EVENQ: {
-            if (x->get_type() == static_cast<int>(Type::DOUBLE)) {
-                double val = ((atom<double>*)x)->value();
-                return truth(std::fmod(std::abs(val), 2.0) == 0.0);
-            }
-            if (x->get_type() == static_cast<int>(Type::LONG))
-                return truth(std::abs(((atom<long long>*)x)->value()) % 2 == 0);
-            if (x->get_type() == static_cast<int>(Type::INT))
-                return truth(std::abs(((atom<int>*)x)->value()) % 2 == 0);
-            return nil;
-        }
-
-        case ZEROQ: {
-            if (x->get_type() == static_cast<int>(Type::DOUBLE))
-                return truth((abs(((atom<double>*)x)->value())) == 0);
-            if (x->get_type() == static_cast<int>(Type::LONG))
-                return truth((std::abs(((atom<long long>*)x)->value())) == 0);
-            if (x->get_type() == static_cast<int>(Type::INT))
-                return truth((abs(((atom<int>*)x)->value())) == 0);
-            return nil;
-        }
-
-        case POSITIVEQ: {
-            if (x->get_type() == static_cast<int>(Type::DOUBLE))
-                return truth(((atom<double>*)x)->value() > 0);
-            if (x->get_type() == static_cast<int>(Type::LONG))
-                return truth(((atom<long long>*)x)->value() > 0);
-            if (x->get_type() == static_cast<int>(Type::INT))
-                return truth(((atom<int>*)x)->value() > 0);
-            return nil;
-        }
-
-        case NEGATIVEQ: {
-            if (x->get_type() == static_cast<int>(Type::DOUBLE))
-                return truth(((atom<double>*)x)->value() < 0);
-            if (x->get_type() == static_cast<int>(Type::LONG))
-                return truth(((atom<long long>*)x)->value() < 0);
-            if (x->get_type() == static_cast<int>(Type::INT))
-                return truth(((atom<int>*)x)->value() < 0);
-            return nil;
-        }
-
-        case INTEGERQ:   return truth(numeric::is_integer_value(x));
-
-        case EXACTINTEGERQ:
-            // Exact integer: an exact (INT/LONG) value.
-            return truth(x != nullptr &&
-                         (x->get_type() == static_cast<int>(Type::INT) ||
-                          x->get_type() == static_cast<int>(Type::LONG)));
-
-        case NANQ:
-            return truth(numeric::is_number(x) && std::isnan(num(x)));
-
-        case INFINITEQ:
-            return truth(numeric::is_number(x) && std::isinf(num(x)));
-
-        case FINITEQ:
-            return truth(numeric::is_number(x) && std::isfinite(num(x)));
-        case EXACTQ:     return truth(numeric::is_exact(x));
-        case INEXACTQ:   return truth(numeric::is_inexact(x));
-        case RATIONALQ:  return truth(numeric::is_rational_value(x));
-        case REALQ:      return truth(numeric::is_real_value(x));
-        case COMPLEXQ:   return truth(numeric::is_complex_value(x));
-
-        // ====================================================================
-        // Comparisons
-        // ====================================================================
-
-        case EQ:  return num_compare(args, '=');
-        case LT:  return num_compare(args, '<');
-        case GT:  return num_compare(args, '>');
-        case LE:  return num_compare(args, 'L');
-        case GE:  return num_compare(args, 'G');
-
-        // ====================================================================
-        // Arithmetic
-        // ====================================================================
-
-        case PLUS:   return num_compute(args, '+', ZERO);
-        case MINUS:  return num_compute(rest(args), '-', x);
-        case TIMES:  return num_compute(args, '*', ONE);
-        case DIVIDE: return num_compute(rest(args), '/', x);
-        case MAX:    return num_compute(args, 'X', x);
-        case MIN:    return num_compute(args, 'N', x);
-
-        // ====================================================================
-        // Division Operations
-        // ====================================================================
-
-        case QUOTIENT: {
-            if (!numeric::is_number(x) || !numeric::is_number(y)) {
-                return error("quotient: expected two numbers");
-            }
-            return numeric::quotient(x, y);
-        }
-
-        case REMAINDER: {
-            if (!numeric::is_number(x) || !numeric::is_number(y)) {
-                return error("remainder: expected two numbers");
-            }
-            return numeric::remainder(x, y);
-        }
-
-        case MODULO: {
-            if (!numeric::is_number(x) || !numeric::is_number(y)) {
-                return error("modulo: expected two numbers");
-            }
-            return numeric::modulo(x, y);
-        }
-
-        case GCD:
-            return (args == NULL || args->is_nil()) ? ZERO : gcd(args);
-
-        case LCM:
-            return (args == NULL || args->is_nil()) ? ONE : lcm(args);
-
-        // ====================================================================
-        // Rounding Functions
-        // ====================================================================
-
-        case ROUND: {
-            if (!numeric::is_number(x)) {
-                return error("round: expected a number");
-            }
-            // Integral values round to themselves (exactness preserved).
-            if (numeric::is_integer_value(x)) {
-                return x;
-            }
-            // R7RS: round to the nearest integer, ties to even. std::round rounds
-            // halves away from zero, so use nearbyint (FE_TONEAREST = round-even).
-            double r = std::nearbyint(numeric::to_double(x));
-            // Exactness is preserved: exact (rational) -> exact integer.
-            if (numeric::is_exact(x)) {
-                return numeric::make_integer(static_cast<int64_t>(r));
-            }
-            return numeric::make_inexact(r);
-        }
-
-        case FLOOR: {
-            if (!numeric::is_number(x)) {
-                return error("floor: expected a number");
-            }
-            // Exactness is preserved (R7RS): exact input -> exact integer.
-            if (numeric::is_integer_value(x)) return x;
-            double r = std::floor(numeric::to_double(x));
-            return numeric::is_exact(x) ? numeric::make_integer((int64_t)r)
-                                        : numeric::make_inexact(r);
-        }
-
-        case CEILING: {
-            if (!numeric::is_number(x)) {
-                return error("ceiling: expected a number");
-            }
-            if (numeric::is_integer_value(x)) return x;
-            double r = std::ceil(numeric::to_double(x));
-            return numeric::is_exact(x) ? numeric::make_integer((int64_t)r)
-                                        : numeric::make_inexact(r);
-        }
-
-        case TRUNCATE: {
-            if (!numeric::is_number(x)) {
-                return error("truncate: expected a number");
-            }
-            if (numeric::is_integer_value(x)) return x;
-            double r = std::trunc(numeric::to_double(x));
-            return numeric::is_exact(x) ? numeric::make_integer((int64_t)r)
-                                        : numeric::make_inexact(r);
-        }
-
-        // ====================================================================
-        // Math Functions
-        // ====================================================================
-
-        case ABS: {
-            if (!numeric::is_number(x)) {
-                return error("abs: expected a number");
-            }
-            return numeric::abs_value(x);
-        }
-
-        case SQRT: {
-            if (!numeric::is_number(x)) {
-                return error("sqrt: expected a number");
-            }
-            return numeric::make_inexact(std::sqrt(numeric::to_double(x)));
-        }
-
-        case EXPT: {
-            if (!numeric::is_number(x) || !numeric::is_number(y)) {
-                return error("expt: expected two numbers");
-            }
-            // R7RS: if the base is exact and the exponent is an exact integer,
-            // the result is exact (integer for e>=0, rational for e<0).
-            if (numeric::is_exact(x) && numeric::is_exact(y) &&
-                numeric::is_integer_value(y)) {
-                int64_t e = numeric::to_int64(y);
-                int64_t n = e < 0 ? -e : e;
-                Object* acc = numeric::make_integer(1);
-                gc_root<Object> aguard(acc);
-                for (int64_t i = 0; i < n; ++i) {
-                    acc = numeric::mul(acc, x);
-                    aguard = gc_root<Object>(acc);
-                }
-                if (e < 0) {
-                    return numeric::div(numeric::make_integer(1), acc);  // exact 1/x^|e|
-                }
-                return acc;
-            }
-            return numeric::make_inexact(std::pow(numeric::to_double(x), numeric::to_double(y)));
-        }
-
-        // ====================================================================
-        // Transcendental Functions
-        // ====================================================================
-
-        case EXP: {
-            if (!numeric::is_number(x)) {
-                return error("exp: expected a number");
-            }
-            return numeric::make_inexact(std::exp(numeric::to_double(x)));
-        }
-
-        case LOG: {
-            if (!numeric::is_number(x)) {
-                return error("log: expected a number");
-            }
-            return numeric::make_inexact(std::log(numeric::to_double(x)));
-        }
-
-        case SIN: {
-            if (!numeric::is_number(x)) {
-                return error("sin: expected a number");
-            }
-            return numeric::make_inexact(std::sin(numeric::to_double(x)));
-        }
-
-        case COS: {
-            if (!numeric::is_number(x)) {
-                return error("cos: expected a number");
-            }
-            return numeric::make_inexact(std::cos(numeric::to_double(x)));
-        }
-
-        case TAN: {
-            if (!numeric::is_number(x)) {
-                return error("tan: expected a number");
-            }
-            return numeric::make_inexact(std::tan(numeric::to_double(x)));
-        }
-
-        case ASIN: {
-            if (!numeric::is_number(x)) {
-                return error("asin: expected a number");
-            }
-            return numeric::make_inexact(std::asin(numeric::to_double(x)));
-        }
-
-        case ACOS: {
-            if (!numeric::is_number(x)) {
-                return error("acos: expected a number");
-            }
-            return numeric::make_inexact(std::acos(numeric::to_double(x)));
-        }
-
-        case ATAN: {
-            if (!numeric::is_number(x)) {
-                return error("atan: expected a number");
-            }
-            return numeric::make_inexact(std::atan(numeric::to_double(x)));
-        }
-
-        // ====================================================================
-        // Numeric Tower Conversions
-        // ====================================================================
-
-        case EXACTTOINEXACT: {
-            if (!numeric::is_number(x)) {
-                return error("exact->inexact: expected a number");
-            }
-            return numeric::to_inexact(x);
-        }
-
-        case INEXACTTOEXACT: {
-            if (!numeric::is_number(x)) {
-                return error("inexact->exact: expected a number");
-            }
-            try {
-                return numeric::to_exact(x);
-            } catch (const std::exception& e) {
-                return error(std::string("inexact->exact: ") + e.what());
-            }
-        }
-
-        // ====================================================================
-        // Rational Operations
-        // ====================================================================
-
-        case NUMERATOR: {
-            if (!numeric::is_rational_value(x)) {
-                return error("numerator: expected a rational number");
-            }
-            if (x->get_type() == static_cast<int>(Type::RATIONAL)) {
-                a_rational* r = static_cast<a_rational*>(x);
-                return numeric::make_integer(r->numerator());
-            }
-            // For integers, return the integer itself (denominator is 1)
-            return x;
-        }
-
-        case DENOMINATOR: {
-            if (!numeric::is_rational_value(x)) {
-                return error("denominator: expected a rational number");
-            }
-            if (x->get_type() == static_cast<int>(Type::RATIONAL)) {
-                a_rational* r = static_cast<a_rational*>(x);
-                return numeric::make_integer(r->denominator());
-            }
-            // For integers, denominator is 1
-            return ONE;
-        }
-
-        case RATIONALIZE: {
-            if (!numeric::is_number(x) || !numeric::is_number(y)) {
-                return error("rationalize: expected two numbers");
-            }
-
-            double val = numeric::to_double(x);
-            double eps = numeric::to_double(y);
-
-            // Handle special cases
-            if (eps < 0) eps = -eps;
-            if (eps == 0) return x;  // No tolerance, return as-is
-
-            // Simple algorithm: find simplest fraction in range [val-eps, val+eps]
-            double lower = val - eps;
-            double upper = val + eps;
-
-            // Start with bounds as fractions
-            int64_t p0 = 0, q0 = 1;  // lower bound: 0/1
-            int64_t p1 = 1, q1 = 0;  // upper bound: 1/0 (infinity)
-
-            while (true) {
-                // Mediant of p0/q0 and p1/q1
-                int64_t p = p0 + p1;
-                int64_t q = q0 + q1;
-
-                if (q > 1000000) break;  // Prevent overflow
-
-                double mediant = (double)p / (double)q;
-
-                if (mediant < lower) {
-                    p0 = p;
-                    q0 = q;
-                } else if (mediant > upper) {
-                    p1 = p;
-                    q1 = q;
-                } else {
-                    // Mediant is in range
-                    return numeric::make_inexact(mediant);
-                }
-            }
-
-            // Fallback
-            return x;
-        }
-
-        // ====================================================================
-        // Complex Operations
-        // ====================================================================
-
-        case REALPART: {
-            if (!numeric::is_number(x)) {
-                return error("real-part: expected a number");
-            }
-            return numeric::real_part(x);
-        }
-
-        case IMAGPART: {
-            if (!numeric::is_number(x)) {
-                return error("imag-part: expected a number");
-            }
-            return numeric::imag_part(x);
-        }
-
-        case MAKERECTANGULAR: {
-            if (!numeric::is_number(x)) {
-                return error("make-rectangular: expected a number for real part");
-            }
-            if (!numeric::is_number(y)) {
-                return error("make-rectangular: expected a number for imaginary part");
-            }
-            // If imaginary part is zero, just return the real part
-            if (numeric::equal(y, ZERO)) {
-                return x;
-            }
-            return gc_new<a_complex>(x, y);
-        }
-
-        case MAKEPOLAR: {
-            if (!numeric::is_number(x)) {
-                return error("make-polar: expected a number for magnitude");
-            }
-            if (!numeric::is_number(y)) {
-                return error("make-polar: expected a number for angle");
-            }
-            // Convert polar to rectangular
-            double mag = numeric::to_double(x);
-            double angle = numeric::to_double(y);
-            double real = mag * std::cos(angle);
-            double imag = mag * std::sin(angle);
-
-            Object* real_part = gc_new<atom<double>>(real);
-            Object* imag_part = gc_new<atom<double>>(imag);
-
-            if (std::abs(imag) < 1e-10) {
-                return real_part;
-            }
-            return gc_new<a_complex>(real_part, imag_part);
-        }
-
-        case MAGNITUDE: {
-            if (!numeric::is_number(x)) {
-                return error("magnitude: expected a number");
-            }
-
-            if (is_complex(x)) {
-                a_complex* c = as_complex(x);
-                double real = numeric::to_double(c->real_part());
-                double imag = numeric::to_double(c->imag_part());
-                double mag = std::sqrt(real * real + imag * imag);
-                return gc_new<atom<double>>(mag);
-            }
-
-            // For real numbers, magnitude is absolute value
-            return numeric::abs_value(x);
-        }
-
-        case ANGLE: {
-            if (!numeric::is_number(x)) {
-                return error("angle: expected a number");
-            }
-
-            if (is_complex(x)) {
-                a_complex* c = as_complex(x);
-                double real = numeric::to_double(c->real_part());
-                double imag = numeric::to_double(c->imag_part());
-                double angle = std::atan2(imag, real);
-                return gc_new<atom<double>>(angle);
-            }
-
-            // For positive real numbers, angle is 0; for negative, angle is pi
-            double val = numeric::to_double(x);
-            if (val >= 0) {
-                return gc_new<atom<double>>(0.0);
-            } else {
-                return gc_new<atom<double>>(3.14159265358979323846);  // pi
-            }
-        }
-
-        // ====================================================================
-        // String Conversions
-        // ====================================================================
-
-        case NUMBERTOSTRING:
-            return numberToString(x, y);
-
-        case STRINGTONUMBER:
-            return stringToNumber(x, y);
-
-        // ====================================================================
-        // R7RS Additions
-        // ====================================================================
-
-        case EXACT:
-            // (exact z) - convert to exact (alias for inexact->exact)
-            if (!numeric::is_number(x)) {
-                return error("exact: expected a number");
-            }
-            try {
-                return numeric::to_exact(x);
-            } catch (const std::exception& e) {
-                return error(std::string("exact: ") + e.what());
-            }
-
-        case INEXACT:
-            // (inexact z) - convert to inexact (alias for exact->inexact)
-            if (!numeric::is_number(x)) {
-                return error("inexact: expected a number");
-            }
-            return numeric::to_inexact(x);
-
-        case SQUARE: {
-            // (square z) - square the number
-            if (!x || x->is_nil()) {
-                return error("square: requires one argument");
-            }
-            if (!numeric::is_number(x)) {
-                return error("square: expected a number");
-            }
-            // Create a list (x x) and use multiplication
-            Object* args_list = cons(x, cons(x, nil));
-            return num_compute(args_list, '*', ONE);
-        }
-
-        case EXACTINTEGERSQRT: {
-            // (exact-integer-sqrt k) - returns two values: s and r where k = s^2 + r
-            if (!x || x->is_nil()) {
-                return error("exact-integer-sqrt: requires one argument");
-            }
-            if (!numeric::is_integer_value(x)) {
-                return error("exact-integer-sqrt: argument must be an exact non-negative integer");
-            }
-
-            double val = num(x);
-            if (val < 0) {
-                return error("exact-integer-sqrt: argument must be non-negative");
-            }
-
-            // Compute integer square root
-            int s = (int)std::floor(std::sqrt(val));
-            int r = (int)val - (s * s);
-
-            // R7RS: returns TWO values (s and r), not a list.
-            return gc_new<ValuesObject>(
-                cons(numeric::make_integer(s), cons(numeric::make_integer(r), nil)));
-        }
-
-        case FLOORDIV: {
-            // (floor/ n d) - returns quotient of floor division
-            if (!x || x->is_nil()) {
-                return error("floor/: requires two arguments");
-            }
-            if (!y || y->is_nil()) {
-                return error("floor/: requires two arguments");
-            }
-
-            double dividend = num(x);
-            double divisor = num(y);
-
-            if (divisor == 0.0) {
-                return error("floor/: division by zero");
-            }
-
-            // R7RS: floor/ returns TWO values (quotient and remainder).
-            bool exact = numeric::is_integer_value(x) && numeric::is_integer_value(y);
-            double q = std::floor(dividend / divisor);
-            double r = dividend - divisor * q;
-            Object* qo = exact ? numeric::make_integer((long long)q) : numeric::make_inexact(q);
-            Object* ro = exact ? numeric::make_integer((long long)r) : numeric::make_inexact(r);
-            return gc_new<ValuesObject>(cons(qo, cons(ro, nil)));
-        }
-
-        case TRUNCATEDIV: {
-            // (truncate/ n d) - returns quotient of truncate division
-            if (!x || x->is_nil()) {
-                return error("truncate/: requires two arguments");
-            }
-            if (!y || y->is_nil()) {
-                return error("truncate/: requires two arguments");
-            }
-
-            double dividend = num(x);
-            double divisor = num(y);
-
-            if (divisor == 0.0) {
-                return error("truncate/: division by zero");
-            }
-
-            // R7RS: truncate/ returns TWO values (quotient and remainder).
-            bool exact = numeric::is_integer_value(x) && numeric::is_integer_value(y);
-            double q = std::trunc(dividend / divisor);
-            double r = dividend - divisor * q;
-            Object* qo = exact ? numeric::make_integer((long long)q) : numeric::make_inexact(q);
-            Object* ro = exact ? numeric::make_integer((long long)r) : numeric::make_inexact(r);
-            return gc_new<ValuesObject>(cons(qo, cons(ro, nil)));
-        }
-
-        case FLOORQUOTIENT: {
-            // (floor-quotient n d) - returns quotient of floor division
-            if (!x || x->is_nil()) {
-                return error("floor-quotient: requires two arguments");
-            }
-            if (!y || y->is_nil()) {
-                return error("floor-quotient: requires two arguments");
-            }
-
-            double dividend = num(x);
-            double divisor = num(y);
-
-            if (divisor == 0.0) {
-                return error("floor-quotient: division by zero");
-            }
-
-            // Floor quotient
-            if (numeric::is_integer_value(x) && numeric::is_integer_value(y)) {
-                int quotient = (int)std::floor(dividend / divisor);
-                return numeric::make_integer(quotient);
-            } else {
-                double quotient = std::floor(dividend / divisor);
-                return numeric::make_inexact(quotient);
-            }
-        }
-
-        case FLOORREMAINDER: {
-            // (floor-remainder n d) - returns remainder of floor division
-            // r = n - d * floor(n/d)
-            if (!x || x->is_nil()) {
-                return error("floor-remainder: requires two arguments");
-            }
-            if (!y || y->is_nil()) {
-                return error("floor-remainder: requires two arguments");
-            }
-
-            double dividend = num(x);
-            double divisor = num(y);
-
-            if (divisor == 0.0) {
-                return error("floor-remainder: division by zero");
-            }
-
-            // Compute remainder: n - d * floor(n/d)
-            double quotient = std::floor(dividend / divisor);
-            double remainder = dividend - (divisor * quotient);
-
-            if (numeric::is_integer_value(x) && numeric::is_integer_value(y)) {
-                return numeric::make_integer((int)remainder);
-            } else {
-                return numeric::make_inexact(remainder);
-            }
-        }
-
-        case TRUNCATEQUOTIENT: {
-            // (truncate-quotient n d) - returns quotient of truncate division
-            if (!x || x->is_nil()) {
-                return error("truncate-quotient: requires two arguments");
-            }
-            if (!y || y->is_nil()) {
-                return error("truncate-quotient: requires two arguments");
-            }
-
-            double dividend = num(x);
-            double divisor = num(y);
-
-            if (divisor == 0.0) {
-                return error("truncate-quotient: division by zero");
-            }
-
-            // Truncate quotient
-            if (numeric::is_integer_value(x) && numeric::is_integer_value(y)) {
-                int quotient = (int)std::trunc(dividend / divisor);
-                return numeric::make_integer(quotient);
-            } else {
-                double quotient = std::trunc(dividend / divisor);
-                return numeric::make_inexact(quotient);
-            }
-        }
-
-        case TRUNCATEREMAINDER: {
-            // (truncate-remainder n d) - returns remainder of truncate division
-            // r = n - d * trunc(n/d)
-            if (!x || x->is_nil()) {
-                return error("truncate-remainder: requires two arguments");
-            }
-            if (!y || y->is_nil()) {
-                return error("truncate-remainder: requires two arguments");
-            }
-
-            double dividend = num(x);
-            double divisor = num(y);
-
-            if (divisor == 0.0) {
-                return error("truncate-remainder: division by zero");
-            }
-
-            // Compute remainder: n - d * trunc(n/d)
-            double quotient = std::trunc(dividend / divisor);
-            double remainder = dividend - (divisor * quotient);
-
-            if (numeric::is_integer_value(x) && numeric::is_integer_value(y)) {
-                return numeric::make_integer((int)remainder);
-            } else {
-                return numeric::make_inexact(remainder);
-            }
-        }
-
-        default:
-            return error("Unknown numeric Primitive");
-    }
-}
-
-// ============================================================================
-// Registration
-// ============================================================================
-
-void PrimitiveNumbers::install(Environment* env) {
-    const int n = 999999;  // Unlimited arguments marker
-
-    // GC-safe define helper: protects name string before allocating primitive
-    #define DEF(name, ...) do { \
-        gc_root<a_string> _n(gc_new<a_string>(name)); \
-        env->define(_n.get(), gc_new<PrimitiveNumbers>(__VA_ARGS__)); \
-    } while(0)
-
-    // Predicates
-    DEF("number?",   NUMBERQ, 1, 1);
-    DEF("odd?",      ODDQ, 1, 1);
-    DEF("even?",     EVENQ, 1, 1);
-    DEF("zero?",     ZEROQ, 1, 1);
-    DEF("positive?", POSITIVEQ, 1, 1);
-    DEF("negative?", NEGATIVEQ, 1, 1);
-    DEF("integer?",  INTEGERQ, 1, 1);
-    DEF("exact-integer?", EXACTINTEGERQ, 1, 1);
-    DEF("nan?",      NANQ, 1, 1);
-    DEF("infinite?", INFINITEQ, 1, 1);
-    DEF("finite?",   FINITEQ, 1, 1);
-    DEF("exact?",    EXACTQ, 1, 1);
-    DEF("inexact?",  INEXACTQ, 1, 1);
-    DEF("rational?", RATIONALQ, 1, 1);
-    DEF("real?",     REALQ, 1, 1);
-    DEF("complex?",  COMPLEXQ, 1, 1);
-
-    // Comparisons
-    DEF("=",  EQ, 2, n);
-    DEF("<",  LT, 2, n);
-    DEF(">",  GT, 2, n);
-    DEF("<=", LE, 2, n);
-    DEF(">=", GE, 2, n);
-
-    // Arithmetic
-    DEF("+",   PLUS, 0, n);
-    DEF("-",   MINUS, 1, n);
-    DEF("*",   TIMES, 0, n);
-    DEF("/",   DIVIDE, 1, n);
-    DEF("max", MAX, 1, n);
-    DEF("min", MIN, 1, n);
-
-    // Division
-    DEF("quotient",  QUOTIENT, 2, 2);
-    DEF("remainder", REMAINDER, 2, 2);
-    DEF("modulo",    MODULO, 2, 2);
-    DEF("gcd",       GCD, 0, n);
-    DEF("lcm",       LCM, 0, n);
-
-    // Rounding
-    DEF("round",    ROUND, 1, 1);
-    DEF("floor",    FLOOR, 1, 1);
-    DEF("ceiling",  CEILING, 1, 1);
-    DEF("truncate", TRUNCATE, 1, 1);
-
-    // Math
-    DEF("abs",  ABS, 1, 1);
-    DEF("sqrt", SQRT, 1, 1);
-    DEF("expt", EXPT, 2, 2);
-
-    // Transcendental
-    DEF("exp",  EXP, 1, 1);
-    DEF("log",  LOG, 1, 1);
-    DEF("sin",  SIN, 1, 1);
-    DEF("cos",  COS, 1, 1);
-    DEF("tan",  TAN, 1, 1);
-    DEF("asin", ASIN, 1, 1);
-    DEF("acos", ACOS, 1, 1);
-    DEF("atan", ATAN, 1, 1);
-
-    // Conversions
-    DEF("exact->inexact", EXACTTOINEXACT, 1, 1);
-    DEF("inexact->exact", INEXACTTOEXACT, 1, 1);
-
-    // Rational
-    DEF("numerator",   NUMERATOR, 1, 1);
-    DEF("denominator", DENOMINATOR, 1, 1);
-    DEF("rationalize", RATIONALIZE, 2, 2);
-
-    // Complex
-    DEF("real-part",        REALPART, 1, 1);
-    DEF("imag-part",        IMAGPART, 1, 1);
-    DEF("make-rectangular", MAKERECTANGULAR, 2, 2);
-    DEF("make-polar",       MAKEPOLAR, 2, 2);
-    DEF("magnitude",        MAGNITUDE, 1, 1);
-    DEF("angle",            ANGLE, 1, 1);
-
-    // String conversions
-    DEF("number->string", NUMBERTOSTRING, 1, 2);
-    DEF("string->number", STRINGTONUMBER, 1, 2);
-
-    // R7RS additions
-    DEF("exact",              EXACT, 1, 1);
-    DEF("inexact",            INEXACT, 1, 1);
-    DEF("square",             SQUARE, 1, 1);
-    DEF("exact-integer-sqrt", EXACTINTEGERSQRT, 1, 1);
-    DEF("floor/",             FLOORDIV, 2, 2);
-    DEF("truncate/",          TRUNCATEDIV, 2, 2);
-    DEF("floor-quotient",     FLOORQUOTIENT, 2, 2);
-    DEF("floor-remainder",    FLOORREMAINDER, 2, 2);
-    DEF("truncate-quotient",  TRUNCATEQUOTIENT, 2, 2);
-    DEF("truncate-remainder", TRUNCATEREMAINDER, 2, 2);
-
-    #undef DEF
+        { "exact",              1, 1, prim_exact },
+        { "inexact",            1, 1, prim_inexact },
+        { "square",             1, 1, prim_square },
+        { "exact-integer-sqrt", 1, 1, prim_exact_integer_sqrt },
+        { "floor/",             2, 2, prim_floor_div },
+        { "truncate/",          2, 2, prim_truncate_div },
+        { "floor-quotient",     2, 2, prim_floor_quotient },
+        { "floor-remainder",    2, 2, prim_floor_remainder },
+        { "truncate-quotient",  2, 2, prim_truncate_quotient },
+        { "truncate-remainder", 2, 2, prim_truncate_remainder },
+    };
+    install_natives(env, entries, sizeof(entries) / sizeof(entries[0]));
 }
