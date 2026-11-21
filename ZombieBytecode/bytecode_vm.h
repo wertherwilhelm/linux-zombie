@@ -197,12 +197,6 @@ private:
     // Dynamic-wind state
     std::vector<toy::WindFrame> wind_stack_;  // Stack of active dynamic-wind contexts
 
-    // Execution loops
-    Object* run(const uint8_t* bytecode,
-                size_t length,
-                const std::vector<Object*>& constants,
-                Environment* env);
-
     // Trampolined execution (for Continuation support)
     Object* run_trampolined();
 
