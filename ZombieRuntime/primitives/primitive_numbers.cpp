@@ -46,6 +46,13 @@ static Object* num_compare(Object *args, char op) {
             return error("comparison requires numbers");
         }
 
+        // IEEE/R7RS: every ordered comparison involving NaN is false (including
+        // (= +nan.0 +nan.0)). numeric::compare returns 0 for NaN and
+        // numeric::equal returns #t, which wrongly made =, <= and >= yield #t.
+        if (std::isnan(num(x)) || std::isnan(num(y))) {
+            return false_obj;
+        }
+
         // Use numeric::compare (returns -1 if x<y, 0 if x==y, 1 if x>y)
         // For equality, use numeric::equal which works with complex too
         int cmp = (op == '=') ? (numeric::equal(x, y) ? 0 : 1) : numeric::compare(x, y);

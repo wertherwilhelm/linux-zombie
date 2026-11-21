@@ -749,8 +749,13 @@ public:
             throw std::runtime_error("EQ: operands must be numbers");
         }
 
-        // Return #t or #f
-        Object* result = numeric::equal(a, b) ? (Object*)t : (Object*)false_obj;
+        // IEEE/R7RS: (= +nan.0 x) is #f for all x (including another NaN).
+        // numeric::equal reports two NaNs equal, so guard it (self-inequality is
+        // true only for NaN). LT/GT need no guard: compare() returns 0 for NaN,
+        // which is neither <0 nor >0. (<=/>= route to the runtime primitive.)
+        double da = numeric::to_double(a), db = numeric::to_double(b);
+        Object* result = (da == da && db == db && numeric::equal(a, b))
+                             ? (Object*)t : (Object*)false_obj;
         ctx.push(result);
         ctx.ip += size();
         return true;

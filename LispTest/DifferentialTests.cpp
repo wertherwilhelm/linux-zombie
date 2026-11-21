@@ -274,6 +274,13 @@ const Case kCorpus[] = {
     {"(/ 2)", "1/2", ALL},
     {"(/ 2.0)", "0.5", ALL},
     {"(- 5/2)", "-5/2", ALL},
+    // IEEE/R7RS: every comparison involving NaN is #f, incl. (= +nan.0 +nan.0).
+    // Was #t for =, <=, >= (runtime num_compare + bytecode OP_EQ).
+    {"(= +nan.0 +nan.0)", "#f", ALL},
+    {"(= +nan.0 5)", "#f", ALL},
+    {"(<= 1 +nan.0)", "#f", ALL},
+    {"(>= +nan.0 1)", "#f", ALL},
+    {"(= 1.0 1.0)", "#t", ALL},
     // Escape continuations — supported by all three (the tree-walk's only mode).
     {"(+ 1 (call/cc (lambda (k) (k 10))))", "11", ALL},
     {"(* 2 (call/cc (lambda (k) (+ 1 (k 5)))))", "10", ALL},
