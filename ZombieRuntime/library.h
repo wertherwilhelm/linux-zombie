@@ -8,6 +8,7 @@
 #include <vector>
 #include <set>
 #include <map>
+#include <functional>
 
 // ============================================================================
 // R7RS Library System
@@ -301,5 +302,13 @@ public:
     Object* get_symbol(const std::string& name) const;
     void define_symbol(const std::string& name, Object* value);
 };
+
+// Resolve one import set against `source`'s exports, applying the SIMPLE / ONLY /
+// EXCEPT / PREFIX / RENAME filtering and renaming, and call `bind(name, value)`
+// for each resulting binding. The single source of truth for import filtering;
+// callers supply the sink (define into an Environment, into a library, ...) and
+// their own library-resolution / file-loading policy around it.
+void resolve_import(const ImportSpec& spec, Library* source,
+                    const std::function<void(const std::string& name, Object* value)>& bind);
 
 } // namespace r7rs

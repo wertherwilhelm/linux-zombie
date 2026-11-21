@@ -532,79 +532,11 @@ eval_result Lisp::eval_step_list(Object* x, Environment* env) {
                 throw std::runtime_error("import: library not found: " + r7rs::library_name_to_string(import_spec.library));
             }
 
-            // Get all exported symbols from the source library
-            const std::vector<r7rs::ExportSpec>& exports = source_lib->exports();
-
-            // Process based on import type
-            switch (import_spec.type) {
-            case r7rs::ImportSpec::SIMPLE: {
-                // Import all exported symbols
-                for (const auto& exp : exports) {
-                    Object* value = source_lib->get_symbol(exp.internal_name);
-                    if (value) {
-                        env->define(gc_new<a_string>(exp.external_name), value);
-                    }
-                }
-                break;
-            }
-
-            case r7rs::ImportSpec::ONLY: {
-                // Import only specified symbols
-                for (const auto& exp : exports) {
-                    if (import_spec.symbols.find(exp.external_name) != import_spec.symbols.end()) {
-                        Object* value = source_lib->get_symbol(exp.internal_name);
-                        if (value) {
-                            env->define(gc_new<a_string>(exp.external_name), value);
-                        }
-                    }
-                }
-                break;
-            }
-
-            case r7rs::ImportSpec::EXCEPT: {
-                // Import all except specified symbols
-                for (const auto& exp : exports) {
-                    if (import_spec.symbols.find(exp.external_name) == import_spec.symbols.end()) {
-                        Object* value = source_lib->get_symbol(exp.internal_name);
-                        if (value) {
-                            env->define(gc_new<a_string>(exp.external_name), value);
-                        }
-                    }
-                }
-                break;
-            }
-
-            case r7rs::ImportSpec::PREFIX: {
-                // Import all with prefix
-                for (const auto& exp : exports) {
-                    Object* value = source_lib->get_symbol(exp.internal_name);
-                    if (value) {
-                        std::string prefixed_name = import_spec.prefix + exp.external_name;
-                        env->define(gc_new<a_string>(prefixed_name), value);
-                    }
-                }
-                break;
-            }
-
-            case r7rs::ImportSpec::RENAME: {
-                // Import with renames
-                for (const auto& exp : exports) {
-                    Object* value = source_lib->get_symbol(exp.internal_name);
-                    if (value) {
-                        // Check if this symbol should be renamed
-                        auto rename_it = import_spec.renames.find(exp.external_name);
-                        if (rename_it != import_spec.renames.end()) {
-                            // Use renamed name
-                            env->define(gc_new<a_string>(rename_it->second), value);
-                        } else {
-                            // Use original name
-                            env->define(gc_new<a_string>(exp.external_name), value);
-                        }
-                    }
-                }
-                break;
-            }
-            }
+            // Bind the imported symbols into the current environment.
+            r7rs::resolve_import(import_spec, source_lib,
+                [&](const std::string& name, Object* value) {
+                    env->define(gc_new<a_string>(name), value);
+                });
         }
         return eval_result::make_value(nil);  // import returns unspecified value
     }

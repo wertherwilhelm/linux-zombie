@@ -207,79 +207,9 @@ bool Library::initialize(Environment* parent_env, std::string& error_out) {
             }
         }
 
-        // Get all exported symbols from the imported library
-        const std::vector<ExportSpec>& exports = imported_lib->exports();
-
-        // Process based on import type
-        switch (import_spec.type) {
-        case ImportSpec::SIMPLE: {
-            // Import all exported symbols
-            for (const auto& exp : exports) {
-                Object* value = imported_lib->get_symbol(exp.internal_name);
-                if (value) {
-                    define_symbol(exp.external_name, value);
-                }
-            }
-            break;
-        }
-
-        case ImportSpec::ONLY: {
-            // Import only specified symbols
-            for (const auto& exp : exports) {
-                if (import_spec.symbols.find(exp.external_name) != import_spec.symbols.end()) {
-                    Object* value = imported_lib->get_symbol(exp.internal_name);
-                    if (value) {
-                        define_symbol(exp.external_name, value);
-                    }
-                }
-            }
-            break;
-        }
-
-        case ImportSpec::EXCEPT: {
-            // Import all except specified symbols
-            for (const auto& exp : exports) {
-                if (import_spec.symbols.find(exp.external_name) == import_spec.symbols.end()) {
-                    Object* value = imported_lib->get_symbol(exp.internal_name);
-                    if (value) {
-                        define_symbol(exp.external_name, value);
-                    }
-                }
-            }
-            break;
-        }
-
-        case ImportSpec::PREFIX: {
-            // Import all with prefix
-            for (const auto& exp : exports) {
-                Object* value = imported_lib->get_symbol(exp.internal_name);
-                if (value) {
-                    std::string prefixed_name = import_spec.prefix + exp.external_name;
-                    define_symbol(prefixed_name, value);
-                }
-            }
-            break;
-        }
-
-        case ImportSpec::RENAME: {
-            // Import with renames
-            for (const auto& exp : exports) {
-                Object* value = imported_lib->get_symbol(exp.internal_name);
-                if (value) {
-                    // Check if this symbol should be renamed
-                    auto rename_it = import_spec.renames.find(exp.external_name);
-                    if (rename_it != import_spec.renames.end()) {
-                        // Use renamed name
-                        define_symbol(rename_it->second, value);
-                    } else {
-                        // Use original name
-                        define_symbol(exp.external_name, value);
-                    }
-                }
-            }
-            break;
-        }
-        }
+        // Bind the imported symbols into this library's own environment.
+        resolve_import(import_spec, imported_lib,
+                       [this](const std::string& name, Object* value) { define_symbol(name, value); });
     }
 
     // 3. Evaluate begin blocks
@@ -290,6 +220,36 @@ bool Library::initialize(Environment* parent_env, std::string& error_out) {
     // 4. Mark as initialized
     initialized_ = true;
     return true;
+}
+
+void resolve_import(const ImportSpec& spec, Library* source,
+                    const std::function<void(const std::string&, Object*)>& bind) {
+    for (const auto& exp : source->exports()) {
+        std::string name;  // the name to bind under, or skip this export
+        switch (spec.type) {
+        case ImportSpec::SIMPLE:
+            name = exp.external_name;
+            break;
+        case ImportSpec::ONLY:
+            if (spec.symbols.find(exp.external_name) == spec.symbols.end()) continue;
+            name = exp.external_name;
+            break;
+        case ImportSpec::EXCEPT:
+            if (spec.symbols.find(exp.external_name) != spec.symbols.end()) continue;
+            name = exp.external_name;
+            break;
+        case ImportSpec::PREFIX:
+            name = spec.prefix + exp.external_name;
+            break;
+        case ImportSpec::RENAME: {
+            auto it = spec.renames.find(exp.external_name);
+            name = (it != spec.renames.end()) ? it->second : exp.external_name;
+            break;
+        }
+        }
+        Object* value = source->get_symbol(exp.internal_name);
+        if (value) bind(name, value);
+    }
 }
 
 } // namespace r7rs
