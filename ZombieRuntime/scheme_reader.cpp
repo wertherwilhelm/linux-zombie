@@ -358,29 +358,12 @@ Object* scheme_reader::parse_number_token(const std::string& tok, int radix, int
     if (tok.empty()) {
         return make_error("read: empty numeric literal after '#' prefix");
     }
-    Object* val = nullptr;
-    size_t slash = tok.find('/');
-    try {
-        if (slash != std::string::npos) {
-            int64_t n = std::stoll(tok.substr(0, slash), nullptr, radix);
-            int64_t d = std::stoll(tok.substr(slash + 1), nullptr, radix);
-            if (d == 0) return make_error("read: division by zero in rational");
-            val = numeric::make_rational(n, d);
-        } else if (radix == 10 && (tok.find('.') != std::string::npos ||
-                                   tok.find('e') != std::string::npos ||
-                                   tok.find('E') != std::string::npos)) {
-            // Decimal/exponent notation is only meaningful in radix 10 (in hex
-            // 'e' is a digit); produce an inexact real.
-            val = numeric::make_inexact(std::stod(tok));
-        } else {
-            int64_t n = std::stoll(tok, nullptr, radix);
-            val = numeric::make_integer(n);
-        }
-    } catch (const std::exception&) {
+    // Delegate to the shared numeric-token parser (single source of truth, also
+    // used by string->number); map a parse failure to a reader error.
+    Object* val = numeric::parse_number_token(tok, radix, exactness);
+    if (!val) {
         return make_error("read: invalid number literal '" + tok + "'");
     }
-    if (exactness == 1)       val = numeric::to_exact(val);
-    else if (exactness == -1) val = numeric::make_inexact(numeric::to_double(val));
     return val;
 }
 

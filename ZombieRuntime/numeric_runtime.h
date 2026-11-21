@@ -3,6 +3,7 @@
 #include "Object.h"
 #include "atom.h"  // For Type enum and atom<T> template
 #include <cstdint>
+#include <string>
 
 // Forward declarations - types are in zombie::runtime namespace
 namespace zombie { namespace runtime {
@@ -135,6 +136,13 @@ Object* make_complex(Object* real, Object* imag);
 
 // Create inexact double
 Object* make_inexact(double value);
+
+// Parse a numeric token (NO '#' prefix) in the given radix, applying exactness
+// (-1 = force inexact, 0 = as-written, 1 = force exact). Handles rationals (a/b),
+// radix-10 decimal/exponent reals, and radixed integers; the whole token must be
+// consumed. Returns the number, or nullptr if `tok` is not a valid number.
+// Single source of truth for both the reader and string->number.
+Object* parse_number_token(const std::string& tok, int radix, int exactness);
 
 // ============================================================================
 // Helper Functions

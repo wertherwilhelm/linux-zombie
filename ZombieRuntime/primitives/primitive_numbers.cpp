@@ -241,40 +241,11 @@ static Object* stringToNumber(Object* x, Object* y) {
     if (tok == "-inf.0") return numeric::make_inexact(-std::numeric_limits<double>::infinity());
     if (tok == "+nan.0" || tok == "-nan.0") return numeric::make_inexact(std::numeric_limits<double>::quiet_NaN());
 
-    Object* val = nullptr;
-    try {
-        size_t slash = tok.find('/');
-        if (slash != std::string::npos) {
-            // rational a/b (both parts in the active radix)
-            std::string ns = tok.substr(0, slash), ds = tok.substr(slash + 1);
-            size_t pn, pd;
-            long long n = std::stoll(ns, &pn, radix);
-            long long d = std::stoll(ds, &pd, radix);
-            if (pn != ns.size() || pd != ds.size() || d == 0) return false_obj;
-            val = numeric::make_rational(n, d);
-        } else if (radix == 10 && (tok.find('.') != std::string::npos ||
-                                   tok.find('e') != std::string::npos ||
-                                   tok.find('E') != std::string::npos)) {
-            // Decimal / exponent is radix-10 only (in hex 'e' is a digit).
-            size_t pos;
-            double dv = std::stod(tok, &pos);
-            if (pos != tok.size()) return false_obj;
-            val = numeric::make_inexact(dv);
-        } else {
-            size_t pos;
-            long long n = std::stoll(tok, &pos, radix);
-            if (pos != tok.size()) return false_obj;
-            val = numeric::make_integer(n);
-        }
-    } catch (...) {
-        // R7RS: return #f (not nil — nil is the empty list and TRUTHY, which
-        // would break the (or (string->number s) default) idiom).
-        return false_obj;
-    }
-
-    if (exactness == 1)       val = numeric::to_exact(val);
-    else if (exactness == -1) val = numeric::make_inexact(numeric::to_double(val));
-    return val;
+    // Shared numeric-token parser (same one the reader uses). R7RS: return #f on
+    // failure (not nil — nil is the empty list and TRUTHY, which would break the
+    // (or (string->number s) default) idiom).
+    Object* val = numeric::parse_number_token(tok, radix, exactness);
+    return val ? val : static_cast<Object*>(false_obj);
 }
 
 /**

@@ -187,6 +187,41 @@ Object* make_inexact(double value) {
     return gc_new<atom<double>>(value);
 }
 
+Object* parse_number_token(const std::string& tok, int radix, int exactness) {
+    if (tok.empty()) return nullptr;
+    Object* val = nullptr;
+    try {
+        size_t slash = tok.find('/');
+        if (slash != std::string::npos) {
+            // rational a/b (both parts in the active radix, fully consumed)
+            std::string ns = tok.substr(0, slash), ds = tok.substr(slash + 1);
+            size_t pn = 0, pd = 0;
+            long long n = std::stoll(ns, &pn, radix);
+            long long d = std::stoll(ds, &pd, radix);
+            if (pn != ns.size() || pd != ds.size() || d == 0) return nullptr;
+            val = make_rational(n, d);
+        } else if (radix == 10 && (tok.find('.') != std::string::npos ||
+                                   tok.find('e') != std::string::npos ||
+                                   tok.find('E') != std::string::npos)) {
+            // Decimal / exponent is radix-10 only (in hex 'e' is a digit).
+            size_t pos = 0;
+            double dv = std::stod(tok, &pos);
+            if (pos != tok.size()) return nullptr;
+            val = make_inexact(dv);
+        } else {
+            size_t pos = 0;
+            long long n = std::stoll(tok, &pos, radix);
+            if (pos != tok.size()) return nullptr;
+            val = make_integer(n);
+        }
+    } catch (const std::exception&) {
+        return nullptr;
+    }
+    if (exactness == 1)       val = to_exact(val);
+    else if (exactness == -1) val = make_inexact(to_double(val));
+    return val;
+}
+
 // ============================================================================
 // Arithmetic Operations (Forward declarations for complex use)
 // ============================================================================
