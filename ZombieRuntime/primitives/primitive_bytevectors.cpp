@@ -1,389 +1,208 @@
-/**
- * @file primitive_bytevectors.cpp
- * @brief Implementation of R7RS bytevector primitives
- */
-
-#include "zombie_runtime_types.h"
 #include "zombie_runtime_types.h"
 #include "primitive_bytevectors.h"
+#include "../native_primitive.h"
 #include "../a_bytevector.h"
 #include "../atom.h"
 #include "../Base.h"
 #include "../cons_cell.h"
 #include "../constants.h"
 #include "../numeric_runtime.h"
-#include <stdexcept>
+#include <vector>
 #include <algorithm>
 
-// ============================================================================
-// Constructor
-// ============================================================================
+/**
+ * @file primitive_bytevectors.cpp
+ * @brief Bytevector primitives (R7RS 6.9), table-driven.
+ */
 
-PrimitiveBytevectors::PrimitiveBytevectors(ID id, int minArgs, int maxArgs)
-    : PrimitiveBase(minArgs, maxArgs), m_id(id) {
-    // Set Primitive name based on ID
-    switch (id) {
-        case BYTEVECTORQ:       m_name = "bytevector?"; break;
-        case MAKEBYTEVECTOR:    m_name = "make-bytevector"; break;
-        case BYTEVECTOR:        m_name = "bytevector"; break;
-        case BYTEVECTORLENGTH:  m_name = "bytevector-length"; break;
-        case BYTEVECTORU8REF:   m_name = "bytevector-u8-ref"; break;
-        case BYTEVECTORU8SET:   m_name = "bytevector-u8-set!"; break;
-        case BYTEVECTORCOPY:    m_name = "bytevector-copy"; break;
-        case BYTEVECTORCOPYMUT: m_name = "bytevector-copy!"; break;
-        case BYTEVECTORAPPEND:  m_name = "bytevector-append"; break;
-        case UTF8TOSTRING:      m_name = "utf8->string"; break;
-        case STRINGTOUTF8:      m_name = "string->utf8"; break;
+namespace {
+
+using namespace zombie::runtime;
+
+// nth argument (0-based), or nil if absent. Checks pair() to avoid the spurious
+// "cannot take rest of an atom!" stderr from rest() on a nil tail.
+inline Object* nth(Object* a, int n) {
+    for (int i = 0; i < n; i++) {
+        if (!a || !a->pair()) return nil;
+        a = rest(a);
     }
+    return (a && a->pair()) ? first(a) : nil;
 }
 
-// ============================================================================
-// Primitive Application
-// ============================================================================
-
-Object* PrimitiveBytevectors::apply(IEvaluator* eval, Object* args, Environment* env) {
-    // Arity checking
-    if (!check_arity(args)) {
-        return arity_error("");
-    }
-
-    // Extract common arguments. Walk the list pair-by-pair rather than calling
-    // rest()/second()/third() blindly: rest() on a non-pair (e.g. the nil tail
-    // of a 1-arg call) prints a spurious "cannot take rest of an atom!" to
-    // stderr, which polluted every bytevector? / bytevector-length call.
-    Object* rest1 = (args && args->pair()) ? rest(args) : nil;
-    Object* rest2 = (rest1 && rest1->pair()) ? rest(rest1) : nil;
-    Object* x = (args  && args->pair())  ? first(args)  : nil;
-    Object* y = (rest1 && rest1->pair()) ? first(rest1) : nil;
-    Object* z = (rest2 && rest2->pair()) ? first(rest2) : nil;
-
-    // Dispatch based on Primitive ID
-    switch (m_id) {
-        // ====================================================================
-        // Type Checking
-        // ====================================================================
-        case BYTEVECTORQ:
-            return is_bytevector(x) ? t : static_cast<Object*>(false_obj);
-
-        // ====================================================================
-        // Construction
-        // ====================================================================
-        case MAKEBYTEVECTOR: {
-            if (!numeric::is_number(x)) {
-                return error("make-bytevector: k must be a number");
-            }
-            int64_t k = numeric::to_int64(x);
-            if (k < 0) {
-                return error("make-bytevector: k must be non-negative");
-            }
-
-            uint8_t fill = 0;
-            if (y && !y->is_nil()) {
-                if (!numeric::is_number(y)) {
-                    return error("make-bytevector: fill must be a number");
-                }
-                int64_t byte_val = numeric::to_int64(y);
-                if (byte_val < 0 || byte_val > 255) {
-                    return error("make-bytevector: fill must be in range [0, 255]");
-                }
-                fill = static_cast<uint8_t>(byte_val);
-            }
-
-            return gc_new<a_bytevector>(static_cast<int>(k), fill);
-        }
-
-        case BYTEVECTOR: {
-            std::vector<uint8_t> bytes;
-            Object* current = args;
-            while (current && !current->is_nil()) {
-                Object* byte_obj = car(current);
-                if (!numeric::is_number(byte_obj)) {
-                    return error("bytevector: all arguments must be numbers");
-                }
-                int64_t byte_val = numeric::to_int64(byte_obj);
-                if (byte_val < 0 || byte_val > 255) {
-                    return error("bytevector: bytes must be in range [0, 255]");
-                }
-                bytes.push_back(static_cast<uint8_t>(byte_val));
-                current = cdr(current);
-            }
-            return gc_new<a_bytevector>(bytes);
-        }
-
-        // ====================================================================
-        // Access and Mutation
-        // ====================================================================
-        case BYTEVECTORLENGTH: {
-            if (!is_bytevector(x)) {
-                return error("bytevector-length: argument must be a bytevector");
-            }
-            a_bytevector* bv = static_cast<a_bytevector*>(x);
-            return numeric::make_integer(bv->length());
-        }
-
-        case BYTEVECTORU8REF: {
-            if (!is_bytevector(x)) {
-                return error("bytevector-u8-ref: first argument must be a bytevector");
-            }
-            if (!numeric::is_number(y)) {
-                return error("bytevector-u8-ref: index must be a number");
-            }
-
-            a_bytevector* bv = static_cast<a_bytevector*>(x);
-            int64_t k = numeric::to_int64(y);
-
-            if (k < 0 || k >= bv->length()) {
-                return error("bytevector-u8-ref: index out of range");
-            }
-
-            return numeric::make_integer(bv->get(static_cast<int>(k)));
-        }
-
-        case BYTEVECTORU8SET: {
-            if (!is_bytevector(x)) {
-                return error("bytevector-u8-set!: first argument must be a bytevector");
-            }
-            if (!numeric::is_number(y)) {
-                return error("bytevector-u8-set!: index must be a number");
-            }
-            if (!numeric::is_number(z)) {
-                return error("bytevector-u8-set!: byte must be a number");
-            }
-
-            a_bytevector* bv = static_cast<a_bytevector*>(x);
-            int64_t k = numeric::to_int64(y);
-            int64_t byte_val = numeric::to_int64(z);
-
-            if (k < 0 || k >= bv->length()) {
-                return error("bytevector-u8-set!: index out of range");
-            }
-
-            if (byte_val < 0 || byte_val > 255) {
-                return error("bytevector-u8-set!: byte must be in range [0, 255]");
-            }
-
-            bv->set(static_cast<int>(k), static_cast<uint8_t>(byte_val));
-            return bv;
-        }
-
-        // ====================================================================
-        // Copying
-        // ====================================================================
-        case BYTEVECTORCOPY: {
-            if (!is_bytevector(x)) {
-                return error("bytevector-copy: argument must be a bytevector");
-            }
-
-            a_bytevector* bv = static_cast<a_bytevector*>(x);
-            int start = 0;
-            int end = bv->length();
-
-            if (y && !y->is_nil()) {
-                if (!numeric::is_number(y)) {
-                    return error("bytevector-copy: start must be a number");
-                }
-                start = static_cast<int>(numeric::to_int64(y));
-
-                if (z && !z->is_nil()) {
-                    if (!numeric::is_number(z)) {
-                        return error("bytevector-copy: end must be a number");
-                    }
-                    end = static_cast<int>(numeric::to_int64(z));
-                }
-            }
-
-            if (start < 0 || start > bv->length() || end < start || end > bv->length()) {
-                return error("bytevector-copy: invalid start/end indices");
-            }
-
-            std::vector<uint8_t> copy_bytes(bv->bytes().begin() + start, bv->bytes().begin() + end);
-            return gc_new<a_bytevector>(copy_bytes);
-        }
-
-        case BYTEVECTORCOPYMUT: {
-            // (bytevector-copy! to at from [start [end]])
-            if (!is_bytevector(x)) {
-                return error("bytevector-copy!: 'to' must be a bytevector");
-            }
-            if (!numeric::is_number(y)) {
-                return error("bytevector-copy!: 'at' must be a number");
-            }
-
-            Object* from_obj = z;
-            if (!is_bytevector(from_obj)) {
-                return error("bytevector-copy!: 'from' must be a bytevector");
-            }
-
-            a_bytevector* to_bv = static_cast<a_bytevector*>(x);
-            int at = static_cast<int>(numeric::to_int64(y));
-            a_bytevector* from_bv = static_cast<a_bytevector*>(from_obj);
-
-            int start = 0;
-            int end = from_bv->length();
-
-            // Optional start and end
-            Object* rest = cdr(cdr(cdr(args)));  // Skip first 3 args
-            if (rest && !rest->is_nil()) {
-                Object* start_obj = car(rest);
-                if (!numeric::is_number(start_obj)) {
-                    return error("bytevector-copy!: start must be a number");
-                }
-                start = static_cast<int>(numeric::to_int64(start_obj));
-
-                rest = cdr(rest);
-                if (rest && !rest->is_nil()) {
-                    Object* end_obj = car(rest);
-                    if (!numeric::is_number(end_obj)) {
-                        return error("bytevector-copy!: end must be a number");
-                    }
-                    end = static_cast<int>(numeric::to_int64(end_obj));
-                }
-            }
-
-            if (start < 0 || start > from_bv->length() || end < start || end > from_bv->length()) {
-                return error("bytevector-copy!: invalid start/end indices");
-            }
-
-            int count = end - start;
-            if (at < 0 || at + count > to_bv->length()) {
-                return error("bytevector-copy!: invalid 'at' index or insufficient space");
-            }
-
-            // Copy bytes
-            std::copy(from_bv->bytes().begin() + start,
-                      from_bv->bytes().begin() + end,
-                      to_bv->bytes().begin() + at);
-
-            return to_bv;
-        }
-
-        case BYTEVECTORAPPEND: {
-            std::vector<uint8_t> result;
-
-            Object* current = args;
-            while (current && !current->is_nil()) {
-                Object* bv_obj = car(current);
-                if (!is_bytevector(bv_obj)) {
-                    return error("bytevector-append: all arguments must be bytevectors");
-                }
-
-                a_bytevector* bv = static_cast<a_bytevector*>(bv_obj);
-                result.insert(result.end(), bv->bytes().begin(), bv->bytes().end());
-
-                current = cdr(current);
-            }
-
-            return gc_new<a_bytevector>(result);
-        }
-
-        // ====================================================================
-        // UTF-8 Conversion
-        // ====================================================================
-        case UTF8TOSTRING: {
-            if (!is_bytevector(x)) {
-                return error("utf8->string: argument must be a bytevector");
-            }
-
-            a_bytevector* bv = static_cast<a_bytevector*>(x);
-            int start = 0;
-            int end = bv->length();
-
-            if (y && !y->is_nil()) {
-                if (!numeric::is_number(y)) {
-                    return error("utf8->string: start must be a number");
-                }
-                start = static_cast<int>(numeric::to_int64(y));
-
-                if (z && !z->is_nil()) {
-                    if (!numeric::is_number(z)) {
-                        return error("utf8->string: end must be a number");
-                    }
-                    end = static_cast<int>(numeric::to_int64(z));
-                }
-            }
-
-            if (start < 0 || start > bv->length() || end < start || end > bv->length()) {
-                return error("utf8->string: invalid start/end indices");
-            }
-
-            // Convert UTF-8 bytes to string
-            std::string str(bv->bytes().begin() + start, bv->bytes().begin() + end);
-            return gc_new<a_string>(str);
-        }
-
-        case STRINGTOUTF8: {
-            if (x->get_type() != static_cast<int>(Type::STRING)) {
-                return error("string->utf8: argument must be a string");
-            }
-
-            a_string* str = static_cast<a_string*>(x);
-            const std::string& s = str->value();
-
-            int start = 0;
-            int end = static_cast<int>(s.length());
-
-            if (y && !y->is_nil()) {
-                if (!numeric::is_number(y)) {
-                    return error("string->utf8: start must be a number");
-                }
-                start = static_cast<int>(numeric::to_int64(y));
-
-                if (z && !z->is_nil()) {
-                    if (!numeric::is_number(z)) {
-                        return error("string->utf8: end must be a number");
-                    }
-                    end = static_cast<int>(numeric::to_int64(z));
-                }
-            }
-
-            if (start < 0 || start > static_cast<int>(s.length()) ||
-                end < start || end > static_cast<int>(s.length())) {
-                return error("string->utf8: invalid start/end indices");
-            }
-
-            // Convert string to UTF-8 bytes
-            std::vector<uint8_t> bytes(s.begin() + start, s.begin() + end);
-            return gc_new<a_bytevector>(bytes);
-        }
-
-        default:
-            return error("Unknown bytevector Primitive");
-    }
+Object* prim_bytevectorq(IEvaluator*, Object* a, Environment*) {
+    return is_bytevector(nth(a, 0)) ? t : static_cast<Object*>(false_obj);
 }
 
-// ============================================================================
-// Installation
-// ============================================================================
+Object* prim_make_bytevector(IEvaluator*, Object* a, Environment*) {
+    Object* x = nth(a, 0), *y = nth(a, 1);
+    if (!numeric::is_number(x)) return error("make-bytevector: k must be a number");
+    int64_t k = numeric::to_int64(x);
+    if (k < 0) return error("make-bytevector: k must be non-negative");
+    uint8_t fill = 0;
+    if (y && !y->is_nil()) {
+        if (!numeric::is_number(y)) return error("make-bytevector: fill must be a number");
+        int64_t b = numeric::to_int64(y);
+        if (b < 0 || b > 255) return error("make-bytevector: fill must be in range [0, 255]");
+        fill = static_cast<uint8_t>(b);
+    }
+    return gc_new<a_bytevector>(static_cast<int>(k), fill);
+}
 
-void PrimitiveBytevectors::install(Environment* env) {
-    const int n = 999999;
+Object* prim_bytevector(IEvaluator*, Object* a, Environment*) {
+    std::vector<uint8_t> bytes;
+    for (Object* cur = a; cur && !cur->is_nil(); cur = cdr(cur)) {
+        Object* b = car(cur);
+        if (!numeric::is_number(b)) return error("bytevector: all arguments must be numbers");
+        int64_t v = numeric::to_int64(b);
+        if (v < 0 || v > 255) return error("bytevector: bytes must be in range [0, 255]");
+        bytes.push_back(static_cast<uint8_t>(v));
+    }
+    return gc_new<a_bytevector>(bytes);
+}
 
-    // GC Safety: Use macro to protect name string before allocating primitive
-    #define DEF(name, ...) do { \
-        gc_root<a_string> _n(gc_new<a_string>(name)); \
-        env->define(_n.get(), gc_new<PrimitiveBytevectors>(__VA_ARGS__)); \
-    } while(0)
+Object* prim_bytevector_length(IEvaluator*, Object* a, Environment*) {
+    Object* x = nth(a, 0);
+    if (!is_bytevector(x)) return error("bytevector-length: argument must be a bytevector");
+    return numeric::make_integer(static_cast<a_bytevector*>(x)->length());
+}
 
-    // Type checking
-    DEF("bytevector?", BYTEVECTORQ, 1, 1);
+Object* prim_bytevector_u8_ref(IEvaluator*, Object* a, Environment*) {
+    Object* x = nth(a, 0), *y = nth(a, 1);
+    if (!is_bytevector(x)) return error("bytevector-u8-ref: first argument must be a bytevector");
+    if (!numeric::is_number(y)) return error("bytevector-u8-ref: index must be a number");
+    a_bytevector* bv = static_cast<a_bytevector*>(x);
+    int64_t k = numeric::to_int64(y);
+    if (k < 0 || k >= bv->length()) return error("bytevector-u8-ref: index out of range");
+    return numeric::make_integer(bv->get(static_cast<int>(k)));
+}
 
-    // Construction
-    DEF("make-bytevector", MAKEBYTEVECTOR, 1, 2);
-    DEF("bytevector",      BYTEVECTOR, 0, n);
+Object* prim_bytevector_u8_set(IEvaluator*, Object* a, Environment*) {
+    Object* x = nth(a, 0), *y = nth(a, 1), *z = nth(a, 2);
+    if (!is_bytevector(x)) return error("bytevector-u8-set!: first argument must be a bytevector");
+    if (!numeric::is_number(y)) return error("bytevector-u8-set!: index must be a number");
+    if (!numeric::is_number(z)) return error("bytevector-u8-set!: byte must be a number");
+    a_bytevector* bv = static_cast<a_bytevector*>(x);
+    int64_t k = numeric::to_int64(y), b = numeric::to_int64(z);
+    if (k < 0 || k >= bv->length()) return error("bytevector-u8-set!: index out of range");
+    if (b < 0 || b > 255) return error("bytevector-u8-set!: byte must be in range [0, 255]");
+    bv->set(static_cast<int>(k), static_cast<uint8_t>(b));
+    return bv;
+}
 
-    // Access and mutation
-    DEF("bytevector-length",   BYTEVECTORLENGTH, 1, 1);
-    DEF("bytevector-u8-ref",   BYTEVECTORU8REF, 2, 2);
-    DEF("bytevector-u8-set!",  BYTEVECTORU8SET, 3, 3);
+Object* prim_bytevector_copy(IEvaluator*, Object* a, Environment*) {
+    Object* x = nth(a, 0), *y = nth(a, 1), *z = nth(a, 2);
+    if (!is_bytevector(x)) return error("bytevector-copy: argument must be a bytevector");
+    a_bytevector* bv = static_cast<a_bytevector*>(x);
+    int start = 0, end = bv->length();
+    if (y && !y->is_nil()) {
+        if (!numeric::is_number(y)) return error("bytevector-copy: start must be a number");
+        start = static_cast<int>(numeric::to_int64(y));
+        if (z && !z->is_nil()) {
+            if (!numeric::is_number(z)) return error("bytevector-copy: end must be a number");
+            end = static_cast<int>(numeric::to_int64(z));
+        }
+    }
+    if (start < 0 || start > bv->length() || end < start || end > bv->length())
+        return error("bytevector-copy: invalid start/end indices");
+    std::vector<uint8_t> copy(bv->bytes().begin() + start, bv->bytes().begin() + end);
+    return gc_new<a_bytevector>(copy);
+}
 
-    // Copying
-    DEF("bytevector-copy",   BYTEVECTORCOPY, 1, 3);
-    DEF("bytevector-copy!",  BYTEVECTORCOPYMUT, 3, 5);
-    DEF("bytevector-append", BYTEVECTORAPPEND, 0, n);
+// (bytevector-copy! to at from [start [end]])
+Object* prim_bytevector_copy_mut(IEvaluator*, Object* a, Environment*) {
+    Object* x = nth(a, 0), *y = nth(a, 1), *z = nth(a, 2);
+    if (!is_bytevector(x)) return error("bytevector-copy!: 'to' must be a bytevector");
+    if (!numeric::is_number(y)) return error("bytevector-copy!: 'at' must be a number");
+    if (!is_bytevector(z)) return error("bytevector-copy!: 'from' must be a bytevector");
+    a_bytevector* to_bv = static_cast<a_bytevector*>(x);
+    a_bytevector* from_bv = static_cast<a_bytevector*>(z);
+    int at = static_cast<int>(numeric::to_int64(y));
+    int start = 0, end = from_bv->length();
+    Object* s = nth(a, 3), *e = nth(a, 4);
+    if (s && !s->is_nil()) {
+        if (!numeric::is_number(s)) return error("bytevector-copy!: start must be a number");
+        start = static_cast<int>(numeric::to_int64(s));
+        if (e && !e->is_nil()) {
+            if (!numeric::is_number(e)) return error("bytevector-copy!: end must be a number");
+            end = static_cast<int>(numeric::to_int64(e));
+        }
+    }
+    if (start < 0 || start > from_bv->length() || end < start || end > from_bv->length())
+        return error("bytevector-copy!: invalid start/end indices");
+    int count = end - start;
+    if (at < 0 || at + count > to_bv->length())
+        return error("bytevector-copy!: invalid 'at' index or insufficient space");
+    std::copy(from_bv->bytes().begin() + start, from_bv->bytes().begin() + end,
+              to_bv->bytes().begin() + at);
+    return to_bv;
+}
 
-    // UTF-8 conversion
-    DEF("utf8->string", UTF8TOSTRING, 1, 3);
-    DEF("string->utf8", STRINGTOUTF8, 1, 3);
+Object* prim_bytevector_append(IEvaluator*, Object* a, Environment*) {
+    std::vector<uint8_t> result;
+    for (Object* cur = a; cur && !cur->is_nil(); cur = cdr(cur)) {
+        Object* b = car(cur);
+        if (!is_bytevector(b)) return error("bytevector-append: all arguments must be bytevectors");
+        a_bytevector* bv = static_cast<a_bytevector*>(b);
+        result.insert(result.end(), bv->bytes().begin(), bv->bytes().end());
+    }
+    return gc_new<a_bytevector>(result);
+}
 
-    #undef DEF
+Object* prim_utf8_to_string(IEvaluator*, Object* a, Environment*) {
+    Object* x = nth(a, 0), *y = nth(a, 1), *z = nth(a, 2);
+    if (!is_bytevector(x)) return error("utf8->string: argument must be a bytevector");
+    a_bytevector* bv = static_cast<a_bytevector*>(x);
+    int start = 0, end = bv->length();
+    if (y && !y->is_nil()) {
+        if (!numeric::is_number(y)) return error("utf8->string: start must be a number");
+        start = static_cast<int>(numeric::to_int64(y));
+        if (z && !z->is_nil()) {
+            if (!numeric::is_number(z)) return error("utf8->string: end must be a number");
+            end = static_cast<int>(numeric::to_int64(z));
+        }
+    }
+    if (start < 0 || start > bv->length() || end < start || end > bv->length())
+        return error("utf8->string: invalid start/end indices");
+    std::string str(bv->bytes().begin() + start, bv->bytes().begin() + end);
+    return gc_new<a_string>(str);
+}
+
+Object* prim_string_to_utf8(IEvaluator*, Object* a, Environment*) {
+    Object* x = nth(a, 0), *y = nth(a, 1), *z = nth(a, 2);
+    if (x->get_type() != static_cast<int>(Type::STRING))
+        return error("string->utf8: argument must be a string");
+    const std::string& s = static_cast<a_string*>(x)->value();
+    int start = 0, end = static_cast<int>(s.length());
+    if (y && !y->is_nil()) {
+        if (!numeric::is_number(y)) return error("string->utf8: start must be a number");
+        start = static_cast<int>(numeric::to_int64(y));
+        if (z && !z->is_nil()) {
+            if (!numeric::is_number(z)) return error("string->utf8: end must be a number");
+            end = static_cast<int>(numeric::to_int64(z));
+        }
+    }
+    if (start < 0 || start > (int)s.length() || end < start || end > (int)s.length())
+        return error("string->utf8: invalid start/end indices");
+    std::vector<uint8_t> bytes(s.begin() + start, s.begin() + end);
+    return gc_new<a_bytevector>(bytes);
+}
+
+}  // namespace
+
+void PrimitiveBytevectors::install(zombie::runtime::Environment* env) {
+    using namespace zombie::runtime;
+    static const NativeEntry entries[] = {
+        { "bytevector?",       1, 1,      prim_bytevectorq         },
+        { "make-bytevector",   1, 2,      prim_make_bytevector     },
+        { "bytevector",        0, 999999, prim_bytevector          },
+        { "bytevector-length", 1, 1,      prim_bytevector_length   },
+        { "bytevector-u8-ref", 2, 2,      prim_bytevector_u8_ref   },
+        { "bytevector-u8-set!",3, 3,      prim_bytevector_u8_set   },
+        { "bytevector-copy",   1, 3,      prim_bytevector_copy     },
+        { "bytevector-copy!",  3, 5,      prim_bytevector_copy_mut },
+        { "bytevector-append", 0, 999999, prim_bytevector_append   },
+        { "utf8->string",      1, 3,      prim_utf8_to_string      },
+        { "string->utf8",      1, 3,      prim_string_to_utf8      },
+    };
+    install_natives(env, entries, sizeof(entries) / sizeof(entries[0]));
 }
