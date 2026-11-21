@@ -22,55 +22,10 @@
 #include <fstream>
 
 
+// The default engine is just the Lisp (tree-walk) evaluator; delegate to the
+// typed constructor so there is one construction path to maintain.
 scheme_engine::scheme_engine(bool use_isolated_gc)
-    : evaluator_(nullptr)
-    , owns_evaluator_(true)
-    , evaluator_type_(EvaluatorType::LISP)
-    , global_env_(nullptr)
-    , input_port_(nullptr)
-    , output_port_(nullptr)
-    , owns_input_port_(false)
-    , owns_output_port_(false)
-    , capture_stdout_(false)
-    , last_error_object_(nullptr)
-    , owns_isolated_gc_(false)
-    , env_root_gc_(nullptr)
-    , runtime_context_(nullptr)
-    , auto_load_libraries_(false)
-{
-    if (use_isolated_gc) {
-        throw std::runtime_error("Isolated GC not yet supported");
-    }
-
-    // Create runtime context (initializes GC, constants, ports, ledger)
-    runtime_context_ = RuntimeContext::create();
-
-    // Set this context as current for the lifetime of this engine
-    RuntimeContext::set_current(runtime_context_.get());
-
-    // Create global environment through GC and register as persistent root
-    // This is critical: Environment contains bindings that must survive GC
-    global_env_ = gc_new<Environment>();
-    if (auto* gc = gc_context::current()) {
-        gc->register_persistent_root(reinterpret_cast<gc_object**>(&global_env_));
-        env_root_gc_ = gc;  // remember it so the destructor can unregister the slot
-    }
-
-    // Install Primitive functions
-    install_primitives();
-
-    // Bootstrap R7RS standard libraries
-    r7rs::bootstrap_standard_libraries(global_env_);
-
-    // Create evaluator (default: Lisp)
-    evaluator_ = create_evaluator(EvaluatorType::LISP);
-
-    // Set up default I/O ports
-    setup_default_ports();
-
-    // Load the SRFI-1/SRFI-13 Scheme prelude on top of the primitives.
-    warmup_prelude();
-}
+    : scheme_engine(EvaluatorType::LISP, use_isolated_gc) {}
 
 scheme_engine::scheme_engine(EvaluatorType type, bool use_isolated_gc)
     : evaluator_(nullptr)
