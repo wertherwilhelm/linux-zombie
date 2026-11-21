@@ -252,6 +252,14 @@ const Case kCorpus[] = {
     {"(values 1 2 3)", "1 2 3", ALL},
     {"(exact-integer-sqrt 17)", "4 1", ALL},
     {"(truncate/ -7 2)", "-3 -1", ALL},
+    // string->number now accepts radix/exactness prefixes in the string and
+    // rationals (was stoll/stod-only; "#xff", "1/3", "#e1.5" all returned #f).
+    {"(string->number \"#xff\")", "255", ALL},
+    {"(string->number \"#b101\")", "5", ALL},
+    {"(string->number \"#e1.5\")", "3/2", ALL},
+    {"(string->number \"#i1/2\")", "0.5", ALL},
+    {"(string->number \"1/3\")", "1/3", ALL},
+    {"(string->number \"nope\")", "#f", ALL},
     // Escape continuations — supported by all three (the tree-walk's only mode).
     {"(+ 1 (call/cc (lambda (k) (k 10))))", "11", ALL},
     {"(* 2 (call/cc (lambda (k) (+ 1 (k 5)))))", "10", ALL},

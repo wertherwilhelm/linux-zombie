@@ -201,47 +201,68 @@ static Object* stringToNumber(Object* x, Object* y) {
     }
 
     std::string str = ((a_string*)x)->value();
+    if (str.empty()) return false_obj;
 
-    // R7RS infinity / NaN literals.
-    if (str == "+inf.0") return numeric::make_inexact(std::numeric_limits<double>::infinity());
-    if (str == "-inf.0") return numeric::make_inexact(-std::numeric_limits<double>::infinity());
-    if (str == "+nan.0" || str == "-nan.0") return numeric::make_inexact(std::numeric_limits<double>::quiet_NaN());
+    // R7RS 6.2.6: the string itself may carry radix / exactness prefixes
+    // (#x #b #o #d #e #i, combinable in any order, e.g. "#e#xff"). These parse
+    // the same numeric syntax the reader accepts — rationals, decimals, radixed
+    // integers — so mirror parse_number_token here rather than the old
+    // stoll/stod-only parse that rejected "#xff", "1/3", "#e1.5", ...
+    int exactness = 0;  // 0 = as-written, 1 = exact (#e), -1 = inexact (#i)
+    size_t i = 0;
+    while (i + 1 < str.size() && str[i] == '#') {
+        char c = (char)std::tolower((unsigned char)str[i + 1]);
+        if      (c == 'x') radix = 16;
+        else if (c == 'b') radix = 2;
+        else if (c == 'o') radix = 8;
+        else if (c == 'd') radix = 10;
+        else if (c == 'e') exactness = 1;
+        else if (c == 'i') exactness = -1;
+        else return false_obj;   // unknown # prefix
+        i += 2;
+    }
+    std::string tok = str.substr(i);
+    if (tok.empty()) return false_obj;
 
+    // Infinity / NaN literals.
+    if (tok == "+inf.0") return numeric::make_inexact(std::numeric_limits<double>::infinity());
+    if (tok == "-inf.0") return numeric::make_inexact(-std::numeric_limits<double>::infinity());
+    if (tok == "+nan.0" || tok == "-nan.0") return numeric::make_inexact(std::numeric_limits<double>::quiet_NaN());
+
+    Object* val = nullptr;
     try {
-        if (radix == 10) {
-            // Prefer an exact integer parse; fall back to floating point.
-            // (R7RS: "42" -> exact 42, "4.2" -> inexact 4.2.)
-            try {
-                size_t ipos;
-                long long ivalue = std::stoll(str, &ipos);
-                if (ipos == str.length()) {
-                    return numeric::make_integer(ivalue);
-                }
-            } catch (...) {
-                // not an integer literal - fall through to the double parse
-            }
+        size_t slash = tok.find('/');
+        if (slash != std::string::npos) {
+            // rational a/b (both parts in the active radix)
+            std::string ns = tok.substr(0, slash), ds = tok.substr(slash + 1);
+            size_t pn, pd;
+            long long n = std::stoll(ns, &pn, radix);
+            long long d = std::stoll(ds, &pd, radix);
+            if (pn != ns.size() || pd != ds.size() || d == 0) return false_obj;
+            val = numeric::make_rational(n, d);
+        } else if (radix == 10 && (tok.find('.') != std::string::npos ||
+                                   tok.find('e') != std::string::npos ||
+                                   tok.find('E') != std::string::npos)) {
+            // Decimal / exponent is radix-10 only (in hex 'e' is a digit).
             size_t pos;
-            double value = std::stod(str, &pos);
-            if (pos == str.length()) {
-                return numeric::make_inexact(value);
-            }
+            double dv = std::stod(tok, &pos);
+            if (pos != tok.size()) return false_obj;
+            val = numeric::make_inexact(dv);
         } else {
-            // Parse as integer in given radix
             size_t pos;
-            long long value = std::stoll(str, &pos, radix);
-            if (pos == str.length()) {
-                return numeric::make_integer(value);
-            }
+            long long n = std::stoll(tok, &pos, radix);
+            if (pos != tok.size()) return false_obj;
+            val = numeric::make_integer(n);
         }
     } catch (...) {
-        // R7RS: string->number returns #f (not nil!) when the string is not a
-        // number. nil is the empty list, which is TRUTHY here, so returning it
-        // broke the idiom (or (string->number s) default).
+        // R7RS: return #f (not nil — nil is the empty list and TRUTHY, which
+        // would break the (or (string->number s) default) idiom).
         return false_obj;
     }
 
-    // Parsing did not consume the whole string -> not a number.
-    return false_obj;
+    if (exactness == 1)       val = numeric::to_exact(val);
+    else if (exactness == -1) val = numeric::make_inexact(numeric::to_double(val));
+    return val;
 }
 
 /**
