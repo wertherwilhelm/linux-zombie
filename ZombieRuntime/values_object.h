@@ -61,6 +61,20 @@ public:
     Object* clone() const override { return gc_new<ValuesObject>(m_values); }
 
     /**
+     * @brief Print the values space-separated (so the REPL shows all of them,
+     * e.g. (values 1 2 3) -> "1 2 3", not the Base fallback "(**BASE**)").
+     */
+    void print(std::ostream& os) const override {
+        bool first_one = true;
+        for (Object* v = m_values; v && !v->is_nil() && v->pair(); v = cdr(v)) {
+            if (!first_one) os << " ";
+            Object* elem = car(v);
+            if (elem) elem->print(os); else os << "()";
+            first_one = false;
+        }
+    }
+
+    /**
      * @brief Trace referenced objects for GC.
      */
     void trace_references(Tracer& tracer) override {

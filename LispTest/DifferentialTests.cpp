@@ -247,6 +247,11 @@ const Case kCorpus[] = {
     {"(let ((n 0)) (let ((p (delay (begin (set! n (+ n 1)) n)))) (list (force p) (force p) n)))", "(1 1 1)", ALL},
     {"(begin (define (ints-from k) (delay (cons k (ints-from (+ k 1))))) (define (sh s n) (if (= n 0) '() (let ((pr (force s))) (cons (car pr) (sh (cdr pr) (- n 1)))))) (sh (ints-from 1) 5))", "(1 2 3 4 5)", ALL},
     {"(begin (define (lp n) (delay-force (if (= n 0) (delay 'done) (lp (- n 1))))) (force (lp 1000)))", "done", ALL},
+    // multiple values print space-separated at top level (was the Base fallback
+    // "(**BASE**)"); call-with-values still consumes them.
+    {"(values 1 2 3)", "1 2 3", ALL},
+    {"(exact-integer-sqrt 17)", "4 1", ALL},
+    {"(truncate/ -7 2)", "-3 -1", ALL},
     // Escape continuations — supported by all three (the tree-walk's only mode).
     {"(+ 1 (call/cc (lambda (k) (k 10))))", "11", ALL},
     {"(* 2 (call/cc (lambda (k) (+ 1 (k 5)))))", "10", ALL},
