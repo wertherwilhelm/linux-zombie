@@ -1,50 +1,15 @@
 #pragma once
 
-/**
- * @file primitive_exceptions.h
- * @brief R7RS Exception handling primitives (Section 6.11)
- */
-
-#include "../primitive_base.h"
 #include "../Environment.h"
 
 /**
- * @brief R7RS Exception handling primitives
- *
- * Implements R7RS exception handling:
- * - Raising: raise, raise-continuable, error
- * - Predicates: error-Object?, file-error?, read-error?
- * - Accessors: error-Object-message, error-Object-irritants
+ * @file primitive_exceptions.h
+ * @brief R7RS exception primitives (6.11): raise, raise-continuable, error,
+ *        error-object?/-message/-irritants, file-error?/read-error?,
+ *        with-exception-handler, and the %guard runtime helper.
+ *        Table-driven (see .cpp); this header is just the install hook. The
+ *        handler stack + raise_object live in exception_handlers.h.
  */
-class PrimitiveExceptions : public PrimitiveBase {
-public:
-    enum ID {
-        RAISE,                   ///< raise
-        RAISECONTINUABLE,        ///< raise-continuable
-        ERROR,                   ///< error
-        ERROROBJECTQ,            ///< error-Object?
-        ERROROBJECTMESSAGE,      ///< error-Object-message
-        ERROROBJECTIRRITANTS,    ///< error-Object-irritants
-        FILEERRORQ,              ///< file-error?
-        READERRORQ,              ///< read-error?
-        WITHEXCEPTIONHANDLER,    ///< with-exception-handler
-        GUARDIMPL                ///< %guard (runtime support for compiled guard)
-    };
-
-    PrimitiveExceptions(ID id, int minArgs, int maxArgs);
-
-    /**
-     * @brief Apply the Primitive operation
-     */
-    Object* apply(IEvaluator* eval, Object* args, Environment* env) override;
-
-    /**
-     * @brief Install all exception handling primitives into environment
-     * @param env Environment to install into
-     */
-    static void install(Environment* env);
-
-private:
-    ID m_id;
-    std::string m_name;
+struct PrimitiveExceptions {
+    static void install(zombie::runtime::Environment* env);
 };
