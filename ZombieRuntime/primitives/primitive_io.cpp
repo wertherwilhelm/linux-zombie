@@ -1,6 +1,6 @@
 #include "zombie_runtime_types.h"
-#include "zombie_runtime_types.h"
 #include "primitive_io.h"
+#include "../native_primitive.h"
 #include "../Base.h"
 #include "../atom.h"
 #include "../InputPort.h"
@@ -15,36 +15,24 @@
 #include "../numeric_runtime.h"
 #include "../a_bytevector.h"
 #include "../../GarbageCollector/gc_ptr.h"
-#include <fstream>
 #include "../a_vector.h"
 #include "../procedure.h"
+#include <fstream>
 #include <sstream>
 #include <cctype>
+#include <iostream>
+#include <vector>
 
 /**
  * @file primitive_io.cpp
- * @brief Implementation of I/O primitives (R5RS Section 6.10)
- * @author Inheritance-based refactoring 2026-01
- * @date 2026-01-09
+ * @brief I/O primitives (R7RS 6.13), table-driven.
  */
 
 namespace {
 
-using zombie::runtime::Object;
-using zombie::runtime::a_string;
-using zombie::runtime::a_char;
-using zombie::runtime::a_vector;
-using zombie::runtime::is_string;
-using zombie::runtime::is_char;
-using zombie::runtime::is_vector;
-using zombie::runtime::is_pair;
-using zombie::runtime::first;
-using zombie::runtime::rest;
+using namespace zombie::runtime;
 
-// Serialize a datum in `write` (machine-readable) form: strings are quoted and
-// escaped, characters use #\ notation, and these rules apply recursively
-// through pairs and vectors. All other datums fall back to their display form.
-// This is what distinguishes `write` from `display` (R7RS 6.13.3).
+// --- `write` datum serialization (quoted strings, #\ chars, recursive) ---
 void write_datum(std::ostream& os, Object* o);
 
 void write_string_literal(std::ostream& os, const std::string& s) {
@@ -81,10 +69,7 @@ void write_datum(std::ostream& os, Object* o) {
     if (is_vector(o)) {
         a_vector* v = (a_vector*)o;
         os << "#(";
-        for (int i = 0; i < v->length(); ++i) {
-            if (i) os << ' ';
-            write_datum(os, v->get(i));
-        }
+        for (int i = 0; i < v->length(); ++i) { if (i) os << ' '; write_datum(os, v->get(i)); }
         os << ')';
         return;
     }
@@ -105,974 +90,408 @@ void write_datum(std::ostream& os, Object* o) {
     o->print(os);
 }
 
-} // anonymous namespace
+// Argument helpers (match the original's nil-guarded extraction).
+inline Object* io_x(Object* a) { return (a != nil) ? first(a) : nil; }
+inline Object* io_y(Object* a) { return (a != nil && rest(a) != nil) ? second(a) : nil; }
 
-// ============================================================================
-// Constructor
-// ============================================================================
-
-PrimitiveIO::PrimitiveIO(ID id, int minArgs, int maxArgs)
-    : PrimitiveBase(minArgs, maxArgs), m_id(id) {
-    // Set Primitive name based on ID
-    switch (id) {
-        case EOFOBJECTQ:       m_name = "eof-object?"; break;
-        case EOFOBJECT:        m_name = "eof-object"; break;
-        case INPUTPORTQ:       m_name = "input-port?"; break;
-        case CURRENTINPUTPORT: m_name = "current-input-port"; break;
-        case OPENINPUTFILE:    m_name = "open-input-file"; break;
-        case CLOSEINPUTPORT:   m_name = "close-input-port"; break;
-        case OUTPUTPORTQ:      m_name = "output-port?"; break;
-        case CURRENTOUTPUTPORT:m_name = "current-output-port"; break;
-        case OPENOUTPUTFILE:   m_name = "open-output-file"; break;
-        case CLOSEOUTPUTPORT:  m_name = "close-output-port"; break;
-        case READCHAR:         m_name = "read-char"; break;
-        case PEEKCHAR:         m_name = "peek-char"; break;
-        case CHARREADYQ:       m_name = "char-ready?"; break;
-        case READ:             m_name = "read"; break;
-        case LOAD:             m_name = "load"; break;
-        case WRITE:            m_name = "write"; break;
-        case DISPLAY:          m_name = "display"; break;
-        case NEWLINE:          m_name = "newline"; break;
-        case WRITECHAR:        m_name = "write-char"; break;
-        case THEENVIRONMENT:   m_name = "the-environment"; break;
-
-        // R7RS additions
-        case READLINE:         m_name = "read-line"; break;
-        case READSTRING:       m_name = "read-string"; break;
-        case WRITESTRING:      m_name = "write-string"; break;
-        case FLUSHOUTPUT:      m_name = "flush-output-port"; break;
-
-        // R7RS string ports
-        case OPENINPUTSTRING:  m_name = "open-input-string"; break;
-        case OPENOUTPUTSTRING: m_name = "open-output-string"; break;
-        case GETOUTPUTSTRING:  m_name = "get-output-string"; break;
-
-        // R7RS bytevector I/O
-        case READU8:      m_name = "read-u8"; break;
-        case PEEKU8:      m_name = "peek-u8"; break;
-        case U8READYQ:    m_name = "u8-ready?"; break;
-        case WRITEU8:     m_name = "write-u8"; break;
-        case READBYTEVECTOR:     m_name = "read-bytevector"; break;
-        case READBYTEVECTORBANG: m_name = "read-bytevector!"; break;
-        case WRITEBYTEVECTOR:    m_name = "write-bytevector"; break;
-        case WITHOUTPUTTOSTRING:   m_name = "with-output-to-string"; break;
-        case CALLWITHOUTPUTSTRING: m_name = "call-with-output-string"; break;
-        case INTERACTIONENV:       m_name = "interaction-environment"; break;
+// Resolve an optional input/output port argument, defaulting to the current port.
+InputPort* in_port(Object* arg, const char* who, bool& ok) {
+    ok = true;
+    if (arg != nullptr && arg != nil) {
+        InputPort* p = dynamic_cast<InputPort*>(arg);
+        if (!p) { ok = false; return nullptr; }
+        return p;
     }
+    return stdin_port;
+}
+OutputPort* out_port(Object* arg, const char* who, bool& ok) {
+    ok = true;
+    if (arg != nullptr && arg != nil) {
+        OutputPort* p = dynamic_cast<OutputPort*>(arg);
+        if (!p) { ok = false; return nullptr; }
+        return p;
+    }
+    return stdout_port;
 }
 
-// ============================================================================
-// Primitive Application
-// ============================================================================
+// ---- Port predicates ----
+Object* prim_eof_objectq(IEvaluator*, Object* a, Environment*) { return truth(io_x(a) == nullptr); }
+Object* prim_eof_object(IEvaluator*, Object*, Environment*) { return nullptr; }  // EOF sentinel
+Object* prim_input_portq(IEvaluator*, Object* a, Environment*) {
+    Object* x = io_x(a);
+    if (x == nullptr || x == nil) return truth(false);
+    Base* b = dynamic_cast<Base*>(x);
+    return truth(b && b->instance_of() == static_cast<int>(Base::atype::INPUTPORT));
+}
+Object* prim_output_portq(IEvaluator*, Object* a, Environment*) {
+    Object* x = io_x(a);
+    if (x == nullptr || x == nil) return truth(false);
+    Base* b = dynamic_cast<Base*>(x);
+    return truth(b && b->instance_of() == static_cast<int>(Base::atype::OUTPUTPORT));
+}
 
-Object* PrimitiveIO::apply(IEvaluator* evaluator, Object* args, Environment* env) {
-    // Arity checking
-    if (!check_arity(args)) {
-        return arity_error("");
+// ---- Current ports ----
+Object* prim_current_input_port(IEvaluator*, Object*, Environment*) { return stdin_port; }
+Object* prim_current_output_port(IEvaluator*, Object*, Environment*) { return stdout_port; }
+
+// ---- File ports ----
+Object* prim_open_input_file(IEvaluator*, Object* a, Environment*) {
+    Object* x = io_x(a);
+    if (!is_string(x)) return error("open-input-file: expected a string filename");
+    std::string filename = ((a_string*)x)->value();
+    FileInputPort* port = gc_new<FileInputPort>(filename);
+    if (!port->open()) return error("open-input-file: could not open file: " + filename);
+    return port;
+}
+Object* prim_close_input_port(IEvaluator*, Object* a, Environment*) {
+    InputPort* port = dynamic_cast<InputPort*>(io_x(a));
+    if (!port) return error("close-input-port: expected an input port");
+    port->close();
+    return t;
+}
+Object* prim_open_output_file(IEvaluator*, Object* a, Environment*) {
+    Object* x = io_x(a);
+    if (!is_string(x)) return error("open-output-file: expected a string filename");
+    std::string filename = ((a_string*)x)->value();
+    FileOutputPort* port = gc_new<FileOutputPort>(filename);
+    if (!port->open()) return error("open-output-file: could not open file: " + filename);
+    return port;
+}
+Object* prim_close_output_port(IEvaluator*, Object* a, Environment*) {
+    Object* x = io_x(a);
+    OutputPort* port = dynamic_cast<OutputPort*>(x);
+    if (!port) return error("close-output-port: expected an output port");
+    FileOutputPort* file_port = dynamic_cast<FileOutputPort*>(x);
+    if (file_port) file_port->close();
+    return t;
+}
+
+// ---- Character input ----
+Object* prim_read_char(IEvaluator*, Object* a, Environment*) {
+    bool ok; InputPort* port = in_port(io_x(a), "read-char", ok);
+    if (!ok) return error("read-char: expected an input port");
+    char c = port->peek();
+    if (port->is_eof()) return nullptr;
+    port->get();  // consume exactly one character
+    return gc_new<a_char>(c);
+}
+Object* prim_peek_char(IEvaluator*, Object* a, Environment*) {
+    bool ok; InputPort* port = in_port(io_x(a), "peek-char", ok);
+    if (!ok) return error("peek-char: expected an input port");
+    char c = port->peek();
+    if (port->is_eof()) return nullptr;
+    return gc_new<a_char>(c);
+}
+Object* prim_char_readyq(IEvaluator*, Object* a, Environment*) {
+    bool ok; in_port(io_x(a), "char-ready?", ok);
+    if (!ok) return error("char-ready?: expected an input port");
+    return t;  // no non-blocking check; always ready (or EOF)
+}
+
+// ---- S-expression input ----
+Object* prim_read(IEvaluator*, Object* a, Environment*) {
+    bool ok; InputPort* port = in_port(io_x(a), "read", ok);
+    if (!ok) return error("read: expected an input port");
+    Object* result = port->read();
+    return result ? result : nullptr;
+}
+
+// ---- File loading ----
+Object* prim_load(IEvaluator* evaluator, Object* a, Environment* env) {
+    Object* x = io_x(a);
+    if (!is_string(x)) return error("load: expected a string filename");
+    std::string filename = ((a_string*)x)->value();
+    std::ifstream file(filename);
+    if (!file.is_open()) return error("load: could not open file: " + filename);
+    std::stringstream buffer;
+    buffer << file.rdbuf();
+    file.close();
+    std::string contents = buffer.str();
+    if (contents.empty()) return nil;
+    // Real reader: understands comments, char literals, block comments.
+    scheme_reader reader;
+    Object* program = reader.read_program_from_string(contents);
+    a_string* perr = dynamic_cast<a_string*>(program);
+    if (perr && perr->value().rfind("ERROR:", 0) == 0) return error("load: " + perr->value());
+    gc_root<Object> guard_program(program);  // keep AST alive across eval
+    Object* result = nil;
+    for (Object* f = program; f && !f->is_nil(); f = cdr(f)) {
+        result = evaluator->eval(car(f), env);
     }
-
-    // Extract arguments
-    Object* x = (args != nil) ? first(args) : nil;
-    Object* y = (args != nil && rest(args) != nil) ? second(args) : nil;
-
-    // Dispatch based on Primitive ID
-    switch (m_id) {
-        // ====================================================================
-        // Port Predicates
-        // ====================================================================
-
-        case EOFOBJECTQ: {
-            // Check if Object is the EOF Object
-            // In C++, we check if it's nullptr (EOF indicator)
-            return truth(x == nullptr);
-        }
-
-        case EOFOBJECT: {
-            // (eof-object) -> the EOF sentinel (represented as nullptr here, the
-            // same value peek-char/read-char return at end of input).
-            return nullptr;
-        }
-
-        case INPUTPORTQ: {
-            // Check if Object is an input port using instance_of()
-            if (x == nullptr || x == nil) {
-                return truth(false);
-            }
-            Base* b = dynamic_cast<Base*>(x);
-            return truth(b && b->instance_of() == static_cast<int>(Base::atype::INPUTPORT));
-        }
-
-        case OUTPUTPORTQ: {
-            // Check if Object is an output port using instance_of()
-            if (x == nullptr || x == nil) {
-                return truth(false);
-            }
-            Base* b = dynamic_cast<Base*>(x);
-            return truth(b && b->instance_of() == static_cast<int>(Base::atype::OUTPUTPORT));
-        }
-
-        // ====================================================================
-        // Current Ports
-        // ====================================================================
-
-        case CURRENTINPUTPORT: {
-            // Return the current input port (usually stdin_port)
-            return stdin_port;
-        }
-
-        case CURRENTOUTPUTPORT: {
-            // Return the current output port (usually stdout_port)
-            return stdout_port;
-        }
-
-        // ====================================================================
-        // Input File Operations
-        // ====================================================================
-
-        case OPENINPUTFILE: {
-            // Open an input file
-            // x should be a string containing the filename
-            if (!is_string(x)) {
-                return error("open-input-file: expected a string filename");
-            }
-            std::string filename = ((a_string*)x)->value();
-            FileInputPort* port = gc_new<FileInputPort>(filename);
-            if (!port->open()) {
-                return error("open-input-file: could not open file: " + filename);
-            }
-            return port;
-        }
-
-        case CLOSEINPUTPORT: {
-            // Close an input port
-            InputPort* port = dynamic_cast<InputPort*>(x);
-            if (!port) {
-                return error("close-input-port: expected an input port");
-            }
-            port->close();
-            return t;
-        }
-
-        // ====================================================================
-        // Output File Operations
-        // ====================================================================
-
-        case OPENOUTPUTFILE: {
-            // Open an output file
-            // x should be a string containing the filename
-            if (!is_string(x)) {
-                return error("open-output-file: expected a string filename");
-            }
-            std::string filename = ((a_string*)x)->value();
-            FileOutputPort* port = gc_new<FileOutputPort>(filename);
-            if (!port->open()) {
-                return error("open-output-file: could not open file: " + filename);
-            }
-            return port;
-        }
-
-        case CLOSEOUTPUTPORT: {
-            // Close an output port
-            OutputPort* port = dynamic_cast<OutputPort*>(x);
-            if (!port) {
-                return error("close-output-port: expected an output port");
-            }
-            // If it's a FileOutputPort, close the file to flush the buffer
-            FileOutputPort* file_port = dynamic_cast<FileOutputPort*>(x);
-            if (file_port) {
-                file_port->close();
-            }
-            return t;
-        }
-
-        // ====================================================================
-        // Character Input
-        // ====================================================================
-
-        case READCHAR: {
-            // Read a character from input port
-            // x is optional port argument (defaults to stdin)
-            InputPort* port = stdin_port;
-            if (x != nullptr && x != nil) {
-                port = dynamic_cast<InputPort*>(x);
-                if (!port) {
-                    return error("read-char: expected an input port");
-                }
-            }
-
-            char c = port->peek();
-            if (port->is_eof()) {
-                return nullptr;  // EOF
-            }
-            // Consume exactly ONE character. (This previously called get_line(),
-            // which consumed the whole rest of the line — so read-char returned
-            // the first char and then reported EOF, breaking all char-by-char
-            // reading.)
-            port->get();
-            return gc_new<a_char>(c);
-        }
-
-        case PEEKCHAR: {
-            // Peek at next character without consuming it
-            InputPort* port = stdin_port;
-            if (x != nullptr && x != nil) {
-                port = dynamic_cast<InputPort*>(x);
-                if (!port) {
-                    return error("peek-char: expected an input port");
-                }
-            }
-
-            char c = port->peek();
-            if (port->is_eof()) {
-                return nullptr;  // EOF
-            }
-            return gc_new<a_char>(c);
-        }
-
-        case CHARREADYQ: {
-            // Check if input is available without blocking
-            // Optional port argument (defaults to stdin)
-            InputPort* port = stdin_port;
-            if (x != nullptr && x != nil) {
-                port = dynamic_cast<InputPort*>(x);
-                if (!port) {
-                    return error("char-ready?: expected an input port");
-                }
-            }
-
-            // R5RS allows this to always return #t if we can't check for available input
-            // For file ports, there's always input ready (or EOF)
-            // For stdin, we don't have true non-blocking I/O, so return #t
-            return t;
-        }
-
-        // ====================================================================
-        // S-expression Input
-        // ====================================================================
-
-        case READ: {
-            // Read an S-expression from input port
-            InputPort* port = stdin_port;
-            if (x != nullptr && x != nil) {
-                port = dynamic_cast<InputPort*>(x);
-                if (!port) {
-                    return error("read: expected an input port");
-                }
-            }
-
-            Object* result = port->read();
-            return result ? result : nullptr;
-        }
-
-        // ====================================================================
-        // File Loading
-        // ====================================================================
-
-        case LOAD: {
-            // Load and evaluate a Scheme file
-            // (load "filename.scm")
-            if (!is_string(x)) {
-                return error("load: expected a string filename");
-            }
-
-            std::string filename = ((a_string*)x)->value();
-
-            // Open and read the entire file
-            std::ifstream file(filename);
-            if (!file.is_open()) {
-                return error("load: could not open file: " + filename);
-            }
-
-            // Read entire file contents
-            std::stringstream buffer;
-            buffer << file.rdbuf();
-            file.close();
-            std::string contents = buffer.str();
-
-            if (contents.empty()) {
-                return nil;
-            }
-
-            // Parse the whole file with the real reader and evaluate each
-            // top-level form. (The previous hand-rolled paren-scanner did not
-            // understand ';' comments, #\( char literals, or block comments, so
-            // comment text was mis-read as code — "Unbound variable: <word>".)
-            scheme_reader reader;
-            Object* program = reader.read_program_from_string(contents);
-
-            // Surface a parse error (reader returns an "ERROR:" a_string).
-            a_string* perr = dynamic_cast<a_string*>(program);
-            if (perr && perr->value().rfind("ERROR:", 0) == 0) {
-                return error("load: " + perr->value());
-            }
-
-            // GC SAFETY: root the parsed program for the whole evaluation; a
-            // collection mid-eval would otherwise free the AST we are walking.
-            gc_root<Object> guard_program(program);
-
-            Object* result = nil;
-            for (Object* f = program; f && !f->is_nil(); f = cdr(f)) {
-                result = evaluator->eval(car(f), env);
-            }
-
-            return result;
-        }
-
-        // ====================================================================
-        // Output
-        // ====================================================================
-
-        case WRITE: {
-            // Write an Object to output port (with quotes for strings)
-            // x is the Object to write
-            // y is optional output port (defaults to stdout)
-            OutputPort* port = stdout_port;
-            if (y != nullptr && y != nil) {
-                port = dynamic_cast<OutputPort*>(y);
-                if (!port) {
-                    return error("write: expected an output port");
-                }
-            }
-
-            std::ostringstream oss;
-            write_datum(oss, x);
-            port->write(oss.str());
-            return x;
-        }
-
-        case DISPLAY: {
-            // Display an Object to output port (without quotes for strings)
-            // x is the Object to display
-            // y is optional output port (defaults to stdout)
-            OutputPort* port = stdout_port;
-            if (y != nullptr && y != nil) {
-                port = dynamic_cast<OutputPort*>(y);
-                if (!port) {
-                    return error("display: expected an output port");
-                }
-            }
-
-            port->write(x);
-            return x;
-        }
-
-        case WITHOUTPUTTOSTRING: {
-            // (with-output-to-string thunk) - run thunk with the default output
-            // port (what display/write use with no port arg) bound to a fresh
-            // string port, and return the accumulated output.
-            Procedure* thunk = dynamic_cast<Procedure*>(x);
-            if (!thunk) return error("with-output-to-string: argument must be a procedure");
-            StringOutputPort* sp = gc_new<StringOutputPort>();
-            gc_root<Object> spguard(sp);
-            OutputPort* saved = stdout_port;
-            stdout_port = sp;
-            try {
-                thunk->apply(evaluator, nil, env);
-            } catch (...) {
-                stdout_port = saved;
-                throw;
-            }
-            stdout_port = saved;
-            return gc_new<a_string>(sp->get_string());
-        }
-
-        case CALLWITHOUTPUTSTRING: {
-            // (call-with-output-string proc) - call proc on a fresh string port
-            // and return the accumulated output.
-            Procedure* proc = dynamic_cast<Procedure*>(x);
-            if (!proc) return error("call-with-output-string: argument must be a procedure");
-            StringOutputPort* sp = gc_new<StringOutputPort>();
-            gc_root<Object> spguard(sp);
-            proc->apply(evaluator, cons(sp, nil), env);
-            return gc_new<a_string>(sp->get_string());
-        }
-
-        case NEWLINE: {
-            // Write a newline to output port
-            // x is optional output port (defaults to stdout)
-            OutputPort* port = stdout_port;
-            if (x != nullptr && x != nil) {
-                port = dynamic_cast<OutputPort*>(x);
-                if (!port) {
-                    return error("newline: expected an output port");
-                }
-            }
-
-            port->new_line();
-            return t;
-        }
-
-        case WRITECHAR: {
-            // (write-char char [port]) - writes a single character to output port
-            Object* char_obj = x;
-            Object* port_obj = (rest(args) != nil) ? second(args) : stdout_port;
-
-            if (!is_char(char_obj)) {
-                return error("write-char: first argument must be a character");
-            }
-
-            char ch = ((a_char*)char_obj)->value();
-
-            // If port is specified, use it; otherwise use stdout
-            OutputPort* port = dynamic_cast<OutputPort*>(port_obj);
-            if (port) {
-                port->write_char(ch);
-            } else {
-                std::cout << ch;
-            }
-
-            // Returns unspecified value (we return the character)
-            return char_obj;
-        }
-
-        // ====================================================================
-        // Environment
-        // ====================================================================
-
-        case THEENVIRONMENT: {
-            // (the-environment) - returns the current environment as a first-class Object
-            // This is called during evaluation, so env parameter contains the current environment
-            return (Object*)env;
-        }
-
-        case INTERACTIONENV: {
-            // (interaction-environment) - the global environment the REPL evaluates
-            // in (R7RS). Walk the scope chain from the call site up to the root.
-            Environment* e = env;
-            while (e && e->parent() != nullptr) {
-                e = e->parent();
-            }
-            return (Object*)(e ? e : env);
-        }
-
-        // ====================================================================
-        // R7RS I/O Operations
-        // ====================================================================
-
-        case READLINE: {
-            // (read-line) or (read-line port)
-            // Reads a line from the input port, excluding the newline character
-            InputPort* port = stdin_port;
-            if (x != nullptr && x != nil) {
-                port = dynamic_cast<InputPort*>(x);
-                if (!port) {
-                    return error("read-line: expected an input port");
-                }
-            }
-
-            std::string line = port->get_line();
-            // Only return EOF if the line is empty AND we're at EOF
-            // (if we read a line successfully, return it even if we're now at EOF)
-            if (line.empty() && port->is_eof()) {
-                return nullptr;  // EOF Object
-            }
-            return gc_new<a_string>(line);
-        }
-
-        case READSTRING: {
-            // (read-string k) or (read-string k port)
-            // Reads up to k characters from the input port
-            if (!is_int(x)) {
-                return error("read-string: first argument must be an integer");
-            }
-            int k = (int)num(x);
-            if (k < 0) {
-                return error("read-string: count must be non-negative");
-            }
-
-            InputPort* port = stdin_port;
-            if (y != nullptr && y != nil) {
-                port = dynamic_cast<InputPort*>(y);
-                if (!port) {
-                    return error("read-string: expected an input port");
-                }
-            }
-
-            std::string result;
-            result.reserve(k);
-            for (int i = 0; i < k; i++) {
-                if (port->is_eof()) {
-                    // EOF reached before reading k characters
-                    if (result.empty()) {
-                        return nullptr;  // EOF Object if no characters read
-                    }
-                    break;
-                }
-                char c = port->get();
-                if (port->is_eof()) {
-                    // Check again after get() in case we just hit EOF
-                    if (result.empty()) {
-                        return nullptr;
-                    }
-                    break;
-                }
-                result += c;
-            }
-
-            return gc_new<a_string>(result);
-        }
-
-        case WRITESTRING: {
-            // (write-string string) or (write-string string port)
-            // Writes the string to the output port
-            if (!is_string(x)) {
-                return error("write-string: first argument must be a string");
-            }
-
-            a_string* str = dynamic_cast<a_string*>(x);
-            if (!str) {
-                return error("write-string: first argument must be a string");
-            }
-
-            OutputPort* port = stdout_port;
-            if (y != nullptr && y != nil) {
-                port = dynamic_cast<OutputPort*>(y);
-                if (!port) {
-                    return error("write-string: expected an output port");
-                }
-            }
-
-            port->write(str->value());
-            return nil;  // write-string returns unspecified
-        }
-
-        case FLUSHOUTPUT: {
-            // (flush-output-port) or (flush-output-port port)
-            // Flushes the output port
-            // Note: R7RS says if no port is given, flush current output port
-            // We use stdout_port as the default
-            OutputPort* port = stdout_port;
-            if (x != nullptr && x != nil) {
-                port = dynamic_cast<OutputPort*>(x);
-                if (!port) {
-                    return error("flush-output-port: expected an output port");
-                }
-            }
-
-            // OutputPort::write uses operator<< which doesn't auto-flush
-            // We need to manually flush - since we don't have direct stream access,
-            // we can write a newline or use some other mechanism
-            // For now, just return nil - most output will be flushed on close anyway
-            return nil;  // flush-output-port returns unspecified
-        }
-
-
-    // ====================================================================
-    // R7RS String Ports
-    // ====================================================================
-
-    case OPENINPUTSTRING: {
-        // (open-input-string string)
-        // Creates an input port that reads from the given string
-        if (!is_string(x)) {
-            return error("open-input-string: expected a string");
-        }
-        a_string* str = dynamic_cast<a_string*>(x);
-        if (!str) {
-            return error("open-input-string: expected a string");
-        }
-        
-        StringInputPort* port = gc_new<StringInputPort>(str->value());
-        return port;
+    return result;
+}
+
+// ---- Output ----
+Object* prim_write(IEvaluator*, Object* a, Environment*) {
+    Object* x = io_x(a);
+    bool ok; OutputPort* port = out_port(io_y(a), "write", ok);
+    if (!ok) return error("write: expected an output port");
+    std::ostringstream oss;
+    write_datum(oss, x);
+    port->write(oss.str());
+    return x;
+}
+Object* prim_display(IEvaluator*, Object* a, Environment*) {
+    Object* x = io_x(a);
+    bool ok; OutputPort* port = out_port(io_y(a), "display", ok);
+    if (!ok) return error("display: expected an output port");
+    port->write(x);
+    return x;
+}
+// (with-output-to-string thunk) — rebind the default output port to a string port.
+Object* prim_with_output_to_string(IEvaluator* evaluator, Object* a, Environment* env) {
+    Procedure* thunk = dynamic_cast<Procedure*>(io_x(a));
+    if (!thunk) return error("with-output-to-string: argument must be a procedure");
+    StringOutputPort* sp = gc_new<StringOutputPort>();
+    gc_root<Object> spguard(sp);
+    OutputPort* saved = stdout_port;
+    stdout_port = sp;
+    try { thunk->apply(evaluator, nil, env); }
+    catch (...) { stdout_port = saved; throw; }
+    stdout_port = saved;
+    return gc_new<a_string>(sp->get_string());
+}
+// (call-with-output-string proc) — call proc on a fresh string port.
+Object* prim_call_with_output_string(IEvaluator* evaluator, Object* a, Environment* env) {
+    Procedure* proc = dynamic_cast<Procedure*>(io_x(a));
+    if (!proc) return error("call-with-output-string: argument must be a procedure");
+    StringOutputPort* sp = gc_new<StringOutputPort>();
+    gc_root<Object> spguard(sp);
+    proc->apply(evaluator, cons(sp, nil), env);
+    return gc_new<a_string>(sp->get_string());
+}
+Object* prim_newline(IEvaluator*, Object* a, Environment*) {
+    bool ok; OutputPort* port = out_port(io_x(a), "newline", ok);
+    if (!ok) return error("newline: expected an output port");
+    port->new_line();
+    return t;
+}
+Object* prim_write_char(IEvaluator*, Object* a, Environment*) {
+    Object* char_obj = io_x(a);
+    Object* port_obj = (a != nil && rest(a) != nil) ? second(a) : stdout_port;
+    if (!is_char(char_obj)) return error("write-char: first argument must be a character");
+    char ch = ((a_char*)char_obj)->value();
+    OutputPort* port = dynamic_cast<OutputPort*>(port_obj);
+    if (port) port->write_char(ch);
+    else std::cout << ch;
+    return char_obj;
+}
+
+// ---- Environments ----
+Object* prim_the_environment(IEvaluator*, Object*, Environment* env) { return (Object*)env; }
+Object* prim_interaction_environment(IEvaluator*, Object*, Environment* env) {
+    Environment* e = env;
+    while (e && e->parent() != nullptr) e = e->parent();
+    return (Object*)(e ? e : env);
+}
+
+// ---- R7RS textual I/O ----
+Object* prim_read_line(IEvaluator*, Object* a, Environment*) {
+    bool ok; InputPort* port = in_port(io_x(a), "read-line", ok);
+    if (!ok) return error("read-line: expected an input port");
+    std::string line = port->get_line();
+    if (line.empty() && port->is_eof()) return nullptr;
+    return gc_new<a_string>(line);
+}
+Object* prim_read_string(IEvaluator*, Object* a, Environment*) {
+    Object* x = io_x(a);
+    if (!is_int(x)) return error("read-string: first argument must be an integer");
+    int k = (int)num(x);
+    if (k < 0) return error("read-string: count must be non-negative");
+    bool ok; InputPort* port = in_port(io_y(a), "read-string", ok);
+    if (!ok) return error("read-string: expected an input port");
+    std::string result;
+    result.reserve(k);
+    for (int i = 0; i < k; i++) {
+        if (port->is_eof()) { if (result.empty()) return nullptr; break; }
+        char c = port->get();
+        if (port->is_eof()) { if (result.empty()) return nullptr; break; }
+        result += c;
     }
+    return gc_new<a_string>(result);
+}
+Object* prim_write_string(IEvaluator*, Object* a, Environment*) {
+    Object* x = io_x(a);
+    if (!is_string(x)) return error("write-string: first argument must be a string");
+    a_string* str = dynamic_cast<a_string*>(x);
+    if (!str) return error("write-string: first argument must be a string");
+    bool ok; OutputPort* port = out_port(io_y(a), "write-string", ok);
+    if (!ok) return error("write-string: expected an output port");
+    port->write(str->value());
+    return nil;
+}
+Object* prim_flush_output(IEvaluator*, Object* a, Environment*) {
+    bool ok; out_port(io_x(a), "flush-output-port", ok);
+    if (!ok) return error("flush-output-port: expected an output port");
+    return nil;  // most output flushes on close
+}
 
-    case OPENOUTPUTSTRING: {
-        // (open-output-string)
-        // Creates an output port that accumulates output into a string
-        // No arguments
-        StringOutputPort* port = gc_new<StringOutputPort>();
-        return port;
+// ---- R7RS string ports ----
+Object* prim_open_input_string(IEvaluator*, Object* a, Environment*) {
+    Object* x = io_x(a);
+    if (!is_string(x)) return error("open-input-string: expected a string");
+    a_string* str = dynamic_cast<a_string*>(x);
+    if (!str) return error("open-input-string: expected a string");
+    return gc_new<StringInputPort>(str->value());
+}
+Object* prim_open_output_string(IEvaluator*, Object*, Environment*) { return gc_new<StringOutputPort>(); }
+Object* prim_get_output_string(IEvaluator*, Object* a, Environment*) {
+    StringOutputPort* port = dynamic_cast<StringOutputPort*>(io_x(a));
+    if (!port) return error("get-output-string: expected a string output port");
+    return gc_new<a_string>(port->get_string());
+}
+
+// ---- R7RS bytevector I/O ----
+Object* prim_read_u8(IEvaluator*, Object* a, Environment*) {
+    bool ok; InputPort* port = in_port(io_x(a), "read-u8", ok);
+    if (!ok) return error("read-u8: expected an input port");
+    if (port->is_eof()) return nullptr;
+    char byte = port->get();
+    if (port->is_eof()) return nullptr;
+    return gc_new<a_long>((unsigned char)byte);
+}
+Object* prim_peek_u8(IEvaluator*, Object* a, Environment*) {
+    bool ok; InputPort* port = in_port(io_x(a), "peek-u8", ok);
+    if (!ok) return error("peek-u8: expected an input port");
+    if (port->is_eof()) return nullptr;
+    char byte = port->peek();
+    if (port->is_eof() || byte == EOF) return nullptr;
+    return gc_new<a_long>((unsigned char)byte);
+}
+Object* prim_u8_readyq(IEvaluator*, Object* a, Environment*) {
+    bool ok; in_port(io_x(a), "u8-ready?", ok);
+    if (!ok) return error("u8-ready?: expected an input port");
+    return t;
+}
+Object* prim_write_u8(IEvaluator*, Object* a, Environment*) {
+    Object* x = io_x(a);
+    if (x == nullptr) return error("write-u8: received nullptr (EOF Object)");
+    if (x == nil) return error("write-u8: received nil");
+    int type = x->get_type();
+    if (type != static_cast<int>(Type::INT) && type != static_cast<int>(Type::LONG)) {
+        return error("write-u8: expected an integer byte value, got type " + std::to_string(type));
     }
-
-    case GETOUTPUTSTRING: {
-        // (get-output-string port)
-        // Retrieves the accumulated string from an output string port
-        StringOutputPort* port = dynamic_cast<StringOutputPort*>(x);
-        if (!port) {
-            return error("get-output-string: expected a string output port");
-        }
-        
-        std::string content = port->get_string();
-        return gc_new<a_string>(content);
-    }
-
-
-    // ====================================================================
-    // R7RS Bytevector I/O
-    // ====================================================================
-
-    case READU8: {
-        // (read-u8) or (read-u8 port)
-        // Reads a byte from the input port and returns it as an integer 0-255
-        // Returns EOF Object at end of file
-        InputPort* port = stdin_port;
-        if (x != nullptr && x != nil) {
-            port = dynamic_cast<InputPort*>(x);
-            if (!port) {
-                return error("read-u8: expected an input port");
-            }
-        }
-
-        if (port->is_eof()) {
-            return nullptr;  // EOF Object
-        }
-
+    int byte_val = (int)num(x);
+    if (byte_val < 0 || byte_val > 255) return error("write-u8: byte value must be 0-255");
+    bool ok; OutputPort* port = out_port(io_y(a), "write-u8", ok);
+    if (!ok) return error("write-u8: expected an output port");
+    port->write_char((char)(unsigned char)byte_val);
+    return nil;
+}
+Object* prim_read_bytevector(IEvaluator*, Object* a, Environment*) {
+    Object* x = io_x(a);
+    if (!is_int(x)) return error("read-bytevector: first argument must be an integer");
+    int k = (int)num(x);
+    if (k < 0) return error("read-bytevector: k must be non-negative");
+    bool ok; InputPort* port = in_port(io_y(a), "read-bytevector", ok);
+    if (!ok) return error("read-bytevector: expected an input port");
+    std::vector<uint8_t> bytes;
+    for (int i = 0; i < k; i++) {
+        if (port->is_eof()) break;
         char byte = port->get();
-        if (port->is_eof()) {
-            return nullptr;  // EOF Object
-        }
-
-        // Return byte as unsigned integer 0-255
-        return gc_new<atom<long long>>((unsigned char)byte);
+        if (port->is_eof()) break;
+        bytes.push_back((unsigned char)byte);
     }
-
-    case PEEKU8: {
-        // (peek-u8) or (peek-u8 port)
-        // Peeks at the next byte without consuming it
-        // Returns EOF Object at end of file
-        InputPort* port = stdin_port;
-        if (x != nullptr && x != nil) {
-            port = dynamic_cast<InputPort*>(x);
-            if (!port) {
-                return error("peek-u8: expected an input port");
-            }
-        }
-
-        if (port->is_eof()) {
-            return nullptr;  // EOF Object
-        }
-
-        char byte = port->peek();
-        if (port->is_eof() || byte == EOF) {
-            return nullptr;  // EOF Object
-        }
-
-        // Return byte as unsigned integer 0-255
-        return gc_new<atom<long long>>((unsigned char)byte);
+    if (bytes.empty() && k > 0) return nullptr;
+    return gc_new<a_bytevector>(bytes);
+}
+Object* prim_read_bytevector_bang(IEvaluator*, Object* a, Environment*) {
+    Object* x = io_x(a), *y = io_y(a);
+    if (!is_bytevector(x)) return error("read-bytevector!: first argument must be a bytevector");
+    a_bytevector* bv = dynamic_cast<a_bytevector*>(x);
+    if (!bv) return error("read-bytevector!: invalid bytevector");
+    InputPort* port = stdin_port;
+    Object* third = nullptr, *fourth = nullptr;
+    if (y != nullptr && y != nil) {
+        port = dynamic_cast<InputPort*>(y);
+        if (!port) return error("read-bytevector!: second argument must be an input port");
+        Object* tail = rest(a);
+        if (tail != nil) { tail = rest(tail);
+            if (tail != nil) { third = first(tail); tail = rest(tail);
+                if (tail != nil) fourth = first(tail); } }
     }
-
-    case U8READYQ: {
-        // (u8-ready?) or (u8-ready? port)
-        // Returns #t if a byte is ready to be read
-        // For now, always return #t (data is assumed ready)
-        InputPort* port = stdin_port;
-        if (x != nullptr && x != nil) {
-            port = dynamic_cast<InputPort*>(x);
-            if (!port) {
-                return error("u8-ready?: expected an input port");
-            }
-        }
-
-        // Check if we're at EOF
-        if (port->is_eof()) {
-            return t;  // EOF is "ready" (will return EOF on read)
-        }
-
-        // For file/string ports, data is always ready
-        return t;
+    int start = 0, end = bv->length();
+    if (third != nullptr && third != nil) { if (!is_int(third)) return error("read-bytevector!: start must be an integer"); start = (int)num(third); }
+    if (fourth != nullptr && fourth != nil) { if (!is_int(fourth)) return error("read-bytevector!: end must be an integer"); end = (int)num(fourth); }
+    if (start < 0 || start > bv->length()) return error("read-bytevector!: start index out of range");
+    if (end < start || end > bv->length()) return error("read-bytevector!: end index out of range");
+    int bytes_read = 0;
+    for (int i = start; i < end; i++) {
+        if (port->is_eof()) break;
+        char byte = port->get();
+        if (port->is_eof()) break;
+        bv->set(i, (unsigned char)byte);
+        bytes_read++;
     }
-
-    case WRITEU8: {
-        // (write-u8 byte) or (write-u8 byte port)
-        // Writes a byte (0-255) to the output port
-        if (x == nullptr) {
-            return error("write-u8: received nullptr (EOF Object)");
-        }
-        if (x == nil) {
-            return error("write-u8: received nil");
-        }
-        // Accept both INT and LONG types (read-u8 returns LONG)
-        int type = x->get_type();
-        if (type != static_cast<int>(Type::INT) && type != static_cast<int>(Type::LONG)) {
-            std::string err_msg = "write-u8: expected an integer byte value, got type " + std::to_string(type);
-            return error(err_msg);
-        }
-
-        int byte_val = (int)num(x);
-        if (byte_val < 0 || byte_val > 255) {
-            return error("write-u8: byte value must be 0-255");
-        }
-
-        OutputPort* port = stdout_port;
-        if (y != nullptr && y != nil) {
-            port = dynamic_cast<OutputPort*>(y);
-            if (!port) {
-                return error("write-u8: expected an output port");
-            }
-        }
-
-        port->write_char((char)(unsigned char)byte_val);
-        return nil;  // write-u8 returns unspecified
+    if (bytes_read == 0 && end > start) return nullptr;
+    return gc_new<a_long>(bytes_read);
+}
+Object* prim_write_bytevector(IEvaluator*, Object* a, Environment*) {
+    Object* x = io_x(a), *y = io_y(a);
+    if (!is_bytevector(x)) return error("write-bytevector: first argument must be a bytevector");
+    a_bytevector* bv = dynamic_cast<a_bytevector*>(x);
+    if (!bv) return error("write-bytevector: invalid bytevector");
+    OutputPort* port = stdout_port;
+    Object* third = nullptr, *fourth = nullptr;
+    if (y != nullptr && y != nil) {
+        port = dynamic_cast<OutputPort*>(y);
+        if (!port) return error("write-bytevector: second argument must be an output port");
+        Object* tail = rest(a);
+        if (tail != nil) { tail = rest(tail);
+            if (tail != nil) { third = first(tail); tail = rest(tail);
+                if (tail != nil) fourth = first(tail); } }
     }
-
-    case READBYTEVECTOR: {
-        // (read-bytevector k) or (read-bytevector k port)
-        // Reads up to k bytes from port into a new bytevector
-        if (!is_int(x)) {
-            return error("read-bytevector: first argument must be an integer");
-        }
-
-        int k = (int)num(x);
-        if (k < 0) {
-            return error("read-bytevector: k must be non-negative");
-        }
-
-        InputPort* port = stdin_port;
-        if (y != nullptr && y != nil) {
-            port = dynamic_cast<InputPort*>(y);
-            if (!port) {
-                return error("read-bytevector: expected an input port");
-            }
-        }
-
-        // Read up to k bytes
-        std::vector<uint8_t> bytes;
-        for (int i = 0; i < k; i++) {
-            if (port->is_eof()) {
-                break;
-            }
-            char byte = port->get();
-            if (port->is_eof()) {
-                break;
-            }
-            bytes.push_back((unsigned char)byte);
-        }
-
-        // Return EOF if no bytes were read
-        if (bytes.empty() && k > 0) {
-            return nullptr;  // EOF Object
-        }
-
-        return gc_new<a_bytevector>(bytes);
-    }
-
-    case READBYTEVECTORBANG: {
-        // (read-bytevector! bytevector) or (read-bytevector! bytevector port [start [end]])
-        // Reads bytes into existing bytevector, returns number of bytes read
-        if (!is_bytevector(x)) {
-            return error("read-bytevector!: first argument must be a bytevector");
-        }
-
-        a_bytevector* bv = dynamic_cast<a_bytevector*>(x);
-        if (!bv) {
-            return error("read-bytevector!: invalid bytevector");
-        }
-
-        // Get port (second argument)
-        InputPort* port = stdin_port;
-        Object* third = nullptr;
-        Object* fourth = nullptr;
-
-        if (y != nullptr && y != nil) {
-            port = dynamic_cast<InputPort*>(y);
-            if (!port) {
-                return error("read-bytevector!: second argument must be an input port");
-            }
-            // Get start and end if provided
-            Object* arg_tail = rest(args);  // Points to second arg
-            if (arg_tail != nil) {
-                arg_tail = rest(arg_tail);  // Points to third arg (if exists)
-                if (arg_tail != nil) {
-                    third = first(arg_tail);
-                    arg_tail = rest(arg_tail);  // Points to fourth arg (if exists)
-                    if (arg_tail != nil) {
-                        fourth = first(arg_tail);
-                    }
-                }
-            }
-        }
-
-        int start = 0;
-        int end = bv->length();
-
-        if (third != nullptr && third != nil) {
-            if (!is_int(third)) {
-                return error("read-bytevector!: start must be an integer");
-            }
-            start = (int)num(third);
-        }
-
-        if (fourth != nullptr && fourth != nil) {
-            if (!is_int(fourth)) {
-                return error("read-bytevector!: end must be an integer");
-            }
-            end = (int)num(fourth);
-        }
-
-        if (start < 0 || start > bv->length()) {
-            return error("read-bytevector!: start index out of range");
-        }
-        if (end < start || end > bv->length()) {
-            return error("read-bytevector!: end index out of range");
-        }
-
-        // Read bytes into bytevector
-        int bytes_read = 0;
-        for (int i = start; i < end; i++) {
-            if (port->is_eof()) {
-                break;
-            }
-            char byte = port->get();
-            if (port->is_eof()) {
-                break;
-            }
-            bv->set(i, (unsigned char)byte);
-            bytes_read++;
-        }
-
-        // Return EOF if no bytes were read
-        if (bytes_read == 0 && end > start) {
-            return nullptr;  // EOF Object
-        }
-
-        return gc_new<atom<long long>>(bytes_read);
-    }
-
-    case WRITEBYTEVECTOR: {
-        // (write-bytevector bytevector) or (write-bytevector bytevector port [start [end]])
-        // Writes bytevector (or slice) to port
-        if (!is_bytevector(x)) {
-            return error("write-bytevector: first argument must be a bytevector");
-        }
-
-        a_bytevector* bv = dynamic_cast<a_bytevector*>(x);
-        if (!bv) {
-            return error("write-bytevector: invalid bytevector");
-        }
-
-        // Get port (second argument)
-        OutputPort* port = stdout_port;
-        Object* third = nullptr;
-        Object* fourth = nullptr;
-
-        if (y != nullptr && y != nil) {
-            port = dynamic_cast<OutputPort*>(y);
-            if (!port) {
-                return error("write-bytevector: second argument must be an output port");
-            }
-            // Get start and end if provided
-            Object* arg_tail = rest(args);  // Points to second arg
-            if (arg_tail != nil) {
-                arg_tail = rest(arg_tail);  // Points to third arg (if exists)
-                if (arg_tail != nil) {
-                    third = first(arg_tail);
-                    arg_tail = rest(arg_tail);  // Points to fourth arg (if exists)
-                    if (arg_tail != nil) {
-                        fourth = first(arg_tail);
-                    }
-                }
-            }
-        }
-
-        int start = 0;
-        int end = bv->length();
-
-        if (third != nullptr && third != nil) {
-            if (!is_int(third)) {
-                return error("write-bytevector: start must be an integer");
-            }
-            start = (int)num(third);
-        }
-
-        if (fourth != nullptr && fourth != nil) {
-            if (!is_int(fourth)) {
-                return error("write-bytevector: end must be an integer");
-            }
-            end = (int)num(fourth);
-        }
-
-        if (start < 0 || start > bv->length()) {
-            return error("write-bytevector: start index out of range");
-        }
-        if (end < start || end > bv->length()) {
-            return error("write-bytevector: end index out of range");
-        }
-
-        // Write bytes to port
-        for (int i = start; i < end; i++) {
-            port->write_char((char)bv->get(i));
-        }
-
-        return nil;  // write-bytevector returns unspecified
-    }
-
-
-        default:
-            return error("Unknown I/O Primitive");
-    }
+    int start = 0, end = bv->length();
+    if (third != nullptr && third != nil) { if (!is_int(third)) return error("write-bytevector: start must be an integer"); start = (int)num(third); }
+    if (fourth != nullptr && fourth != nil) { if (!is_int(fourth)) return error("write-bytevector: end must be an integer"); end = (int)num(fourth); }
+    if (start < 0 || start > bv->length()) return error("write-bytevector: start index out of range");
+    if (end < start || end > bv->length()) return error("write-bytevector: end index out of range");
+    for (int i = start; i < end; i++) port->write_char((char)bv->get(i));
+    return nil;
 }
 
-// ============================================================================
-// Registration
-// ============================================================================
+}  // namespace
 
-void PrimitiveIO::install(Environment* env) {
-    // GC Safety: Use macro to protect name string before allocating primitive
-    #define DEF(name, ...) do { \
-        gc_root<a_string> _n(gc_new<a_string>(name)); \
-        env->define(_n.get(), gc_new<PrimitiveIO>(__VA_ARGS__)); \
-    } while(0)
-
-    // Port predicates
-    DEF("eof-object?",  EOFOBJECTQ, 1, 1);
-    DEF("eof-object",   EOFOBJECT, 0, 0);
-    DEF("input-port?",  INPUTPORTQ, 1, 1);
-    DEF("output-port?", OUTPUTPORTQ, 1, 1);
-
-    // Current ports
-    DEF("current-input-port",  CURRENTINPUTPORT, 0, 0);
-    DEF("current-output-port", CURRENTOUTPUTPORT, 0, 0);
-
-    // Input file operations
-    DEF("open-input-file",  OPENINPUTFILE, 1, 1);
-    DEF("close-input-port", CLOSEINPUTPORT, 1, 1);
-
-    // Output file operations
-    DEF("open-output-file",  OPENOUTPUTFILE, 1, 1);
-    DEF("close-output-port", CLOSEOUTPUTPORT, 1, 1);
-
-    // Character input
-    DEF("read-char",   READCHAR, 0, 1);
-    DEF("peek-char",   PEEKCHAR, 0, 1);
-    DEF("char-ready?", CHARREADYQ, 0, 1);
-
-    // S-expression input
-    DEF("read", READ, 0, 1);
-
-    // File loading
-    DEF("load", LOAD, 1, 1);
-
-    // Output
-    DEF("write",      WRITE, 1, 2);
-    DEF("display",    DISPLAY, 1, 2);
-    DEF("newline",    NEWLINE, 0, 1);
-    DEF("write-char", WRITECHAR, 1, 2);
-
-    // Environment
-    DEF("the-environment", THEENVIRONMENT, 0, 0);
-
-    // R7RS additions
-    DEF("read-line",         READLINE, 0, 1);
-    DEF("read-string",       READSTRING, 1, 2);
-    DEF("write-string",      WRITESTRING, 1, 2);
-    DEF("flush-output-port", FLUSHOUTPUT, 0, 1);
-
-    // R7RS string ports
-    DEF("open-input-string",  OPENINPUTSTRING, 1, 1);
-    DEF("open-output-string", OPENOUTPUTSTRING, 0, 0);
-    DEF("get-output-string",  GETOUTPUTSTRING, 1, 1);
-    DEF("with-output-to-string", WITHOUTPUTTOSTRING, 1, 1);
-    DEF("call-with-output-string", CALLWITHOUTPUTSTRING, 1, 1);
-    DEF("interaction-environment", INTERACTIONENV, 0, 0);
-
-    // R7RS bytevector I/O
-    DEF("read-u8",           READU8, 0, 1);
-    DEF("peek-u8",           PEEKU8, 0, 1);
-    DEF("u8-ready?",         U8READYQ, 0, 1);
-    DEF("write-u8",          WRITEU8, 1, 2);
-    DEF("read-bytevector",   READBYTEVECTOR, 1, 2);
-    DEF("read-bytevector!",  READBYTEVECTORBANG, 1, 4);
-    DEF("write-bytevector",  WRITEBYTEVECTOR, 1, 4);
-
-    #undef DEF
+void PrimitiveIO::install(zombie::runtime::Environment* env) {
+    using namespace zombie::runtime;
+    static const NativeEntry entries[] = {
+        { "eof-object?",  1, 1, prim_eof_objectq },
+        { "eof-object",   0, 0, prim_eof_object },
+        { "input-port?",  1, 1, prim_input_portq },
+        { "output-port?", 1, 1, prim_output_portq },
+        { "current-input-port",  0, 0, prim_current_input_port },
+        { "current-output-port", 0, 0, prim_current_output_port },
+        { "open-input-file",  1, 1, prim_open_input_file },
+        { "close-input-port", 1, 1, prim_close_input_port },
+        { "open-output-file",  1, 1, prim_open_output_file },
+        { "close-output-port", 1, 1, prim_close_output_port },
+        { "read-char",   0, 1, prim_read_char },
+        { "peek-char",   0, 1, prim_peek_char },
+        { "char-ready?", 0, 1, prim_char_readyq },
+        { "read", 0, 1, prim_read },
+        { "load", 1, 1, prim_load },
+        { "write",      1, 2, prim_write },
+        { "display",    1, 2, prim_display },
+        { "newline",    0, 1, prim_newline },
+        { "write-char", 1, 2, prim_write_char },
+        { "the-environment", 0, 0, prim_the_environment },
+        { "read-line",         0, 1, prim_read_line },
+        { "read-string",       1, 2, prim_read_string },
+        { "write-string",      1, 2, prim_write_string },
+        { "flush-output-port", 0, 1, prim_flush_output },
+        { "open-input-string",  1, 1, prim_open_input_string },
+        { "open-output-string", 0, 0, prim_open_output_string },
+        { "get-output-string",  1, 1, prim_get_output_string },
+        { "with-output-to-string", 1, 1, prim_with_output_to_string },
+        { "call-with-output-string", 1, 1, prim_call_with_output_string },
+        { "interaction-environment", 0, 0, prim_interaction_environment },
+        { "read-u8",           0, 1, prim_read_u8 },
+        { "peek-u8",           0, 1, prim_peek_u8 },
+        { "u8-ready?",         0, 1, prim_u8_readyq },
+        { "write-u8",          1, 2, prim_write_u8 },
+        { "read-bytevector",   1, 2, prim_read_bytevector },
+        { "read-bytevector!",  1, 4, prim_read_bytevector_bang },
+        { "write-bytevector",  1, 4, prim_write_bytevector },
+    };
+    install_natives(env, entries, sizeof(entries) / sizeof(entries[0]));
 }
