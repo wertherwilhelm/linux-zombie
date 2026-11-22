@@ -358,9 +358,8 @@ void* scheme_engine::eval_string(std::string_view source) {
     }
 
     // Check for parse error
-    a_string* err = dynamic_cast<a_string*>(expr_list);
-    if (err && err->value().find("ERROR:") == 0) {
-        last_error_ = err->value();
+    if (is_read_exception(expr_list)) {
+        last_error_ = static_cast<a_exception*>(expr_list)->message();
         return nullptr;
     }
 
@@ -467,9 +466,8 @@ Object* scheme_engine::read_string(const std::string& source) {
     }
 
     // Check for parse error
-    a_string* err = dynamic_cast<a_string*>(expr);
-    if (err && err->value().find("ERROR:") == 0) {
-        last_error_ = err->value();
+    if (is_read_exception(expr)) {
+        last_error_ = static_cast<a_exception*>(expr)->message();
         return nullptr;
     }
 
@@ -487,9 +485,8 @@ Object* scheme_engine::read_program(const std::string& source) {
     }
 
     // Check for parse error
-    a_string* err = dynamic_cast<a_string*>(program);
-    if (err && err->value().find("ERROR:") == 0) {
-        last_error_ = err->value();
+    if (is_read_exception(program)) {
+        last_error_ = static_cast<a_exception*>(program)->message();
         return nullptr;
     }
 
