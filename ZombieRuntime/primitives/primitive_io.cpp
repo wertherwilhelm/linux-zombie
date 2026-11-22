@@ -14,6 +14,7 @@
 #include "../i_evaluator.h"
 #include "../numeric_runtime.h"
 #include "../a_bytevector.h"
+#include "../a_exception.h"
 #include "../../GarbageCollector/gc_ptr.h"
 #include "../a_vector.h"
 #include "../procedure.h"
@@ -211,8 +212,7 @@ Object* prim_load(IEvaluator* evaluator, Object* a, Environment* env) {
     // Real reader: understands comments, char literals, block comments.
     scheme_reader reader;
     Object* program = reader.read_program_from_string(contents);
-    a_string* perr = dynamic_cast<a_string*>(program);
-    if (perr && perr->value().rfind("ERROR:", 0) == 0) return error("load: " + perr->value());
+    if (is_read_exception(program)) return error("load: " + static_cast<a_exception*>(program)->message());
     gc_root<Object> guard_program(program);  // keep AST alive across eval
     Object* result = nil;
     for (Object* f = program; f && !f->is_nil(); f = cdr(f)) {

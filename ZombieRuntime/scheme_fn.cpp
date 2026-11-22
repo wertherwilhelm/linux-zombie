@@ -6,6 +6,7 @@
 #include "Environment.h"
 #include "Base.h"
 #include "Lisp.h"
+#include "a_exception.h"
 
 // Use the embedding API's engine management
 namespace embedding {
@@ -65,10 +66,9 @@ Object* scheme_fn::call(Object* args, Environment* env) {
     try {
         Object* result = proc->apply(engine->get_evaluator(), args, eval_env);
 
-        // Check if result is an error
-        a_string* err = dynamic_cast<a_string*>(result);
-        if (err && err->value().find("ERROR:") == 0) {
-            m_last_error = err->value();
+        // Surface a read-error object as the last error.
+        if (is_read_exception(result)) {
+            m_last_error = static_cast<a_exception*>(result)->message();
         }
 
         return result;

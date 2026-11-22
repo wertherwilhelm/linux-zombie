@@ -9,6 +9,7 @@
 #include "a_complex.h"
 #include "a_vector.h"
 #include "a_bytevector.h"
+#include "a_exception.h"
 #include "gc_manager.h"
 #include "gc_ptr.h"
 #include <cctype>
@@ -66,8 +67,7 @@ Object* scheme_reader::read_program_from_string(const std::string& source) {
         }
 
         // Check if it's an error (starts with "ERROR:")
-        a_string* err = dynamic_cast<a_string*>(expr);
-        if (err && err->value().find("ERROR:") == 0) {
+        if (is_read_exception(expr)) {
             return expr;  // Propagate error
         }
 
@@ -204,8 +204,7 @@ Object* scheme_reader::read_list() {
             gc_root<Object> cdr_guard(cdr_expr);  // protect across any trailing allocation
 
             // Check for error (starts with "ERROR:")
-            a_string* err = dynamic_cast<a_string*>(cdr_expr);
-            if (err && err->value().find("ERROR:") == 0) {
+            if (is_read_exception(cdr_expr)) {
                 return cdr_expr;
             }
 
@@ -225,8 +224,7 @@ Object* scheme_reader::read_list() {
         }
 
         // Check for error (starts with "ERROR:")
-        a_string* err = dynamic_cast<a_string*>(expr);
-        if (err && err->value().find("ERROR:") == 0) {
+        if (is_read_exception(expr)) {
             return expr;
         }
 
@@ -253,8 +251,7 @@ Object* scheme_reader::read_quoted() {
     }
 
     // Check for error (starts with "ERROR:")
-    a_string* err = dynamic_cast<a_string*>(expr);
-    if (err && err->value().find("ERROR:") == 0) {
+    if (is_read_exception(expr)) {
         return expr;
     }
 
@@ -274,8 +271,7 @@ Object* scheme_reader::read_quasiquote() {
     }
 
     // Check for error
-    a_string* err = dynamic_cast<a_string*>(expr);
-    if (err && err->value().find("ERROR:") == 0) {
+    if (is_read_exception(expr)) {
         return expr;
     }
 
@@ -299,8 +295,7 @@ Object* scheme_reader::read_unquote() {
         }
 
         // Check for error
-        a_string* err = dynamic_cast<a_string*>(expr);
-        if (err && err->value().find("ERROR:") == 0) {
+        if (is_read_exception(expr)) {
             return expr;
         }
 
@@ -318,8 +313,7 @@ Object* scheme_reader::read_unquote() {
     }
 
     // Check for error
-    a_string* err = dynamic_cast<a_string*>(expr);
-    if (err && err->value().find("ERROR:") == 0) {
+    if (is_read_exception(expr)) {
         return expr;
     }
 
@@ -605,9 +599,7 @@ Object* scheme_reader::read_char() {
     if (next == '(') {
         Object* lst = read_list();  // consumes '(' ... ')', returns a cons list
         // Propagate a nested parse error.
-        if (a_string* e = dynamic_cast<a_string*>(lst)) {
-            if (e->value().rfind("ERROR:", 0) == 0) return lst;
-        }
+        if (is_read_exception(lst)) return lst;
         // Root the list while we copy its elements into the vector (gc_new below
         // allocates and may collect; elements stay reachable via lst).
         gc_root<Object> guard(lst);
@@ -629,9 +621,7 @@ Object* scheme_reader::read_char() {
             return make_error("read: expected '(' after '#u8' (bytevector literal)");
         }
         Object* lst = read_list();  // consumes '(' ... ')', returns a cons list
-        if (a_string* e = dynamic_cast<a_string*>(lst)) {
-            if (e->value().rfind("ERROR:", 0) == 0) return lst;
-        }
+        if (is_read_exception(lst)) return lst;
         gc_root<Object> guard(lst);
         std::vector<uint8_t> bytes;
         for (Object* p = lst; p && !p->is_nil() && p->pair(); p = cdr(p)) {
@@ -752,9 +742,12 @@ Object* scheme_reader::read_char() {
 
 Object* scheme_reader::make_error(const std::string& message) {
     std::ostringstream oss;
-    oss << "ERROR: " << message << " at line " << m_line << ", column " << m_column;
-    // Return error as a_string, not throwing (for embedding API)
-    return gc_new<a_string>(oss.str());
+    oss << message << " at line " << m_line << ", column " << m_column;
+    // Return a distinct read-error object (not a magic "ERROR:"-prefixed string,
+    // which collided with a legitimate string datum like "ERROR: foo"). Detected
+    // by type via is_read_exception; surfaced by the embedding boundary. Doesn't
+    // throw, so the embedding API can inspect it.
+    return gc_new<a_exception>(oss.str(), nullptr, a_exception::READ);
 }
 
 bool scheme_reader::is_delimiter(char c) {
