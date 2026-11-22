@@ -311,4 +311,15 @@ public:
 void resolve_import(const ImportSpec& spec, Library* source,
                     const std::function<void(const std::string& name, Object* value)>& bind);
 
+// Parse a (define-library ...) form, initialize it (process its imports), and
+// evaluate its begin blocks with `eval_fn`; optionally validate that the declared
+// exports are defined. Returns the library (NOT yet registered) or nullptr with
+// `error` set. The shared core of the tree-walk's `define-library` and the
+// engine's handle_define_library; each caller supplies its own evaluation
+// callback, registration, and error-reporting style.
+gc_ptr<Library> build_library(
+    Object* expr, Environment* env,
+    const std::function<Object*(Object* form, Environment* env)>& eval_fn,
+    bool validate, std::string& error);
+
 } // namespace r7rs

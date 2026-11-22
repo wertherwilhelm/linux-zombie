@@ -230,34 +230,13 @@ static bool is_import_form(Object* expr) {
 static bool handle_define_library(Object* expr, Environment* env,
                                     scheme_engine* engine, std::string& error_out) {
     try {
-        r7rs::LibraryParser parser;
-        auto lib = parser.parse_library_definition(expr);
-
-        // Initialize the library (sets up environment and imports)
-        if (!lib->initialize(env, error_out)) {
+        auto lib = r7rs::build_library(expr, env,
+            [engine](Object* form, Environment* env_arg) { return engine->eval_expr(form, env_arg); },
+            /*validate=*/true, error_out);
+        if (!lib) {
             return false;
         }
-
-        // Evaluate begin blocks to define the library's functions
-        auto eval_func = [engine](Object* form, Environment* env_arg) -> Object* {
-            return engine->eval_expr(form, env_arg);
-        };
-
-        if (!lib->evaluate_begin_blocks(eval_func, error_out)) {
-            return false;
-        }
-
-        // Validate the library (check exports are defined)
-        std::string validation_errors;
-        if (!lib->validate(validation_errors)) {
-            error_out = "Library validation failed: " + validation_errors;
-            return false;
-        }
-
-        // Register the library
-        r7rs::LibraryRegistry& registry = r7rs::LibraryRegistry::instance();
-        registry.register_library(std::move(lib));
-
+        r7rs::LibraryRegistry::instance().register_library(std::move(lib));
         return true;
     } catch (const std::exception& e) {
         error_out = std::string("Failed to define library: ") + e.what();

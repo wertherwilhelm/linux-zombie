@@ -542,30 +542,14 @@ eval_result Lisp::eval_step_list(Object* x, Environment* env) {
     }
     else if (fn_val == "define-library") {
         // (define-library <library name> <library declaration> ...)
-
-        // Parse the library definition
-        r7rs::LibraryParser parser;
-        auto lib_ptr = parser.parse_library_definition(x);
-        r7rs::Library* lib = lib_ptr.get();
-
-        // Initialize the library (process imports)
         std::string error;
-        if (!lib->initialize(env, error)) {
-            throw std::runtime_error("define-library: initialization failed: " + error);
+        auto lib = r7rs::build_library(x, env,
+            [this](Object* form, Environment* env_arg) { return this->eval_impl(form, env_arg); },
+            /*validate=*/false, error);
+        if (!lib) {
+            throw std::runtime_error("define-library: " + error);
         }
-
-        // Evaluate begin blocks
-        auto eval_func = [this](Object* form, Environment* env_arg) -> Object* {
-            return this->eval_impl(form, env_arg);
-        };
-
-        if (!lib->evaluate_begin_blocks(eval_func, error)) {
-            throw std::runtime_error("define-library: evaluation failed: " + error);
-        }
-
-        // Register the library in the global registry
-        r7rs::LibraryRegistry::instance().register_library(std::move(lib_ptr));
-
+        r7rs::LibraryRegistry::instance().register_library(std::move(lib));
         return eval_result::make_value(nil);  // define-library returns unspecified value
     }
     else if (fn_val == "begin") {

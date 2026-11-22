@@ -1,10 +1,12 @@
 #include "zombie_runtime_types.h"
 #include "library.h"
 #include "library_registry.h"
+#include "library_parser.h"
 #include "Base.h"
 #include "atom.h"
 #include "Lisp.h"
 #include <sstream>
+#include <memory>
 
 namespace r7rs {
 
@@ -250,6 +252,24 @@ void resolve_import(const ImportSpec& spec, Library* source,
         Object* value = source->get_symbol(exp.internal_name);
         if (value) bind(name, value);
     }
+}
+
+gc_ptr<Library> build_library(
+    Object* expr, Environment* env,
+    const std::function<Object*(Object*, Environment*)>& eval_fn,
+    bool validate, std::string& error) {
+    LibraryParser parser;
+    auto lib = parser.parse_library_definition(expr);
+    if (!lib->initialize(env, error)) return gc_ptr<Library>();
+    if (!lib->evaluate_begin_blocks(eval_fn, error)) return gc_ptr<Library>();
+    if (validate) {
+        std::string validation_errors;
+        if (!lib->validate(validation_errors)) {
+            error = "Library validation failed: " + validation_errors;
+            return gc_ptr<Library>();
+        }
+    }
+    return lib;
 }
 
 } // namespace r7rs
