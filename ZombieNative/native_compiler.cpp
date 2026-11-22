@@ -2,9 +2,13 @@
 #include "compilation_roots.h"
 #include "native_primitive.h"
 #include "procedure.h"
+#include "closure.h"
+#include "i_native_code.h"
 #include "bytecode_vm.h"
 #include "gc_ptr.h"
 #include <exception>
+#include <functional>
+#include <optional>
 #include <set>
 #include <unordered_map>
 
@@ -23,18 +27,23 @@ using namespace coreir;
 #if ZOMBIE_NATIVE_X64
 struct NativeCompilerBackend::Runtime { asmjit::JitRuntime jit; };
 namespace {
-enum class StepKind { Literal, Global, StoreGlobal, Copy, Primitive, Call };
+enum class StepKind { Literal, Global, StoreGlobal, Copy, Primitive, Call, MakeClosure };
 struct Step {
     StepKind kind;
     size_t destination;
     std::string name;
     std::vector<size_t> arguments;
     size_t constant = 0;
+    // MakeClosure only: the compiled lambda body + its parameter names (`name`
+    // doubles as the variadic rest parameter, empty if none).
+    std::shared_ptr<zombie::runtime::INativeCode> native;
+    std::vector<std::string> params;
 };
 struct Program {
     std::vector<Step> steps;
     std::vector<Object*> constants;
     size_t slots = 0;
+    bool has_calls = false;  // whether any step applies a callee (needs a VM)
 };
 struct Frame {
     const Program& program;
@@ -59,10 +68,21 @@ int run_step(Frame* f, size_t index) noexcept {
         switch (step.kind) {
         case StepKind::Literal: value = f->program.constants[step.constant]; break;
         case StepKind::Global: value = f->env->lookup(step.name); break;
-        case StepKind::StoreGlobal:
-            f->env->define(step.name, f->slots[step.arguments[0]]);
-            value = nil;
+        case StepKind::StoreGlobal: {
+            // set! semantics: mutate the nearest existing binding up the chain; if
+            // none exists (a fresh define) create it in the current frame. Matches
+            // OP_STORE_VAR. Using define() alone was wrong inside a closure frame —
+            // set! on an outer/global variable created a shadowing local instead.
+            gc_root<Object> name(gc_new<a_string>(step.name));
+            Object* stored = f->slots[step.arguments[0]];
+            try {
+                f->env->set(name.get(), stored);
+            } catch (...) {
+                f->env->define(name.get(), stored);
+            }
+            value = stored;
             break;
+        }
         case StepKind::Copy: value = f->slots[step.arguments[0]]; break;
         case StepKind::Primitive: {
             gc_root<Object> procedure(f->env->lookup(step.name));
@@ -88,6 +108,21 @@ int run_step(Frame* f, size_t index) noexcept {
             for (auto it = step.arguments.rbegin(); it != step.arguments.rend() - 1; ++it)
                 args.reset(cons(f->slots[*it], args.get()));
             value = callee->apply(f->vm, args.get(), f->env);
+            break;
+        }
+        case StepKind::MakeClosure: {
+            // Build the formals list (symbols + optional variadic rest tail) and a
+            // Closure capturing the current environment, then attach the compiled
+            // native body. Closure::apply runs it against the param-bound call env.
+            gc_root<Object> formals(step.name.empty()
+                ? nil : static_cast<Object*>(gc_new<a_symbol>(step.name)));
+            for (auto it = step.params.rbegin(); it != step.params.rend(); ++it) {
+                gc_root<Object> sym(gc_new<a_symbol>(*it));
+                formals.reset(cons(sym.get(), formals.get()));
+            }
+            gc_root<Closure> closure(gc_new<Closure>(formals.get(), nil, f->env));
+            closure->set_native(step.native);
+            value = closure.get();
             break;
         }
         }
@@ -116,11 +151,14 @@ void check(asmjit::Error error) {
 // The compiler emits CoreIR sequencing and branches directly as machine code.
 // Dynamic primitive operations use the existing boxed runtime ABI. There is no
 // bytecode interpreter or runtime IR dispatch loop behind the native entry point.
+using ChildCompiler = std::function<std::shared_ptr<zombie::runtime::INativeCode>(const Stmt*)>;
+
 class Emitter {
     asmjit::x86::Compiler& cc_;
     asmjit::x86::Gp frame_;
     asmjit::Label failure_;
     Program& program_;
+    ChildCompiler compile_child_;  // compiles a nested lambda body to native code
     using Locals = std::unordered_map<std::string, size_t>;
 
     asmjit::x86::Gp call(uint64_t address, size_t index, bool pointer_result = false) {
@@ -196,15 +234,26 @@ class Emitter {
             std::vector<size_t> arguments;
             arguments.push_back(atom(c.func, locals));
             for (const auto& a : c.args) arguments.push_back(atom(a, locals));
+            program_.has_calls = true;
             return step({StepKind::Call, program_.slots++, {}, std::move(arguments)});
         }
-        const char* construct = e.isLambda() ? "lambda/closure creation"
-            : e.isValues() ? "multiple values" : "call-with-values";
+        if (e.isLambda()) {
+            // Compile the lambda body to its own native code object (may throw
+            // UnsupportedCompilation -> the whole enclosing unit falls back). At
+            // runtime MakeClosure wraps it in a Closure capturing the current env.
+            auto& l = e.asLambda();
+            Step s{StepKind::MakeClosure, program_.slots++, l.rest, {}, 0};
+            s.native = compile_child_(l.body.get());
+            s.params = l.params;
+            return step(std::move(s));
+        }
+        const char* construct = e.isValues() ? "multiple values" : "call-with-values";
         throw UnsupportedCompilation(std::string("Native CoreIR construct not implemented: ") + construct);
     }
 public:
-    Emitter(asmjit::x86::Compiler& cc, asmjit::x86::Gp frame, Program& p)
-        : cc_(cc), frame_(frame), failure_(cc.new_label()), program_(p) {}
+    Emitter(asmjit::x86::Compiler& cc, asmjit::x86::Gp frame, Program& p, ChildCompiler compile_child)
+        : cc_(cc), frame_(frame), failure_(cc.new_label()), program_(p),
+          compile_child_(std::move(compile_child)) {}
     void stmt(const Stmt* s, Locals locals = {}) {
         if (!s) throw std::invalid_argument("Native CoreIR has a missing statement");
         if (s->isLet()) {
@@ -241,35 +290,73 @@ public:
 };
 using EntryPoint = Object* (*)(Frame*);
 
-class NativeArtifact final : public ExecutableCode {
-    // Owner type is erased so Runtime can remain an implementation detail.
-    std::shared_ptr<void> runtime_owner_;
+// A self-contained compiled body: machine code plus the constant pool it reads.
+// Reused for a top-level unit and for each lambda body (a native closure's code).
+// invoke() runs the body against a call environment that already binds any
+// parameters; a BytecodeVM is created only when the body applies callees.
+class NativeCode final : public zombie::runtime::INativeCode {
+    std::shared_ptr<void> runtime_owner_;  // keeps the JitRuntime alive
     asmjit::JitRuntime& runtime_;
     Program program_;
     EntryPoint entry_ = nullptr;
     size_t code_size_ = 0;
     ScopedRootTracer roots_;
 public:
-    NativeArtifact(std::shared_ptr<void> owner, asmjit::JitRuntime& runtime, Program program)
+    NativeCode(std::shared_ptr<void> owner, asmjit::JitRuntime& runtime, Program program)
         : runtime_owner_(std::move(owner)), runtime_(runtime), program_(std::move(program)),
           roots_([this](Tracer& t) { for (auto*& c : program_.constants) t.visit_field(c); }) {}
-    ~NativeArtifact() override { if (entry_) runtime_.release(entry_); }
+    ~NativeCode() override { if (entry_) runtime_.release(entry_); }
     void install(asmjit::CodeHolder& code) {
         code_size_ = code.code_size();
         check(runtime_.add(&entry_, &code));
     }
-    OutputKind output_kind() const noexcept override { return OutputKind::NativeJit; }
-    size_t code_size() const noexcept override { return code_size_; }
-    Object* execute(Environment* env) override {
-        if (!env) throw std::invalid_argument("Native execution needs an environment");
-        // A VM to apply non-native callees reached by native Call steps (bytecode
-        // closures run their bytecode on it). Cheap when the unit makes no calls.
-        zombie::bytecode::BytecodeVM vm(env, false);
-        Frame frame(program_, env, &vm);
+    size_t code_size() const noexcept { return code_size_; }
+    Object* invoke(Environment* call_env) override {
+        if (!call_env) throw std::invalid_argument("Native execution needs an environment");
+        std::optional<zombie::bytecode::BytecodeVM> vm;
+        if (program_.has_calls) vm.emplace(call_env, false);
+        Frame frame(program_, call_env, vm ? &*vm : nullptr);
         Object* result = entry_(&frame);
         if (frame.error) std::rethrow_exception(frame.error);
         return result;
     }
+    void trace(Tracer& t) override { for (auto*& c : program_.constants) t.visit_field(c); }
+};
+
+// Compile one CoreIR body Stmt into a native code object. Nested lambdas inside
+// the body recurse through the same routine (via the Emitter's child compiler).
+std::shared_ptr<NativeCode> compile_native_code(asmjit::JitRuntime& jit,
+                                                std::shared_ptr<void> owner,
+                                                const Stmt* body) {
+    AsmErrors errors;
+    asmjit::CodeHolder code;
+    check(code.init(jit.environment(), jit.cpu_features()));
+    code.set_error_handler(&errors);
+    asmjit::x86::Compiler cc(&code);
+    auto* fn = cc.add_func(asmjit::FuncSignature::build<Object*, Frame*>());
+    auto frame = cc.new_gp_ptr("frame");
+    fn->set_arg(0, frame);
+    Program program;
+    Emitter emitter(cc, frame, program,
+        [&jit, owner](const Stmt* child) -> std::shared_ptr<zombie::runtime::INativeCode> {
+            return compile_native_code(jit, owner, child);
+        });
+    emitter.stmt(body);
+    emitter.finish();
+    cc.end_func();
+    check(cc.finalize());
+    auto native = std::make_shared<NativeCode>(owner, jit, std::move(program));
+    native->install(code);
+    return native;
+}
+
+class NativeArtifact final : public ExecutableCode {
+    std::shared_ptr<NativeCode> code_;
+public:
+    explicit NativeArtifact(std::shared_ptr<NativeCode> code) : code_(std::move(code)) {}
+    OutputKind output_kind() const noexcept override { return OutputKind::NativeJit; }
+    size_t code_size() const noexcept override { return code_->code_size(); }
+    Object* execute(Environment* env) override { return code_->invoke(env); }
 };
 } // namespace
 #else
@@ -286,24 +373,13 @@ std::shared_ptr<CompiledArtifact> NativeCompilerBackend::compile(const coreir::C
                                                                OutputKind output) {
     if (!supports(output)) throw UnsupportedCompilation("asmjit backend only supports host x86-64 JIT output");
 #if ZOMBIE_NATIVE_X64
+    // The top-level __eval__ wrapper is invoked directly with no arguments, so a
+    // params-carrying wrapper (a bare top-level lambda) has nowhere to bind them;
+    // leave it to the fallback. Lambdas *inside* the body are handled by the
+    // Emitter (Expr::Lambda -> MakeClosure) and may carry parameters.
     if (!function.params.empty()) throw UnsupportedCompilation("Native function arguments/closures are not implemented yet");
-    AsmErrors errors;
-    asmjit::CodeHolder code;
-    check(code.init(runtime_->jit.environment(), runtime_->jit.cpu_features()));
-    code.set_error_handler(&errors);
-    asmjit::x86::Compiler cc(&code);
-    auto* fn = cc.add_func(asmjit::FuncSignature::build<Object*, Frame*>());
-    auto frame = cc.new_gp_ptr("frame");
-    fn->set_arg(0, frame);
-    Program program;
-    Emitter emitter(cc, frame, program);
-    emitter.stmt(function.body.get());
-    emitter.finish();
-    cc.end_func();
-    check(cc.finalize());
-    auto artifact = std::make_shared<NativeArtifact>(runtime_, runtime_->jit, std::move(program));
-    artifact->install(code);
-    return artifact;
+    return std::make_shared<NativeArtifact>(
+        compile_native_code(runtime_->jit, runtime_, function.body.get()));
 #else
     throw UnsupportedCompilation("asmjit native compilation is unavailable in this build");
 #endif

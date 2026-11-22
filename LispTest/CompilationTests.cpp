@@ -110,12 +110,22 @@ TEST_F(NativeCompilationTest, EmitsAndExecutesNativeCode) {
     ASSERT_NE(executable, nullptr);
     EXPECT_EQ(65, num(executable->execute(engine.get_environment())));
 }
-TEST_F(NativeCompilationTest, StrictCompilationRejectsClosuresWithoutRunningSideEffects) {
+TEST_F(NativeCompilationTest, CompilesLambdasToNativeClosures) {
     scheme_engine engine;
     NativeEvaluator evaluator(engine.get_environment(), UnsupportedPolicy::Error);
-    auto expression = engine.read_string("(begin (define should-not-run 42) (lambda (x) x))");
-    EXPECT_THROW(evaluator.eval(expression, engine.get_environment()), UnsupportedCompilation);
-    EXPECT_EQ(engine.eval_string("should-not-run"), nullptr);
+    // Strict mode (no fallback): a unit that runs a side effect and returns a
+    // lambda compiles natively — the define runs and the result carries native code.
+    auto* result = evaluator.eval(
+        engine.read_string("(begin (define ran 42) (lambda (x) (* x x)))"),
+        engine.get_environment());
+    ASSERT_NE(result, nullptr);
+    auto* closure = dynamic_cast<zombie::runtime::Closure*>(result);
+    ASSERT_NE(closure, nullptr);
+    EXPECT_TRUE(closure->has_native());
+    EXPECT_EQ(42, number(engine, "ran"));
+    // The native closure is callable and runs its native body.
+    Object* args = cons(gc_new<a_int>(9), nil);
+    EXPECT_EQ(81, num(closure->apply(nullptr, args, engine.get_environment())));
 }
 TEST_F(NativeCompilationTest, IntegratesWithEngineAndFallbackSupportsRecursion) {
     scheme_engine engine(EvaluatorType::NATIVE);
@@ -235,13 +245,15 @@ TEST_F(NativeCompilationTest, CachedFallbackRetainsItsDiagnostic) {
     auto compile = [&](const char* source) {
         return pipeline.compile(engine.read_string(source), engine.get_environment(), OutputKind::NativeJit);
     };
-    auto fallback = compile("(define (f x) (+ x 1))");
+    // A tail-recursive body falls back (native tail calls are unimplemented).
+    const char* tail_rec = "(define (f n) (if (= n 0) 0 (f (- n 1))))";
+    auto fallback = compile(tail_rec);
     EXPECT_EQ(fallback->output_kind(), OutputKind::Bytecode);
     std::string reason = pipeline.last_fallback_reason();
     EXPECT_FALSE(reason.empty());
     compile("(+ 17 19)");
     EXPECT_TRUE(pipeline.last_fallback_reason().empty());
-    EXPECT_EQ(compile("(define (f x) (+ x 1))"), fallback);
+    EXPECT_EQ(compile(tail_rec), fallback);
     EXPECT_EQ(pipeline.last_fallback_reason(), reason);
 }
 // Integer division and the list primitives CoreIR lowers as Prim nodes are
