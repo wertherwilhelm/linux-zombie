@@ -57,13 +57,11 @@ Object* BytecodeVM::eval(Object* expr, Environment* env) {
         std::cout << "[eval] Called with wind_stack depth: " << initial_wind_depth << std::endl;
     }
 
-    // Expand macros and desugar syntax (let*, letrec, case, do, etc.)
-    Expander expander(env);
-    Object* expanded = expander.expand(expr);
-
-    // Compile expanded expression to bytecode
+    // Compile to bytecode. Compiler::compile owns the single macro-expansion /
+    // desugaring pass (let*, letrec, case, do, user macros, ...); the VM no longer
+    // pre-expands here (that was a redundant second expansion of the same form).
     Compiler compiler;
-    auto compiled = compiler.compile(expanded, env);
+    auto compiled = compiler.compile(expr, env);
 
     if (debug_) {
         std::cout << "\n=== Compilation ===" << std::endl;
