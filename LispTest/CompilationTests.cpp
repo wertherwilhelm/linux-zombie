@@ -242,3 +242,26 @@ TEST_F(NativeCompilationTest, CachedFallbackRetainsItsDiagnostic) {
     EXPECT_EQ(compile("(define (f x) (+ x 1))"), fallback);
     EXPECT_EQ(pipeline.last_fallback_reason(), reason);
 }
+// Integer division and the list primitives CoreIR lowers as Prim nodes are
+// compiled natively (NativeJit artifact, no bytecode fallback) and match the
+// tree-walk reference exactly. Arguments are literals / cons so the whole unit
+// stays native; `(list ...)` would be a general call and fall back.
+TEST_F(NativeCompilationTest, CompilesIntegerDivisionAndListPrimitivesNatively) {
+    scheme_engine reference;
+    scheme_engine engine;
+    CompilationPipeline pipeline(std::make_unique<NativeCompilerBackend>());
+    for (auto source : {"(modulo 17 5)", "(modulo -17 5)", "(quotient 17 5)",
+                        "(remainder -17 5)", "(length '(1 2 3 4))", "(length '())",
+                        "(list-ref '(10 20 30) 1)", "(list? '(1 2))",
+                        "(list? (cons 1 2))", "(list? 7)"}) {
+        auto artifact = pipeline.compile(engine.read_string(source), engine.get_environment(),
+                                         OutputKind::NativeJit);
+        EXPECT_EQ(artifact->output_kind(), OutputKind::NativeJit) << source;  // native, not fallback
+        auto executable = std::dynamic_pointer_cast<ExecutableCode>(artifact);
+        ASSERT_NE(executable, nullptr) << source;
+        auto* want = reference.eval_string(source);
+        ASSERT_NE(want, nullptr) << source;
+        EXPECT_EQ(engine.print_value(executable->execute(engine.get_environment())),
+                  reference.print_value(want)) << source;
+    }
+}

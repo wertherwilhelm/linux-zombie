@@ -141,7 +141,9 @@ class Emitter {
             // need an evaluator callback. Extend deliberately as the ABI grows.
             static const std::set<std::string> supported = {
                 "+", "-", "*", "/", "<", ">", "<=", ">=", "=", "not",
-                "cons", "car", "cdr", "list", "null?", "pair?", "eq?", "eqv?", "equal?",
+                "modulo", "quotient", "remainder",
+                "cons", "car", "cdr", "list", "length", "list-ref", "list?",
+                "null?", "pair?", "eq?", "eqv?", "equal?", "Procedure?",
                 "display", "newline", "write", "number?", "integer?", "string?", "symbol?",
                 "boolean?", "vector?", "vector", "vector-ref", "vector-length", "string-length"
             };
