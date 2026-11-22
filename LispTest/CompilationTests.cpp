@@ -265,3 +265,23 @@ TEST_F(NativeCompilationTest, CompilesIntegerDivisionAndListPrimitivesNatively) 
                   reference.print_value(want)) << source;
     }
 }
+// Non-tail general procedure calls compile natively (NativeJit, not fallback):
+// the native caller evaluates operator + operands and applies the callee through
+// the runtime ABI (a bytecode closure runs its bytecode on the frame's VM). Tail
+// calls still fall back to the trampolining bytecode backend (see the TCO tests).
+TEST_F(NativeCompilationTest, CompilesNonTailGeneralCallsNatively) {
+    scheme_engine engine(EvaluatorType::NATIVE);
+    ASSERT_EQ(81, number(engine, "(define (sq x) (* x x)) (sq 9)"));
+    auto* evaluator = dynamic_cast<NativeEvaluator*>(engine.get_evaluator());
+    ASSERT_NE(evaluator, nullptr);
+    struct Case { const char* src; double want; };
+    for (auto c : {Case{"(sq 9)", 81}, Case{"(+ (sq 3) (sq 4))", 25},
+                   Case{"(* (sq 2) 10)", 40}}) {
+        auto artifact = evaluator->pipeline().compile(
+            engine.read_string(c.src), engine.get_environment(), OutputKind::NativeJit);
+        EXPECT_EQ(artifact->output_kind(), OutputKind::NativeJit) << c.src;  // native caller
+        auto exec = std::dynamic_pointer_cast<ExecutableCode>(artifact);
+        ASSERT_NE(exec, nullptr) << c.src;
+        EXPECT_EQ(c.want, num(exec->execute(engine.get_environment()))) << c.src;
+    }
+}

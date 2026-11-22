@@ -1,6 +1,8 @@
 #include "native_compiler.h"
 #include "compilation_roots.h"
 #include "native_primitive.h"
+#include "procedure.h"
+#include "bytecode_vm.h"
 #include "gc_ptr.h"
 #include <exception>
 #include <set>
@@ -21,7 +23,7 @@ using namespace coreir;
 #if ZOMBIE_NATIVE_X64
 struct NativeCompilerBackend::Runtime { asmjit::JitRuntime jit; };
 namespace {
-enum class StepKind { Literal, Global, StoreGlobal, Copy, Primitive };
+enum class StepKind { Literal, Global, StoreGlobal, Copy, Primitive, Call };
 struct Step {
     StepKind kind;
     size_t destination;
@@ -37,11 +39,12 @@ struct Program {
 struct Frame {
     const Program& program;
     Environment* env;
+    zombie::bytecode::BytecodeVM* vm;  // applies general-call callees (non-native)
     std::vector<Object*> slots;
     std::exception_ptr error;
     ScopedRootTracer roots;
-    Frame(const Program& p, Environment* e)
-        : program(p), env(e), slots(p.slots, nullptr), roots([this](Tracer& t) {
+    Frame(const Program& p, Environment* e, zombie::bytecode::BytecodeVM* v)
+        : program(p), env(e), vm(v), slots(p.slots, nullptr), roots([this](Tracer& t) {
             t.visit_field(env);
             for (auto*& value : slots) t.visit_field(value);
         }) {}
@@ -70,6 +73,21 @@ int run_step(Frame* f, size_t index) noexcept {
             for (auto it = step.arguments.rbegin(); it != step.arguments.rend(); ++it)
                 args.reset(cons(f->slots[*it], args.get()));
             value = primitive->apply(nullptr, args.get(), f->env);
+            break;
+        }
+        case StepKind::Call: {
+            // arguments[0] is the already-evaluated operator slot; the rest are
+            // already-evaluated operand slots. Apply through the runtime ABI: a
+            // bytecode closure runs its bytecode on the frame's VM, a primitive
+            // ignores the VM, an AST closure evaluates its body on the VM.
+            gc_root<Object> procedure(f->slots[step.arguments[0]]);
+            auto* callee = dynamic_cast<Procedure*>(procedure.get());
+            if (!callee)
+                throw std::runtime_error("Attempt to call a non-procedure");
+            gc_root<Object> args(nil);
+            for (auto it = step.arguments.rbegin(); it != step.arguments.rend() - 1; ++it)
+                args.reset(cons(f->slots[*it], args.get()));
+            value = callee->apply(f->vm, args.get(), f->env);
             break;
         }
         }
@@ -165,8 +183,22 @@ class Emitter {
             step({StepKind::Copy, found->second, {}, {value}});
             return atom(Atom::makeLit(nil), locals);
         }
+        if (e.isCall()) {
+            auto& c = e.asCall();
+            // Tail calls fall back to bytecode: applying a callee here keeps the
+            // host C++ frame alive, so a native tail loop would not run in
+            // constant space. The CoreIR->bytecode backend trampolines tail calls
+            // (see lower_lambda's mark_tail_calls), so the whole unit falls back.
+            if (c.is_tail_call)
+                throw UnsupportedCompilation("Native tail calls are not implemented yet");
+            // Non-tail call: evaluate operator and operands to slots, then apply.
+            // arguments[0] = operator slot; the rest are operand slots.
+            std::vector<size_t> arguments;
+            arguments.push_back(atom(c.func, locals));
+            for (const auto& a : c.args) arguments.push_back(atom(a, locals));
+            return step({StepKind::Call, program_.slots++, {}, std::move(arguments)});
+        }
         const char* construct = e.isLambda() ? "lambda/closure creation"
-            : e.isCall() ? "general procedure calls"
             : e.isValues() ? "multiple values" : "call-with-values";
         throw UnsupportedCompilation(std::string("Native CoreIR construct not implemented: ") + construct);
     }
@@ -230,7 +262,10 @@ public:
     size_t code_size() const noexcept override { return code_size_; }
     Object* execute(Environment* env) override {
         if (!env) throw std::invalid_argument("Native execution needs an environment");
-        Frame frame(program_, env);
+        // A VM to apply non-native callees reached by native Call steps (bytecode
+        // closures run their bytecode on it). Cheap when the unit makes no calls.
+        zombie::bytecode::BytecodeVM vm(env, false);
+        Frame frame(program_, env, &vm);
         Object* result = entry_(&frame);
         if (frame.error) std::rethrow_exception(frame.error);
         return result;
