@@ -47,11 +47,7 @@ scheme_engine::scheme_engine(EvaluatorType type, bool use_isolated_gc)
         throw std::runtime_error("Isolated GC not yet supported");
     }
 
-    // Create runtime context (initializes GC, constants, ports, ledger)
-    runtime_context_ = RuntimeContext::create();
-
-    // Set this context as current for the lifetime of this engine
-    RuntimeContext::set_current(runtime_context_.get());
+    create_runtime_context();
 
     // Create global environment through GC and register as persistent root
     // This is critical: Environment contains bindings that must survive GC
@@ -61,19 +57,9 @@ scheme_engine::scheme_engine(EvaluatorType type, bool use_isolated_gc)
         env_root_gc_ = gc;  // remember it so the destructor can unregister the slot
     }
 
-    // Install Primitive functions
-    install_primitives();
-
-    // Bootstrap R7RS standard libraries
-    r7rs::bootstrap_standard_libraries(global_env_);
-
-    // Create evaluator by type
+    install_builtins();
     evaluator_ = create_evaluator(type);
-
-    // Set up default I/O ports
     setup_default_ports();
-
-    // Load the SRFI-1/SRFI-13 Scheme prelude on top of the primitives.
     warmup_prelude();
 }
 
@@ -97,26 +83,26 @@ scheme_engine::scheme_engine(IEvaluator* evaluator, bool take_ownership)
         throw std::invalid_argument("scheme_engine: evaluator cannot be null");
     }
 
-    // Create runtime context (initializes GC, constants, ports, ledger)
-    runtime_context_ = RuntimeContext::create();
+    create_runtime_context();
 
-    // Set this context as current for the lifetime of this engine
-    RuntimeContext::set_current(runtime_context_.get());
-
-    // Use evaluator's environment
+    // Use the external evaluator's environment (no fresh env / persistent root).
     global_env_ = evaluator_->get_environment();
 
-    // Install Primitive functions
-    install_primitives();
-
-    // Bootstrap R7RS standard libraries
-    r7rs::bootstrap_standard_libraries(global_env_);
-
-    // Set up default I/O ports
+    install_builtins();
     setup_default_ports();
-
-    // Load the SRFI-1/SRFI-13 Scheme prelude on top of the primitives.
     warmup_prelude();
+}
+
+void scheme_engine::create_runtime_context() {
+    // Runtime context initializes GC, constants, ports, ledger; make it current
+    // for this engine's lifetime.
+    runtime_context_ = RuntimeContext::create();
+    RuntimeContext::set_current(runtime_context_.get());
+}
+
+void scheme_engine::install_builtins() {
+    install_primitives();
+    r7rs::bootstrap_standard_libraries(global_env_);
 }
 
 scheme_engine::~scheme_engine() {
@@ -557,11 +543,8 @@ void scheme_engine::reset() {
     global_env_ = gc_new<Environment>();
     // The slot is already registered as a persistent root from constructor
 
-    // Reinstall primitives
-    install_primitives();
-
-    // Re-bootstrap R7RS standard libraries (must match constructor behavior)
-    r7rs::bootstrap_standard_libraries(global_env_);
+    // Reinstall primitives + standard libraries (same as construction).
+    install_builtins();
 
     // Recreate evaluator with same type
     evaluator_ = create_evaluator(evaluator_type_);

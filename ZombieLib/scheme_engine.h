@@ -604,6 +604,18 @@ private:
     void install_primitives();
 
     /**
+     * @brief Create this engine's RuntimeContext and make it current.
+     * @note Shared by the fresh-environment and external-evaluator constructors.
+     */
+    void create_runtime_context();
+
+    /**
+     * @brief Populate global_env_ with primitives + the R7RS standard libraries.
+     * @note The common bootstrap step for both constructors and reset().
+     */
+    void install_builtins();
+
+    /**
      * @brief Set up default I/O ports (stdin/stdout)
      * @note Called by constructors if no custom ports provided
      */
