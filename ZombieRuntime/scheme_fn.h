@@ -3,6 +3,7 @@
 #include "Object.h"
 #include "gc_persistent_root.h"
 #include "procedure.h"
+#include "a_exception.h"
 #include <functional>
 #include <string>
 
@@ -168,8 +169,7 @@ R scheme_fn::operator()(Args... args) {
         return R();  // Default-constructed value on error
     }
 
-    a_string* err = dynamic_cast<a_string*>(result);
-    if (err && err->value().find("ERROR:") == 0) {
+    if (is_read_exception(result)) {
         return R();  // Default-constructed value on error
     }
 

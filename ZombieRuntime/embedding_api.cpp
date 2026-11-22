@@ -2,6 +2,7 @@
 #include "embedding_api.h"
 #include "scheme_engine.h"
 #include "scheme_reader.h"
+#include "a_exception.h"
 #include "Lisp.h"
 #include "i_evaluator.h"
 #include "Base.h"
@@ -63,8 +64,7 @@ scheme_fn compile_proc(const std::string& code, bool expand_macros) {
         return scheme_fn();  // Invalid
     }
 
-    a_string* err = dynamic_cast<a_string*>(expr);
-    if (err && err->value().find("ERROR:") == 0) {
+    if (is_read_exception(expr)) {
         return scheme_fn();  // Invalid
     }
 
@@ -82,8 +82,7 @@ scheme_fn compile_proc(const std::string& code, bool expand_macros) {
         return scheme_fn();  // Invalid
     }
 
-    err = dynamic_cast<a_string*>(proc);
-    if (err && err->value().find("ERROR:") == 0) {
+    if (is_read_exception(proc)) {
         return scheme_fn();  // Invalid
     }
 
@@ -114,8 +113,7 @@ scheme_fn compile_program_proc(const std::string& program, bool expand_macros) {
         return scheme_fn();  // Invalid
     }
 
-    a_string* err = dynamic_cast<a_string*>(forms);
-    if (err && err->value().find("ERROR:") == 0) {
+    if (is_read_exception(forms)) {
         return scheme_fn();  // Invalid
     }
 
@@ -146,8 +144,7 @@ scheme_fn compile_program_proc(const std::string& program, bool expand_macros) {
         return scheme_fn();  // Invalid
     }
 
-    err = dynamic_cast<a_string*>(result);
-    if (err && err->value().find("ERROR:") == 0) {
+    if (is_read_exception(result)) {
         return scheme_fn();  // Invalid
     }
 
