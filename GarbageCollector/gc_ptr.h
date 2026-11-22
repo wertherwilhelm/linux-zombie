@@ -53,136 +53,6 @@ class gc_manager;
  * - Or use explicit gc_manager* constructor: gc_root<T>(mgr, obj)
  */
 
-/**
- * @brief Type-safe RAII root guard with refcounted roots
- *
- * Use gc_root<T> for TEMPORARY protection of GC-managed objects.
- * Ideal for local variables, function parameters, and short-lived guards.
- *
- * Automatically registers an Object as a GC root on construction
- * and unregisters it when the last copy is destroyed. Prevents the
- * Object from being collected while any copy exists.
- *
- * NOW COPYABLE: Copies share the same root registration (refcounted).
- * The last copy to be destroyed will unroot the Object.
- *
- * Example (temporary protection):
- *   gc_root<ConsCell> cell(gc->allocate<ConsCell>(car, cdr));
- *   process_list(cell);  // Protected during function call
- *   // Automatically unrooted when cell goes out of scope
- *
- * Use gc_ptr<T> instead if you need longer-lived ownership or comparison ops.
- */
-template<typename T>
-class gc_root {
-private:
-    // Refcounted root entry - roots on construction, unroots on destruction
-    // IMPORTANT: Uses slot-based registration (register_persistent_root) for moving GC support
-    // The obj field is AUTOMATICALLY UPDATED by moving GC after objects are relocated
-    struct m_rootentry {
-        IGarbageCollector* mgr;
-        gc_object* obj;  // This field's ADDRESS is registered as a root slot
-
-        m_rootentry(IGarbageCollector* m, gc_object* o) : mgr(m), obj(o) {
-            if (obj && mgr) {
-                // Register the LOCATION of obj (not just the value)
-                // After moving GC, the collector will update obj to point to new location
-                mgr->register_persistent_root(&obj);
-            }
-        }
-
-        ~m_rootentry() {
-            if (mgr && obj) {
-                // Unregister the slot
-                mgr->unregister_persistent_root(&obj);
-            }
-        }
-
-        // Non-copyable (managed by shared_ptr)
-        m_rootentry(const m_rootentry&) = delete;
-        m_rootentry& operator=(const m_rootentry&) = delete;
-    };
-
-public:
-    /**
-     * @brief Construct a gc_root from a raw pointer
-     * @param mgr The gc_manager to register with
-     * @param ptr Pointer to register as root (can be null)
-     */
-    explicit gc_root(IGarbageCollector* mgr, T* ptr)
-        : m_root(ptr ? std::make_shared<m_rootentry>(mgr, static_cast<gc_object*>(ptr)) : nullptr) {
-    }
-
-    /**
-     * @brief Construct with current thread-local GC
-     * @param ptr Pointer to register as root (can be null)
-     */
-    explicit gc_root(T* ptr = nullptr)
-        : m_root(ptr ? std::make_shared<m_rootentry>(gc_context::current(), static_cast<gc_object*>(ptr)) : nullptr) {
-    }
-
-    /**
-     * @brief Destructor - automatic via shared_ptr refcount
-     */
-    ~gc_root() = default;
-
-    // COPYABLE! Copies share the same root registration
-    gc_root(const gc_root&) = default;
-    gc_root& operator=(const gc_root&) = default;
-
-    // Movable (transfers shared ownership)
-    gc_root(gc_root&&) noexcept = default;
-    gc_root& operator=(gc_root&&) noexcept = default;
-
-    /**
-     * @brief Reset to a new pointer (creates new root registration)
-     * @param ptr New pointer to protect (can be null)
-     */
-    void reset(T* ptr = nullptr) {
-        if (ptr) {
-            m_root = std::make_shared<m_rootentry>(m_root ? m_root->mgr : gc_context::current(), static_cast<gc_object*>(ptr));
-        } else {
-            m_root.reset();
-        }
-    }
-
-    /**
-     * @brief Release ownership and force immediate unroot
-     * @return The managed pointer (CURRENT location after any GC moves)
-     *
-     * WARNING: Immediately unroots the Object regardless of other handles.
-     * The returned pointer is UNPROTECTED - you must manually register it
-     * to re-protect it, or ensure it's reachable from other roots.
-     *
-     * This breaks shared ownership semantics - use with caution!
-     */
-    T* release() {
-        T* result = get();  // Get current location (may have moved!)
-        // Force immediate unroot by unregistering the slot
-        if (m_root && m_root->obj && m_root->mgr) {
-            m_root->mgr->unregister_persistent_root(&m_root->obj);
-            // CRITICAL: Set obj to nullptr so destructor won't double-unregister
-            m_root->obj = nullptr;
-        }
-        m_root.reset();
-        return result;
-    }
-
-    // Smart pointer-like accessors - ALWAYS read from m_root->obj (updated by GC!)
-    T* operator->() const { return get(); }
-    T& operator*() const { return *get(); }
-    T* get() const { return m_root ? static_cast<T*>(m_root->obj) : nullptr; }
-    explicit operator bool() const { return get() != nullptr; }
-
-    // Convenient gc_object* conversion for interop (prevents cast boilerplate)
-    gc_object* as_object() const { return m_root ? m_root->obj : nullptr; }
-    const gc_object* as_object_const() const { return m_root ? m_root->obj : nullptr; }
-    operator gc_object*() const { return as_object(); }
-
-private:
-    std::shared_ptr<m_rootentry> m_root;  // Refcounted root registration
-    // NOTE: NO cached pointer! Always read from m_root->obj for correctness with moving GC
-};
 
 /**
  * @brief Smart pointer for GC-managed objects with refcounted roots
@@ -330,6 +200,19 @@ private:
     std::shared_ptr<m_rootentry> m_root;  // Refcounted root registration
     // NOTE: NO cached pointer! Always read from m_root->obj for correctness with moving GC
 };
+
+/**
+ * @brief Type-safe RAII root guard — an alias for gc_ptr.
+ *
+ * gc_root<T> and gc_ptr<T> had byte-identical implementations (refcounted,
+ * slot-based root registration; copyable/movable); gc_ptr only additionally
+ * provided comparison operators. gc_root is now a template alias for gc_ptr so
+ * there is one implementation. Use the gc_root<T> spelling for temporary/local
+ * protection, gc_ptr<T> for longer-lived ownership — the distinction is now
+ * purely intent (naming), not behavior.
+ */
+template<typename T>
+using gc_root = gc_ptr<T>;
 
 /**
  * @brief Factory function to create a gc_ptr from allocate
