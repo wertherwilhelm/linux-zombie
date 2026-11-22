@@ -70,6 +70,8 @@ int main(int argc, char** argv) {
             eval_type = EvaluatorType::BYTECODE;
         } else if (arg == "--coreir" || arg == "-c") {
             eval_type = EvaluatorType::COREIR;
+        } else if (arg == "--native" || arg == "-n") {
+            eval_type = EvaluatorType::NATIVE;
         } else if (arg == "--debug" || arg == "-d") {
             enable_debugger = true;
         } else if (arg == "--help" || arg == "-h") {
@@ -87,6 +89,7 @@ int main(int argc, char** argv) {
         std::cout << "  -v, --vm         Use toy VM evaluator (experimental)\n";
         std::cout << "  -b, --bytecode   Use bytecode compiler/VM evaluator\n";
         std::cout << "  -c, --coreir     Use CoreIR -> bytecode pipeline evaluator\n";
+        std::cout << "  -n, --native    Use cached asmjit JIT (bytecode fallback for unsupported CoreIR)\n";
         std::cout << "  -d, --debug      Enable debugger (requires --bytecode)\n";
         std::cout << "      --plain      Disable terminal editing (also automatic for pipes)\n";
         std::cout << "  -h, --help       Show this help message\n";
@@ -122,6 +125,7 @@ int main(int argc, char** argv) {
         case EvaluatorType::TOY_VM:   eval_name = "Toy VM"; break;
         case EvaluatorType::BYTECODE: eval_name = "Bytecode VM"; break;
         case EvaluatorType::COREIR:   eval_name = "CoreIR"; break;
+        case EvaluatorType::NATIVE:   eval_name = "Native JIT (with bytecode fallback)"; break;
     }
     std::cout << "Zombie Scheme REPL v0.0.1 - Using " << eval_name << " evaluator";
     if (enable_debugger) {
@@ -130,7 +134,13 @@ int main(int argc, char** argv) {
     std::cout << "\n";
 
     // scheme_engine now directly implements IEvalEngine
-    auto engine = std::make_unique<scheme_engine>(eval_type);
+    std::unique_ptr<scheme_engine> engine;
+    try {
+        engine = std::make_unique<scheme_engine>(eval_type);
+    } catch (const std::exception& e) {
+        std::cerr << "error: " << e.what() << "\n";
+        return 1;
+    }
     // Enable debugger if requested (only works with bytecode VM)
     std::shared_ptr<SimpleDebugger> debugger;
     if (enable_debugger) {

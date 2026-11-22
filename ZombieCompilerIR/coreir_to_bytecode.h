@@ -1,6 +1,7 @@
 #pragma once
 
 #include "coreir.h"
+#include "compilation_roots.h"
 #include "coreir_module.h"
 #include <vector>
 #include <map>
@@ -54,6 +55,8 @@ struct CompiledModule {
 class CoreIRToBytecode {
 public:
     CoreIRToBytecode();
+    CoreIRToBytecode(const CoreIRToBytecode&) = delete;
+    CoreIRToBytecode& operator=(const CoreIRToBytecode&) = delete;
 
     // Compile a single function to bytecode
     CompiledFunction compile_function(const CoreIRFunction& func);
@@ -67,6 +70,7 @@ private:
     std::vector<Object*> constants_;
     std::map<std::string, int> local_vars_;  // Local variable indices (on stack)
     int stack_depth_;
+    zombie::compilation::ScopedRootTracer constant_roots_;
 
     // Reset compilation state
     void reset();
