@@ -1,5 +1,47 @@
 # ZombieScheme — Code Audit (missing / unimplemented / outstanding)
 
+### Native (asmjit) backend — status + findings (2026-11-23)
+Arc of work on the `EvaluatorType::NATIVE` / `--native` backend (CoreIR → asmjit
+host x86-64, bytecode fallback). What landed on master and what was learned:
+
+DONE (committed):
+- **Primitive coverage** widened to the CoreIR `is_primitive_op` set the backend was
+  rejecting (modulo/quotient/remainder/length/list-ref/list?/Procedure?).
+- **Non-tail general calls** — a native `Call` step evaluates operator+operands and
+  applies the callee via `Procedure::apply` using a `BytecodeVM` on the frame (a
+  bytecode closure runs its bytecode; a primitive ignores it). The earlier attempt
+  that routed closure application through the *native evaluator's* `eval(m_body)` was
+  wrong (returned garbage for bytecode-backed closures) — the lesson: user closures
+  are bytecode-backed; apply them on a VM.
+- **Native callees (closures)** — `INativeCode` contract in ZombieRuntime; `Closure`
+  carries `shared_ptr<INativeCode>` and `apply` prefers it. `Expr::Lambda` compiles
+  the body to its own `NativeCode` (separate JIT fn, GC-rooted constants) + a
+  `MakeClosure` step. Fixed a real bug this exposed: `StoreGlobal` used `env->define`
+  (current frame), so `set!` on a global *inside a closure* shadowed it locally; now
+  set-first-up-chain then define (matches `OP_STORE_VAR`).
+
+NOT native (fall back, correctly) + why:
+- **Tail calls — TRIED + REVERTED.** Implemented a trampoline (tail `Call` → stash
+  (callee,args) in the frame; `Closure::apply` loops over native callees in one C++
+  frame). It was correct and constant-stack, but ~7× SLOWER than the bytecode
+  fallback for hot loops (~115 µs/iter vs ~17 µs; loop 500k timed out). Cause: the
+  native per-step model is heavy — per-iteration `env.extend` + `Frame` alloc +
+  global binding lookups (scan the prelude-filled global env for +,-,=,loop each
+  iteration) + boxed arithmetic. Routing tail loops to native regresses perf, so
+  reverted; tail calls stay on the CoreIR→bytecode path (which TCOs, commit 7e5e0d2).
+- **Closure capture already works** without any "closure conversion": a Scheme
+  `(let …)` and internal `define` lower to a lambda-application, so captured vars are
+  lambda *params* (env-based). An attempted lets→env slice was unnecessary and its
+  top-level "scratch env" broke `load`/`eval` (they eval sub-forms against the frame
+  env expecting global) — reverted.
+- **Multiple values** — `(values …)` lowers as a general `Call`, not `Expr::Values`.
+
+PREREQUISITE for hot native code (incl. beneficial tail calls): a faster per-step
+model — (1) cache resolved primitive/global bindings so loops don't rescan the global
+env, (2) reuse the call env/`Frame` across iterations, (3) unboxed fixnums. That is an
+optimizing-JIT effort. Native's current sweet spot is straight-line / shallow code; it
+is NOT competitive with the bytecode VM for loops. See [[linux-zombie-architecture]].
+
 ### CoreIR zero-arg primitive calls — RESOLVED (2026-11-22)
 Previously `(eof-object)`/`(read-char)` errored "LOAD_VAR: undefined variable" and
 `(vector)`/`(values)` errored "first: cannot take first of an atom!" only on
