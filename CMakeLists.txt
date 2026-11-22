@@ -111,6 +111,12 @@ set(REPLXX_BUILD_PACKAGE OFF CACHE BOOL "" FORCE)
 add_subdirectory(third_party/replxx EXCLUDE_FROM_ALL)
 target_link_libraries(repl PRIVATE ZombieLib replxx::replxx)
 
+# --- Batch runner (source file and Scheme data on separate streams) ---------
+# Used for the R7RS benchmark gap-finding harness: program from a FILE, Scheme
+# data on stdin, --evaluator to select a backend.
+add_executable(zombie-scheme Scheme-run/Scheme-run.cpp)
+target_link_libraries(zombie-scheme PRIVATE ZombieLib)
+
 # --- Tests (GoogleTest) -----------------------------------------------------
 if(ZOMBIE_BUILD_TESTS)
   include(FetchContent)
