@@ -3,6 +3,7 @@
 #include "zombie_runtime_types.h"
 #include "gtest/gtest.h"
 #include "scheme_engine.h"
+#include "native_compiler.h"
 #include "constants.h"
 #include "Base.h"
 
@@ -164,6 +165,35 @@ TEST_F(TCOTest, VeryDeepRecursion50000) {
     )";
 
     // This should complete without stack overflow
+    Object* result = static_cast<Object*>(engine.eval_string(code));
+    ASSERT_TRUE(result != nullptr);
+    EXPECT_DOUBLE_EQ(50000.0, num(result));
+}
+
+// Deep tail recursion must also run in constant space through the CoreIR
+// pipeline. Before lower_lambda marked tail calls, pipeline-compiled lambdas
+// grew a frame per iteration (O(n^2) / eventual overflow) and this hung.
+TEST_F(TCOTest, CoreIRDeepTailRecursion50000) {
+    scheme_engine engine(EvaluatorType::COREIR);
+    std::string code = R"(
+        (define (deep-recursion n acc)
+          (if (<= n 0) acc (deep-recursion (- n 1) (+ acc 1))))
+        (deep-recursion 50000 0))";
+    Object* result = static_cast<Object*>(engine.eval_string(code));
+    ASSERT_TRUE(result != nullptr);
+    EXPECT_DOUBLE_EQ(50000.0, num(result));
+}
+
+// The native evaluator falls back to the CoreIR->bytecode backend for tail
+// calls, so it inherits the same constant-space behavior.
+TEST_F(TCOTest, NativeDeepTailRecursion50000) {
+    if (!zombie::native::NativeCompilerBackend::available())
+        GTEST_SKIP() << "Native x86-64 backend disabled/unavailable";
+    scheme_engine engine(EvaluatorType::NATIVE);
+    std::string code = R"(
+        (define (deep-recursion n acc)
+          (if (<= n 0) acc (deep-recursion (- n 1) (+ acc 1))))
+        (deep-recursion 50000 0))";
     Object* result = static_cast<Object*>(engine.eval_string(code));
     ASSERT_TRUE(result != nullptr);
     EXPECT_DOUBLE_EQ(50000.0, num(result));

@@ -415,6 +415,15 @@ std::unique_ptr<Expr> SchemeToCoreirLowering::lower_lambda(Object* params, Objec
     // Lower body
     auto body_stmt = lower_lambda_body(body);
 
+    // Mark tail calls in the body. A nested lambda is always entered through a
+    // fresh call frame (OP_CALL -> Closure::apply), so a tail call there reuses
+    // that frame and recurses in constant space. (The top-level __eval__ wrapper
+    // in lower_expression_to_function deliberately does NOT get this: it runs as
+    // the entry frame with no caller to return to.) Without this, pipeline-
+    // compiled code — coreir and native — never emitted OP_TAIL_CALL and grew a
+    // frame per iteration, so deep tail loops ran in O(n^2) time / space.
+    mark_tail_calls(body_stmt.get());
+
     return std::make_unique<Expr>(
         Expr::makeLambda(std::move(param_names), std::move(body_stmt), std::move(rest_name))
     );
