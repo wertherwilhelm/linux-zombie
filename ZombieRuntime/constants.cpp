@@ -27,6 +27,7 @@ static std::mutex symbol_table_mutex;
 empty_list_class* empty_list = nullptr;
 boolean_false_class* false_obj = nullptr;
 __nil_and_t_lisp_class* t = nullptr;
+eof_object_class* eof_object = nullptr;
 
 // Backward compatibility alias - points to empty_list
 // DEPRECATED: Migrate code to use empty_list or false_obj explicitly
@@ -53,6 +54,7 @@ void init_lisp_constants()
     empty_list = gc_new<empty_list_class>();
     false_obj = gc_new<boolean_false_class>();
     t = gc_new<__nil_and_t_lisp_class>();
+    eof_object = gc_new<eof_object_class>();
 
     // Backward compatibility: nil -> empty_list
     // This maintains list operations but BREAKS Common Lisp-style nil=false
@@ -64,6 +66,7 @@ void init_lisp_constants()
     gc->register_persistent_root(reinterpret_cast<gc_object**>(&empty_list));
     gc->register_persistent_root(reinterpret_cast<gc_object**>(&false_obj));
     gc->register_persistent_root(reinterpret_cast<gc_object**>(&t));
+    gc->register_persistent_root(reinterpret_cast<gc_object**>(&eof_object));
 
     // Initialize standard I/O ports through GC
     init_stdin_port();

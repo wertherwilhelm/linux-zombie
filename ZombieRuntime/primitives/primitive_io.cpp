@@ -116,8 +116,8 @@ OutputPort* out_port(Object* arg, const char* who, bool& ok) {
 }
 
 // ---- Port predicates ----
-Object* prim_eof_objectq(IEvaluator*, Object* a, Environment*) { return truth(io_x(a) == nullptr); }
-Object* prim_eof_object(IEvaluator*, Object*, Environment*) { return nullptr; }  // EOF sentinel
+Object* prim_eof_objectq(IEvaluator*, Object* a, Environment*) { return truth(io_x(a) == eof_object); }
+Object* prim_eof_object(IEvaluator*, Object*, Environment*) { return eof_object; }  // EOF sentinel
 Object* prim_input_portq(IEvaluator*, Object* a, Environment*) {
     Object* x = io_x(a);
     if (x == nullptr || x == nil) return truth(false);
@@ -172,7 +172,7 @@ Object* prim_read_char(IEvaluator*, Object* a, Environment*) {
     bool ok; InputPort* port = in_port(io_x(a), "read-char", ok);
     if (!ok) return error("read-char: expected an input port");
     char c = port->peek();
-    if (port->is_eof()) return nullptr;
+    if (port->is_eof()) return eof_object;
     port->get();  // consume exactly one character
     return gc_new<a_char>(c);
 }
@@ -180,7 +180,7 @@ Object* prim_peek_char(IEvaluator*, Object* a, Environment*) {
     bool ok; InputPort* port = in_port(io_x(a), "peek-char", ok);
     if (!ok) return error("peek-char: expected an input port");
     char c = port->peek();
-    if (port->is_eof()) return nullptr;
+    if (port->is_eof()) return eof_object;
     return gc_new<a_char>(c);
 }
 Object* prim_char_readyq(IEvaluator*, Object* a, Environment*) {
@@ -194,7 +194,7 @@ Object* prim_read(IEvaluator*, Object* a, Environment*) {
     bool ok; InputPort* port = in_port(io_x(a), "read", ok);
     if (!ok) return error("read: expected an input port");
     Object* result = port->read();
-    return result ? result : nullptr;
+    return result ? result : eof_object;
 }
 
 // ---- File loading ----
@@ -290,7 +290,7 @@ Object* prim_read_line(IEvaluator*, Object* a, Environment*) {
     bool ok; InputPort* port = in_port(io_x(a), "read-line", ok);
     if (!ok) return error("read-line: expected an input port");
     std::string line = port->get_line();
-    if (line.empty() && port->is_eof()) return nullptr;
+    if (line.empty() && port->is_eof()) return eof_object;
     return gc_new<a_string>(line);
 }
 Object* prim_read_string(IEvaluator*, Object* a, Environment*) {
@@ -303,9 +303,9 @@ Object* prim_read_string(IEvaluator*, Object* a, Environment*) {
     std::string result;
     result.reserve(k);
     for (int i = 0; i < k; i++) {
-        if (port->is_eof()) { if (result.empty()) return nullptr; break; }
+        if (port->is_eof()) { if (result.empty()) return eof_object; break; }
         char c = port->get();
-        if (port->is_eof()) { if (result.empty()) return nullptr; break; }
+        if (port->is_eof()) { if (result.empty()) return eof_object; break; }
         result += c;
     }
     return gc_new<a_string>(result);
@@ -345,17 +345,17 @@ Object* prim_get_output_string(IEvaluator*, Object* a, Environment*) {
 Object* prim_read_u8(IEvaluator*, Object* a, Environment*) {
     bool ok; InputPort* port = in_port(io_x(a), "read-u8", ok);
     if (!ok) return error("read-u8: expected an input port");
-    if (port->is_eof()) return nullptr;
+    if (port->is_eof()) return eof_object;
     char byte = port->get();
-    if (port->is_eof()) return nullptr;
+    if (port->is_eof()) return eof_object;
     return gc_new<a_long>((unsigned char)byte);
 }
 Object* prim_peek_u8(IEvaluator*, Object* a, Environment*) {
     bool ok; InputPort* port = in_port(io_x(a), "peek-u8", ok);
     if (!ok) return error("peek-u8: expected an input port");
-    if (port->is_eof()) return nullptr;
+    if (port->is_eof()) return eof_object;
     char byte = port->peek();
-    if (port->is_eof() || byte == EOF) return nullptr;
+    if (port->is_eof() || byte == EOF) return eof_object;
     return gc_new<a_long>((unsigned char)byte);
 }
 Object* prim_u8_readyq(IEvaluator*, Object* a, Environment*) {
@@ -365,7 +365,7 @@ Object* prim_u8_readyq(IEvaluator*, Object* a, Environment*) {
 }
 Object* prim_write_u8(IEvaluator*, Object* a, Environment*) {
     Object* x = io_x(a);
-    if (x == nullptr) return error("write-u8: received nullptr (EOF Object)");
+    if (x == eof_object) return error("write-u8: received the eof object");
     if (x == nil) return error("write-u8: received nil");
     int type = x->get_type();
     if (type != static_cast<int>(Type::INT) && type != static_cast<int>(Type::LONG)) {
@@ -392,7 +392,7 @@ Object* prim_read_bytevector(IEvaluator*, Object* a, Environment*) {
         if (port->is_eof()) break;
         bytes.push_back((unsigned char)byte);
     }
-    if (bytes.empty() && k > 0) return nullptr;
+    if (bytes.empty() && k > 0) return eof_object;
     return gc_new<a_bytevector>(bytes);
 }
 Object* prim_read_bytevector_bang(IEvaluator*, Object* a, Environment*) {
@@ -423,7 +423,7 @@ Object* prim_read_bytevector_bang(IEvaluator*, Object* a, Environment*) {
         bv->set(i, (unsigned char)byte);
         bytes_read++;
     }
-    if (bytes_read == 0 && end > start) return nullptr;
+    if (bytes_read == 0 && end > start) return eof_object;
     return gc_new<a_long>(bytes_read);
 }
 Object* prim_write_bytevector(IEvaluator*, Object* a, Environment*) {

@@ -244,6 +244,14 @@ const Case kCorpus[] = {
     {"(force (make-promise 10))", "10", ALL},
     {"(list (promise? (delay 1)) (promise? 5))", "(#t #f)", ALL},
     {"(force 42)", "42", ALL},
+    // eof-object is a distinct singleton (not nullptr): it prints #<eof>, nests in
+    // data as #<eof> (was nil), and eof-object? recognizes it.
+    {"(eof-object)", "#<eof>", ALL},
+    {"(eof-object? (eof-object))", "#t", ALL},
+    {"(eof-object? 5)", "#f", ALL},
+    {"(list 1 (eof-object) 3)", "(1 #<eof> 3)", ALL},
+    {"(let ((p (open-input-string \"\"))) (eof-object? (read-char p)))", "#t", ALL},
+    {"(let ((p (open-input-string \"\"))) (eof-object? (read p)))", "#t", ALL},
     {"(let ((n 0)) (let ((p (delay (begin (set! n (+ n 1)) n)))) (list (force p) (force p) n)))", "(1 1 1)", ALL},
     {"(begin (define (ints-from k) (delay (cons k (ints-from (+ k 1))))) (define (sh s n) (if (= n 0) '() (let ((pr (force s))) (cons (car pr) (sh (cdr pr) (- n 1)))))) (sh (ints-from 1) 5))", "(1 2 3 4 5)", ALL},
     {"(begin (define (lp n) (delay-force (if (= n 0) (delay 'done) (lp (- n 1))))) (force (lp 1000)))", "done", ALL},

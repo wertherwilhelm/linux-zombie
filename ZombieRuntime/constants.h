@@ -158,6 +158,28 @@ public:
 };
 
 // ============================================================================
+// End-of-file Singleton
+// ============================================================================
+/**
+ * @brief The R7RS end-of-file object (returned by read-char/read/... at EOF).
+ *
+ * A distinct singleton, NOT nullptr: the engine uses nullptr to report eval
+ * failure, and a bare nullptr also rendered as "nil" inside data structures.
+ */
+class eof_object_class : public Object
+{
+public:
+    eof_object_class() {}
+    void print(std::ostream& s) const { s << "#<eof>"; }
+    Object* clone(void) const { return (Object*)this; }
+    int is_atom(void) const { return 1; }
+    int pair(void) const { return 0; }
+    int get_type() const { return static_cast<int>(Type::EOF_OBJECT); }
+    virtual int is_nil() const { return 0; }
+    void trace_references(Tracer& /*tracer*/) override {}
+};
+
+// ============================================================================
 // Global Singletons
 // ============================================================================
 
@@ -165,6 +187,7 @@ public:
 extern empty_list_class* empty_list;      // '() - The empty list (truthy!)
 extern boolean_false_class* false_obj;    // #f - Boolean false (the ONLY false value)
 extern __nil_and_t_lisp_class* t;         // #t - Boolean true
+extern eof_object_class* eof_object;      // the eof-object singleton (R7RS)
 
 // BACKWARD COMPATIBILITY ALIAS:
 // During migration, 'nil' points to empty_list to minimize breakage

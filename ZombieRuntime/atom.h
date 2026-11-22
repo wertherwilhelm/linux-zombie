@@ -59,6 +59,7 @@ enum class Type
     COMPLEX,     // Complex number (real + imaginary parts)
     CPP_OBJECT,  // Wrapped C++ Object pointer (scene graph nodes, etc.)
     EXCEPTION,   // R7RS error-Object (exception with message and irritants)
+    EOF_OBJECT,  // R7RS end-of-file object (the eof-object singleton)
 };
 
 std::ostream& operator<<(std::ostream& os, const Type& type);
