@@ -32,6 +32,30 @@ Artifacts land in `build/`:
 ./build/repl --vm            # experimental toy VM
 ```
 
+## REPL editing
+
+Interactive terminals use the vendored [replxx](https://github.com/AmokHuginnsson/replxx)
+0.0.4 editor (MIT license, pinned commit recorded in `third_party/README.md`).
+No additional packages or downloads are needed for the editor.
+
+- Arrows, Home/End, Backspace/Delete: edit input; Up/Down: recall history.
+- Ctrl-R: search history; Tab: complete Scheme syntax, current global bindings
+  (including user definitions), and `:` commands.
+- Enter: evaluate complete input; unfinished forms continue in the same editable
+  buffer with two spaces per nesting level. Ctrl-J inserts a newline explicitly.
+- Ctrl-C: discard the edit and return to a fresh prompt. Ctrl-D: exit on empty input.
+- Alt-Enter: submit to the session explicitly; `:help` lists session commands.
+- Strings, comments, delimiters, keywords, and literals are colored; `NO_COLOR=1`
+  disables coloring. Completeness handles multiline strings, escaped quotes,
+  character literals, and quote prefixes. Reader syntax support still depends on
+  the selected evaluator; highlighting does not add language features.
+
+History retains up to 1000 entries under
+`$XDG_STATE_HOME/zombie-scheme/history` or
+`$HOME/.local/state/zombie-scheme/history`. If neither is set, history stays in memory.
+History includes the Scheme source entered into the REPL.
+Piped input/output automatically uses the plain frontend; `--plain` forces it.
+
 ## Test
 
 Run the suite from the repository root (some library-loading tests read

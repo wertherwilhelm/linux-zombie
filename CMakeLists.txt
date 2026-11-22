@@ -89,7 +89,11 @@ target_link_libraries(ZombieLib PUBLIC ZombieCompilerIR)
 # --- REPL executable --------------------------------------------------------
 zombie_glob(REPL_SRCS "${CMAKE_CURRENT_SOURCE_DIR}/REPL-test")
 add_executable(repl ${REPL_SRCS})
-target_link_libraries(repl PRIVATE ZombieLib)
+# Vendored MIT-licensed editor; no network or system readline dependency.
+set(REPLXX_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(REPLXX_BUILD_PACKAGE OFF CACHE BOOL "" FORCE)
+add_subdirectory(third_party/replxx EXCLUDE_FROM_ALL)
+target_link_libraries(repl PRIVATE ZombieLib replxx::replxx)
 
 # --- Tests (GoogleTest) -----------------------------------------------------
 if(ZOMBIE_BUILD_TESTS)

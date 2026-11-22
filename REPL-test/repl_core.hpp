@@ -14,6 +14,7 @@
 #include <unordered_map>
 #include <cctype>
 #include <utility>
+#include "scheme_input.hpp"
 #include "i_eval_engine.h"
 #include "scheme_engine.h"
 
@@ -212,15 +213,17 @@ public:
     std::vector<ReplEvent> submit_line(std::string_view line) {
         std::vector<ReplEvent> ev;
 
-        // Check for simple exit/quit commands (without colon)
-        if (cfg_.allow_meta_commands && is_simple_exit_command(line)) {
+        // A continuation inside a string is source text, including :commands/quit.
+        const bool allow_commands = cfg_.allow_meta_commands &&
+            !scheme_input::scan(buffer_).in_literal;
+        if (allow_commands && is_simple_exit_command(line)) {
             ev.push_back({ ReplEvent::Kind::Info, "bye" });
             ev.push_back({ ReplEvent::Kind::Prompt, "" });
             return ev;
         }
 
         // Meta commands (optional). Keep these in the session so frontends are trivial.
-        if (cfg_.allow_meta_commands) {
+        if (allow_commands) {
             auto meta = parse_meta_command(line);
             if (meta) {
                 if (try_handle_plugin_meta_command(line, ev)) return ev;
@@ -231,7 +234,7 @@ public:
         // Accumulate input and track completeness.
         auto transformed = apply_line_transforms(line);
         append_line(transformed);
-        paren_balance_ += paren_delta(transformed);
+        paren_balance_ = scheme_input::scan(buffer_).depth;
 
         if (should_wait_for_more_input()) {
             ev.push_back({ ReplEvent::Kind::Prompt, continuation_prompt() });
@@ -554,59 +557,12 @@ private:
     bool should_wait_for_more_input() const {
         // Only wait if we have unclosed parens (incomplete expression).
         // Empty lines and comment-only lines should show a new prompt, not Continuation.
-        return paren_balance_ > 0;
-    }
-
-    // Very small �paren balance delta� scanner:
-    // - ignores parentheses inside "...", respects backslash escapes
-    // - ignores everything after ';' (line comment) when not in string
-    static int paren_delta(std::string_view line) {
-        bool in_string = false;
-        bool escape = false;
-
-        int delta = 0;
-        for (size_t i = 0; i < line.size(); ++i) {
-            char c = line[i];
-
-            if (in_string) {
-                if (escape) { escape = false; continue; }
-                if (c == '\\') { escape = true; continue; }
-                if (c == '"') { in_string = false; continue; }
-                continue;
-            }
-
-            // comment begins
-            if (c == ';') break;
-
-            if (c == '"') { in_string = true; continue; }
-            if (c == '(') ++delta;
-            if (c == ')') --delta;
-        }
-        return delta;
+        return scheme_input::scan(buffer_).incomplete;
     }
 
     static bool is_effectively_empty(const std::string& s) {
-        bool in_string = false, escape = false;
-        for (size_t i = 0; i < s.size(); ++i) {
-            char c = s[i];
-
-            if (in_string) {
-                if (escape) { escape = false; continue; }
-                if (c == '\\') { escape = true; continue; }
-                if (c == '"') { in_string = false; continue; }
-                continue;
-            }
-
-            if (c == ';') {
-                // skip to end of line
-                while (i < s.size() && s[i] != '\n') ++i;
-                continue;
-            }
-
-            if (c == '"') { in_string = true; continue; }
-            if (!std::isspace(static_cast<unsigned char>(c))) return false;
-        }
-        return true;
+        auto analysis = scheme_input::scan(s);
+        return !analysis.has_datum && !analysis.error && !analysis.incomplete;
     }
 
     static std::string_view trim_left(std::string_view s) {
@@ -634,11 +590,7 @@ private:
     void apply_plugin_result(const ReplEditResult& result, std::vector<ReplEvent>& ev) {
         if (result.new_buffer) {
             buffer_ = *result.new_buffer;
-            if (result.new_paren_balance) {
-                paren_balance_ = *result.new_paren_balance;
-            } else {
-                paren_balance_ = paren_balance_for_buffer(buffer_);
-            }
+            paren_balance_ = paren_balance_for_buffer(buffer_);
         }
         ev.insert(ev.end(), result.events.begin(), result.events.end());
         if (result.emit_prompt) {
@@ -679,16 +631,7 @@ private:
     }
 
     static int paren_balance_for_buffer(std::string_view buffer) {
-        int balance = 0;
-        size_t start = 0;
-        while (start < buffer.size()) {
-            size_t end = buffer.find('\n', start);
-            if (end == std::string_view::npos) end = buffer.size();
-            balance += paren_delta(buffer.substr(start, end - start));
-            if (end == buffer.size()) break;
-            start = end + 1;
-        }
-        return balance;
+        return scheme_input::scan(buffer).depth;
     }
 
     std::unique_ptr<IEvalEngine> engine_;

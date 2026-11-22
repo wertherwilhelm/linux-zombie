@@ -69,6 +69,16 @@ Environment::~Environment()
     m_parent = nullptr;
 }
 
+std::vector<std::string> Environment::binding_names() const {
+    std::vector<std::string> names;
+    for (auto env = this; env; env = env->m_parent) {
+        for (Object* vars = env->m_vars; vars && vars != nil; vars = rest(vars)) {
+            names.push_back(get_name(first(vars)));
+        }
+    }
+    return names;
+}
+
 Object* Environment::lookup(std::string symbol)
 {
     return lookup(gc_new<a_string>(symbol));

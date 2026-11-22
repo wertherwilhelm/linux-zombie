@@ -66,6 +66,12 @@ private:
         ReplEditResult result;
         result.handled = true;
 
+        auto analysis = scheme_input::scan(state.buffer);
+        if (analysis.in_literal || analysis.error) {
+            result.events.push_back({ ReplEvent::Kind::Info,
+                "finish the string/comment or correct delimiters before closing" });
+            return result;
+        }
         if (state.paren_balance <= 0) {
             result.events.push_back({ ReplEvent::Kind::Info, "no open parens to close" });
             return result;
@@ -137,16 +143,7 @@ private:
     }
 
     static int paren_balance_for_buffer(std::string_view buffer) {
-        int balance = 0;
-        size_t start = 0;
-        while (start < buffer.size()) {
-            size_t end = buffer.find('\n', start);
-            if (end == std::string_view::npos) end = buffer.size();
-            balance += paren_delta_line(buffer.substr(start, end - start));
-            if (end == buffer.size()) break;
-            start = end + 1;
-        }
-        return balance;
+        return scheme_input::scan(buffer).depth;
     }
 
     static void scan_line_for_balance(std::string_view line,
