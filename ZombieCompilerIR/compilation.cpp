@@ -62,7 +62,8 @@ class Fingerprint {
         case Type::INT: word(std::to_string(static_cast<a_int*>(o)->value())); break;
         case Type::LONG: word(std::to_string(static_cast<a_long*>(o)->value())); break;
         case Type::DOUBLE: word(std::to_string(std::bit_cast<uint64_t>(static_cast<a_double*>(o)->value()))); break;
-        case Type::BOOL: word(static_cast<a_bool*>(o)->value() ? "true" : "false"); break;
+        // Booleans are identity singletons (false_obj / t), not a boxed a_bool.
+        case Type::BOOL: word(o == false_obj ? "false" : "true"); break;
         default: cacheable_ = false;
         }
     }
