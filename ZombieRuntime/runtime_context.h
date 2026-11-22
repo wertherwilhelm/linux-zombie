@@ -167,45 +167,10 @@ public:
      */
     bool is_interned(const std::string& name) const;
 
-    // ========================================================================
-    // I/O Ports
-    // ========================================================================
-
-    /**
-     * @brief Get current input port
-     * @return Input port for read operations
-     */
-    InputPort* input_port() const;
-
-    /**
-     * @brief Get current output port
-     * @return Output port for write/display operations
-     */
-    OutputPort* output_port() const;
-
-    /**
-     * @brief Get current error port
-     * @return Error port for error output
-     */
-    OutputPort* error_port() const;
-
-    /**
-     * @brief Set current input port
-     * @param port New input port
-     */
-    void set_input_port(InputPort* port);
-
-    /**
-     * @brief Set current output port
-     * @param port New output port
-     */
-    void set_output_port(OutputPort* port);
-
-    /**
-     * @brief Set current error port
-     * @param port New error port
-     */
-    void set_error_port(OutputPort* port);
+    // Note: I/O ports are NOT held here. The global stdin_port / stdout_port /
+    // stderr_port are the single source of truth the primitives read; the engine
+    // owns the port lifetimes. (A former per-context port shadow was write-only
+    // dead state and was removed.)
 
     // ========================================================================
     // Library System
@@ -264,19 +229,6 @@ private:
 
     // Initialization flag
     bool initialized_ = false;
-
-    // Owned ports (when context creates its own)
-    InputPort* owned_input_port_ = nullptr;
-    OutputPort* owned_output_port_ = nullptr;
-    OutputPort* owned_error_port_ = nullptr;
-
-    // Current ports (may point to owned or external)
-    InputPort* current_input_port_ = nullptr;
-    OutputPort* current_output_port_ = nullptr;
-    OutputPort* current_error_port_ = nullptr;
-
-    // Private initialization helpers
-    void initialize_ports();
 };
 
 // ============================================================================
@@ -292,27 +244,6 @@ namespace rt {
  */
 inline a_symbol* intern(const std::string& name) {
     return RuntimeContext::current()->intern(name);
-}
-
-/**
- * @brief Get current input port
- */
-inline InputPort* input_port() {
-    return RuntimeContext::current()->input_port();
-}
-
-/**
- * @brief Get current output port
- */
-inline OutputPort* output_port() {
-    return RuntimeContext::current()->output_port();
-}
-
-/**
- * @brief Get current error port
- */
-inline OutputPort* error_port() {
-    return RuntimeContext::current()->error_port();
 }
 
 } // namespace rt

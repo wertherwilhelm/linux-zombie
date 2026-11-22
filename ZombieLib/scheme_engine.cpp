@@ -140,16 +140,10 @@ void scheme_engine::setup_default_ports() {
     owns_input_port_ = true;
     owns_output_port_ = true;
 
-    // Sync with global ports used by primitives (display, read, etc.)
-    // This ensures primitives use the same ports as the engine
+    // The global stdin_port / stdout_port are the runtime source of truth that
+    // the primitives (display, read, ...) read; point them at our ports.
     stdin_port = input_port_;
     stdout_port = output_port_;
-
-    // Sync with RuntimeContext
-    if (runtime_context_) {
-        runtime_context_->set_input_port(input_port_);
-        runtime_context_->set_output_port(output_port_);
-    }
 }
 
 void scheme_engine::cleanup_ports() {
@@ -741,13 +735,8 @@ void scheme_engine::set_input_port(InputPort* port) {
     input_port_ = port;
     owns_input_port_ = false;
 
-    // Sync with global port used by primitives (read, read-char, etc.)
+    // Point the global the primitives read at the new port.
     stdin_port = port;
-
-    // Sync with RuntimeContext
-    if (runtime_context_) {
-        runtime_context_->set_input_port(port);
-    }
 }
 
 void scheme_engine::set_output_port(OutputPort* port) {
@@ -757,13 +746,8 @@ void scheme_engine::set_output_port(OutputPort* port) {
     output_port_ = port;
     owns_output_port_ = false;
 
-    // Sync with global port used by primitives (display, write, etc.)
+    // Point the global the primitives read at the new port.
     stdout_port = port;
-
-    // Sync with RuntimeContext
-    if (runtime_context_) {
-        runtime_context_->set_output_port(port);
-    }
 }
 
 void scheme_engine::set_capture_stdout(bool enable) {
@@ -779,13 +763,8 @@ void scheme_engine::set_capture_stdout(bool enable) {
         output_port_ = new OutputPort(captured_output_);
         owns_output_port_ = true;
 
-        // Sync with global port so primitives (display, write) use capture buffer
+        // Point the global so primitives (display, write) use the capture buffer.
         stdout_port = output_port_;
-
-        // Sync with RuntimeContext
-        if (runtime_context_) {
-            runtime_context_->set_output_port(output_port_);
-        }
     } else {
         // Restore default stdout
         if (owns_output_port_ && output_port_) {
@@ -794,13 +773,8 @@ void scheme_engine::set_capture_stdout(bool enable) {
         output_port_ = new OutputPort(std::cout);
         owns_output_port_ = true;
 
-        // Sync with global port
+        // Restore the global to the default stdout.
         stdout_port = output_port_;
-
-        // Sync with RuntimeContext
-        if (runtime_context_) {
-            runtime_context_->set_output_port(output_port_);
-        }
     }
 }
 

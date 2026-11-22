@@ -59,28 +59,10 @@ RuntimeContext::RuntimeContext(bool initialize_gc) {
     // This is idempotent - safe to call multiple times
     ensure_constants();
 
-    // Initialize ports to point to globals (initially)
-    // These can be overridden per-context later
-    initialize_ports();
-
     initialized_ = true;
 }
 
 RuntimeContext::~RuntimeContext() {
-    // Clean up owned ports
-    if (owned_input_port_) {
-        delete owned_input_port_;
-        owned_input_port_ = nullptr;
-    }
-    if (owned_output_port_) {
-        delete owned_output_port_;
-        owned_output_port_ = nullptr;
-    }
-    if (owned_error_port_) {
-        delete owned_error_port_;
-        owned_error_port_ = nullptr;
-    }
-
     // Clear if we're the global default
     if (g_default_context == this) {
         g_default_context = nullptr;
@@ -99,14 +81,6 @@ std::unique_ptr<RuntimeContext> RuntimeContext::create() {
 // ============================================================================
 // Private Initialization Helpers
 // ============================================================================
-
-void RuntimeContext::initialize_ports() {
-    // Point to global ports initially
-    // This maintains backward compatibility while allowing per-context override
-    current_input_port_ = stdin_port;
-    current_output_port_ = stdout_port;
-    current_error_port_ = stderr_port;
-}
 
 void RuntimeContext::ensure_constants() {
     // Delegate to existing init_lisp_constants()
@@ -145,33 +119,8 @@ bool RuntimeContext::is_interned(const std::string& name) const {
     return true;  // Symbols are always interned on access
 }
 
-// ============================================================================
-// I/O Ports
-// ============================================================================
-
-InputPort* RuntimeContext::input_port() const {
-    return current_input_port_ ? current_input_port_ : stdin_port;
-}
-
-OutputPort* RuntimeContext::output_port() const {
-    return current_output_port_ ? current_output_port_ : stdout_port;
-}
-
-OutputPort* RuntimeContext::error_port() const {
-    return current_error_port_ ? current_error_port_ : stderr_port;
-}
-
-void RuntimeContext::set_input_port(InputPort* port) {
-    current_input_port_ = port;
-}
-
-void RuntimeContext::set_output_port(OutputPort* port) {
-    current_output_port_ = port;
-}
-
-void RuntimeContext::set_error_port(OutputPort* port) {
-    current_error_port_ = port;
-}
+// I/O ports live in the global stdin_port / stdout_port / stderr_port (what the
+// primitives read); RuntimeContext no longer shadows them.
 
 
 // ============================================================================
