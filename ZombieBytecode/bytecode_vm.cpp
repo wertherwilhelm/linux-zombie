@@ -166,72 +166,10 @@ Object* BytecodeVM::execute_direct(const uint8_t* bytecode,
             std::cout << "Nested call - executing synchronously at depth " << frames_.size() << "\n";
         }
 
-        // Execute frames until we return to the initial depth
-        InstructionTable& insn_table = InstructionTable::instance();
-
+        // Execute frames until we return to the initial depth, using the
+        // same depth-bounded loop as the top-level trampoline.
         try {
-            while (!frames_.empty() && frames_.size() > initial_depth) {
-                size_t frame_idx = frames_.size() - 1;
-                BytecodeFrame& current_frame = frames_[frame_idx];
-
-                // Track why we exit the instruction loop
-                bool frame_complete = false;
-                bool new_frame_pushed = false;
-
-                // Execute instructions in current frame
-                while (current_frame.ip < current_frame.bytecode_length()) {
-                    ExecutionContext ctx{
-                        this,
-                        current_frame.stack,
-                        current_frame.constants,
-                        current_frame.env,
-                        current_frame.ip
-                    };
-
-                    auto insn = insn_table.decode(current_frame.bytecode_ptr() + current_frame.ip);
-
-                    if (trace_) {
-                        std::cout << std::setw(4) << std::setfill('0') << current_frame.ip << ": "
-                                  << insn->disassemble(current_frame.ip) << std::endl;
-                    }
-
-                    bool should_continue = insn->execute(ctx);
-
-                    if (!should_continue) {
-                        // RETURN instruction - frame complete
-                        frame_complete = true;
-                        break;
-                    }
-
-                    // Check if new frame was pushed (nested call within this call)
-                    if (frames_.size() > frame_idx + 1) {
-                        // New frame pushed, need to execute it before continuing
-                        new_frame_pushed = true;
-                        break;
-                    }
-                }
-
-                // Check if frame reached end of bytecode
-                if (current_frame.ip >= current_frame.bytecode_length()) {
-                    frame_complete = true;
-                }
-
-                // Pop frame if it's complete (not if we just pushed a new frame)
-                if (frame_complete && !new_frame_pushed && frames_.size() > initial_depth) {
-                    Object* result = current_frame.stack.empty() ? nil : current_frame.stack.back();
-                    frames_.pop_back();
-
-                    // If we're back to initial depth, return the result
-                    if (frames_.size() == initial_depth) {
-                        return result;
-                    }
-
-                    // Otherwise push result to parent frame
-                    if (!frames_.empty()) {
-                        frames_.back().stack.push_back(result);
-                    }
-                }
-            }
+            return run_frames(initial_depth);
         } catch (const ContinuationInvoked&) {
             // Continuation invoked during nested execution
             // Propagate it up - the top-level eval() will handle it
@@ -247,9 +185,6 @@ Object* BytecodeVM::execute_direct(const uint8_t* bytecode,
             }
             throw;
         }
-
-        // Shouldn't reach here, but return accumulator as fallback
-        return accumulator_ ? accumulator_ : nil;
     }
 
     // Top-level execution - use full trampolined mode
@@ -420,11 +355,10 @@ void BytecodeVM::rewind_to(const std::vector<toy::WindFrame>& target_wind_stack)
 // Trampolined execution loop
 // ============================================================================
 
-Object* BytecodeVM::run_trampolined() {
+Object* BytecodeVM::run_frames(size_t floor) {
     InstructionTable& insn_table = InstructionTable::instance();
 
-    try {
-        while (!frames_.empty()) {
+    while (frames_.size() > floor) {
         // Get current frame index (safer than reference which can be invalidated)
         size_t frame_idx = frames_.size() - 1;
 
@@ -435,21 +369,21 @@ Object* BytecodeVM::run_trampolined() {
             std::cout << "Stack size: " << frames_[frame_idx].stack.size() << std::endl;
         }
 
-        // If this is a RETURN frame, just pop it and continue
+        // If this is a RETURN frame, just pop it and propagate its result
         if (frames_[frame_idx].type == BytecodeFrame::RETURN) {
             accumulator_ = frames_[frame_idx].stack.empty() ? nil : frames_[frame_idx].stack.back();
             frames_.pop_back();
-
-            // Push result to parent frame's stack (if any)
-            if (!frames_.empty()) {
-                frames_.back().stack.push_back(accumulator_);
+            if (frames_.size() <= floor) {
+                return accumulator_;
             }
+            frames_.back().stack.push_back(accumulator_);
             continue;
         }
 
         // Execute bytecode in current frame
         bool frame_complete = false;
-        while (frames_[frame_idx].ip < frames_[frame_idx].bytecode_length() && !frame_complete) {
+        bool new_frame_pushed = false;
+        while (frames_[frame_idx].ip < frames_[frame_idx].bytecode_length()) {
             // Create execution context for this frame
             // IMPORTANT: Access frame through index, not reference (reference can be invalidated)
             ExecutionContext ctx{
@@ -511,26 +445,45 @@ Object* BytecodeVM::run_trampolined() {
             // Check for frame push (function call pushed new frame)
             if (frames_.size() > frame_idx + 1) {
                 // New frame was pushed, switch to it
+                new_frame_pushed = true;
                 break;
             }
-
-            // Safety check
-            if (frames_[frame_idx].ip >= frames_[frame_idx].bytecode_length()) {
-                throw std::runtime_error("Instruction pointer out of bounds");
-            }
         }
 
-        // If frame is complete, pop it
-        if (frame_complete || frames_[frame_idx].ip >= frames_[frame_idx].bytecode_length()) {
+        // Reaching the end of the bytecode without a new frame also completes
+        if (!new_frame_pushed && frames_[frame_idx].ip >= frames_[frame_idx].bytecode_length()) {
+            frame_complete = true;
+        }
+
+        // If the frame is complete (and we did not just descend into a child),
+        // pop it and hand its result to the parent — or return it if we have
+        // unwound to the floor.
+        if (frame_complete && !new_frame_pushed) {
             accumulator_ = frames_[frame_idx].stack.empty() ? nil : frames_[frame_idx].stack.back();
             frames_.pop_back();
-
-            // Push result to parent frame's stack (if any)
-            if (!frames_.empty()) {
-                frames_.back().stack.push_back(accumulator_);
+            if (frames_.size() <= floor) {
+                return accumulator_;
             }
+            frames_.back().stack.push_back(accumulator_);
         }
-        }  // end while
+    }
+
+    return accumulator_;
+}
+
+Object* BytecodeVM::run_trampolined() {
+    try {
+        Object* result = run_frames(0);
+
+        if (debug_) {
+            std::cout << "\\n=== Trampolined execution complete ===" << std::endl;
+            std::cout << "Accumulator: ";
+            if (accumulator_) accumulator_->print(std::cout);
+            else std::cout << "nil";
+            std::cout << "\\n================================\\n" << std::endl;
+        }
+
+        return result;
     } catch (const ContinuationInvoked& ci) {
         // Continuation invoked during trampolined execution
         // Restore the saved state and push return value
@@ -542,16 +495,6 @@ Object* BytecodeVM::run_trampolined() {
         }
         return ci.return_value;
     }
-
-    if (debug_) {
-        std::cout << "\\n=== Trampolined execution complete ===" << std::endl;
-        std::cout << "Accumulator: ";
-        if (accumulator_) accumulator_->print(std::cout);
-        else std::cout << "nil";
-        std::cout << "\\n================================\\n" << std::endl;
-    }
-
-    return accumulator_;
 }
 
 // ============================================================================

@@ -197,6 +197,12 @@ private:
     // Dynamic-wind state
     std::vector<toy::WindFrame> wind_stack_;  // Stack of active dynamic-wind contexts
 
+    // Depth-bounded frame loop shared by nested and top-level execution.
+    // Runs frames until frames_.size() drops to `floor`, then returns the
+    // result of the frame that unwound to it. Does NOT catch
+    // ContinuationInvoked — callers own continuation/cleanup policy.
+    Object* run_frames(size_t floor);
+
     // Trampolined execution (for Continuation support)
     Object* run_trampolined();
 
