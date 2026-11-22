@@ -6,6 +6,8 @@
 #include "native_evaluator.h"
 #include "gc_manager.h"
 #include "native_primitive.h"
+#include "closure.h"
+#include "i_native_code.h"
 
 using namespace zombie::compilation;
 using zombie::native::NativeCompilerBackend;
@@ -284,4 +286,34 @@ TEST_F(NativeCompilationTest, CompilesNonTailGeneralCallsNatively) {
         ASSERT_NE(exec, nullptr) << c.src;
         EXPECT_EQ(c.want, num(exec->execute(engine.get_environment()))) << c.src;
     }
+}
+
+// Closure::apply dispatches to attached native code in preference to bytecode /
+// AST (the runtime half of the native-callee ABI). Exercised with a stub so it
+// validates the contract independently of the asmjit backend.
+namespace {
+class StubNativeCode : public zombie::runtime::INativeCode {
+public:
+    int calls = 0;
+    Object* invoke(Environment* call_env) override {
+        ++calls;
+        // Prove the call env carries the bound parameter.
+        return call_env->lookup("x");
+    }
+    void trace(Tracer&) override {}
+};
+}
+TEST(ClosureNativeCodeTest, ApplyPrefersAttachedNativeCode) {
+    init_lisp_constants();
+    scheme_engine engine;
+    auto stub = std::make_shared<StubNativeCode>();
+    Object* params = engine.read_string("(x)");
+    auto* closure = gc_new<zombie::runtime::Closure>(params, nil, engine.get_environment());
+    EXPECT_FALSE(closure->has_native());
+    closure->set_native(stub);
+    EXPECT_TRUE(closure->has_native());
+    Object* args = cons(gc_new<a_int>(7), nil);
+    Object* result = closure->apply(nullptr, args, engine.get_environment());
+    EXPECT_EQ(1, stub->calls);
+    EXPECT_EQ(7, num(result));
 }

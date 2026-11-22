@@ -80,6 +80,17 @@ Object* Closure::apply(IEvaluator* evaluator, Object* args, Environment* env)
     Environment* call_env = m_env->extend(m_parms, args);
     // Note: extend() already sets the parent to m_env, no need to set it again
 
+    // Compiled native code runs directly against the call environment. It carries
+    // its own machinery for any sub-calls, so it does not depend on the caller's
+    // evaluator and takes precedence over bytecode / AST when present.
+    if (has_native()) {
+        Object* result = m_native->invoke(call_env);
+        if (m_is_macro) {
+            result = evaluator->eval(result, env);
+        }
+        return result;
+    }
+
     // OPTIMIZATION: If we have compiled bytecode and the evaluator is a BytecodeVM,
     // execute the bytecode directly instead of re-compiling the AST body
     if (has_bytecode()) {
@@ -130,6 +141,11 @@ void Closure::trace_references(Tracer& tracer)
     // Mark bytecode constants if present (iterate by reference to update in-place)
     for (Object*& constant : m_constants) {
         tracer.visit_field(constant);
+    }
+
+    // Mark objects held by compiled native code (e.g. its constant pool)
+    if (m_native) {
+        m_native->trace(tracer);
     }
 
     // Mark CoreIR captured environment values if present

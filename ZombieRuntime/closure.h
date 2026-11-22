@@ -15,6 +15,7 @@
 #pragma once
 #include "procedure.h"
 #include "Lisp.h"
+#include "i_native_code.h"
 
 #include "Environment.h"
 #include <vector>
@@ -180,6 +181,22 @@ public:
     const std::vector<Object*>& constants() const { return m_constants; }
 
     // ========================================================================
+    // Native code support (compiled machine code; see INativeCode)
+    // ========================================================================
+
+    /** @brief True if this Closure carries compiled native code. */
+    bool has_native() const { return m_native != nullptr; }
+
+    /**
+     * @brief Attach a compiled native body (shared; keeps the code alive).
+     * @note apply() prefers native code over bytecode / AST when present.
+     */
+    void set_native(std::shared_ptr<INativeCode> native) { m_native = std::move(native); }
+
+    /** @brief The attached native code, or null. */
+    const std::shared_ptr<INativeCode>& native() const { return m_native; }
+
+    // ========================================================================
     // CoreIR Support (Intermediate Representation)
     // ========================================================================
 
@@ -240,6 +257,9 @@ public:
     // Bytecode representation (optional, for bytecode VM)
     std::vector<uint8_t> m_bytecode;      ///< Compiled bytecode instructions
     std::vector<Object*> m_constants;     ///< Constant pool for bytecode
+
+    // Native code representation (optional, for the native backend)
+    std::shared_ptr<INativeCode> m_native;  ///< Compiled machine-code body
 
     // CoreIR representation (optional, for CoreIR evaluator)
     coreir::Stmt* m_coreir_body;                  ///< CoreIR statement tree (owned)
