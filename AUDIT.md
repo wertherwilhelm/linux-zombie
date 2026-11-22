@@ -1,22 +1,13 @@
 # ZombieScheme — Code Audit (missing / unimplemented / outstanding)
 
-### TODO — CoreIR mishandles some zero-arg primitive calls (2026-11-18, open)
-Found by differential probe. Calling certain builtins with **zero arguments**
-fails only on `--coreir` (fine on tree-walk / bytecode / toy VM), in two distinct
-ways:
-- `(eof-object)`, `(read-char)` -> runtime "LOAD_VAR: undefined variable". The
-  bare reference `eof-object` loads fine and a user zero-arg closure `((lambda ()
-  42))` calls fine; only the zero-arg call of these primitives breaks. The lowered
-  IR looks correct (Call(Var "eof-object", [])), so the bug is in
-  coreir_to_bytecode emission or the VM's OP_CALL-with-0-args for a primitive
-  callee — needs a bytecode disassembly to pin down.
-- `(vector)`, `(values)` with zero args -> compile-time "first: cannot take first
-  of an atom!" during lowering (likely a car on empty args; `values` has its own
-  CoreIR Expr node, so its empty case is a separate path).
-Not arity-general: `(current-output-port)` (0,0), `(newline)`, `(list)`,
-`(make-hash-table)` all work at zero args on CoreIR. Narrow and low-impact
-(these are rarely called with zero args), so deferred. Repro:
-`printf '(eof-object)\n' | ./repl --coreir`.
+### CoreIR zero-arg primitive calls — RESOLVED (2026-11-22)
+Previously `(eof-object)`/`(read-char)` errored "LOAD_VAR: undefined variable" and
+`(vector)`/`(values)` errored "first: cannot take first of an atom!" only on
+`--coreir`. All now work (verified `(eof-object)`→#<eof>, `(read-char ...)`→#<eof>,
+`(vector)`→#(), `(values)`→() on `--coreir`, matching the other three). Fixed
+incidentally by the primitive-group table-driven conversion (the NativePrimitive
+install path binds zero-arg primitives correctly) and the eof-object singleton
+change. No longer reproducible.
 
 ### Shared-Expander derived forms: case-lambda, parameterize, guard (2026-11-18, fixed)
 A differential probe across all four evaluators found derived forms that
