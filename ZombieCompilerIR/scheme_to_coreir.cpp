@@ -438,22 +438,16 @@ std::unique_ptr<Stmt> SchemeToCoreirLowering::lower_lambda_body(Object* body) {
         return lower_expr(first_expr);
     }
 
-    // Multiple expressions: sequence them with Let bindings
-    // Evaluate first expression to a temp, then continue with rest
-    std::string temp = gen_temp();
+    // Multiple expressions: evaluate the first for side effects, then continue.
+    // Lower each non-final expression to a Stmt chain and splice it before the
+    // rest, exactly as lower_begin does. (An earlier atomic special-case wrapped
+    // the value in a no-op (+ x 0) to carry it as an Expr, but that is a type
+    // error for any non-numeric atom — e.g. a non-final 'sym or "str" produced
+    // "ADD: operands must be numbers". lower_expr + inline_stmt_chain handles all
+    // atom kinds uniformly.)
+    auto first_stmt = lower_expr(first_expr);
     auto rest_stmt = lower_lambda_body(rest);
-
-    if (is_atomic(first_expr)) {
-        // Atomic expression: just evaluate for side effects, continue
-        auto first_expr_node = lower_expr_to_expr(first_expr);
-        return Stmt::makeLet(temp, std::move(first_expr_node), std::move(rest_stmt));
-    } else {
-        // Complex expression: lower to full Stmt chain
-        auto first_stmts = lower_expr(first_expr);
-
-        // Inline the complex expression's statements before the rest
-        return inline_stmt_chain(std::move(first_stmts), std::move(rest_stmt));
-    }
+    return inline_stmt_chain(std::move(first_stmt), std::move(rest_stmt));
 }
 
 // ============================================================================
