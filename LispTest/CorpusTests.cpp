@@ -18,6 +18,7 @@
 #include "gtest/gtest.h"
 #include "zombie_runtime_types.h"
 #include "scheme_engine.h"
+#include "native_compiler.h"
 #include "constants.h"
 #include <filesystem>
 #include <string>
@@ -53,22 +54,37 @@ std::string as_text(scheme_engine& engine, Object* o) {
     return engine.print_value(o);
 }
 
-// Run one corpus directory. Reports each case via EXPECT.
-void run_corpus_dir(const fs::path& dir) {
+const char* eval_label(EvaluatorType type) {
+    switch (type) {
+    case EvaluatorType::LISP:     return "lisp";
+    case EvaluatorType::TOY_VM:   return "vm";
+    case EvaluatorType::BYTECODE: return "bytecode";
+    case EvaluatorType::COREIR:   return "coreir";
+    case EvaluatorType::NATIVE:   return "native";
+    }
+    return "?";
+}
+
+// Run one corpus directory against one evaluator. Reports each case via EXPECT.
+// `reference` is the tree-walk run that authored the 'gap tags: only it flags a
+// gap that has started passing. For other evaluators (e.g. native) a passing gap
+// is merely noted, since the tag is reference-relative.
+void run_corpus_dir(const fs::path& dir, EvaluatorType type, bool reference) {
     const std::string name = dir.filename().string();
+    const std::string ev = eval_label(type);
     const std::string source = (dir / "source.scm").string();
     const std::string cases = (dir / "cases.scm").string();
 
-    scheme_engine engine;  // default tree-walk evaluator (the reference)
+    scheme_engine engine(type);
 
     // source.scm is optional: a feature corpus may rely only on builtins.
     if (fs::exists(source) && !engine.eval_string("(load \"" + source + "\")")) {
-        ADD_FAILURE() << "[" << name << "] failed to load source.scm: "
+        ADD_FAILURE() << "[" << ev << " " << name << "] failed to load source.scm: "
                       << engine.get_last_error();
         return;
     }
     if (!engine.eval_string("(load \"" + cases + "\")")) {
-        ADD_FAILURE() << "[" << name << "] failed to load cases.scm: "
+        ADD_FAILURE() << "[" << ev << " " << name << "] failed to load cases.scm: "
                       << engine.get_last_error();
         return;
     }
@@ -107,18 +123,24 @@ void run_corpus_dir(const fs::path& dir) {
 
         if (is_gap) {
             if (got == want) {
-                ADD_FAILURE() << "corpus " << name << " / case " << lbl
-                              << ": tagged 'gap but now PASSES — drop the tag";
+                if (reference) {
+                    ADD_FAILURE() << "corpus " << name << " / case " << lbl
+                                  << ": tagged 'gap but now PASSES — drop the tag";
+                } else {
+                    std::cout << "[gap-pass] " << ev << " " << name << "/" << lbl
+                              << ": tagged 'gap but passes here\n";
+                }
             } else {
-                std::cout << "[gap] " << name << "/" << lbl
+                std::cout << "[gap] " << ev << " " << name << "/" << lbl
                           << ": got " << got << " want " << want << "\n";
             }
         } else {
-            EXPECT_EQ(got, want) << "corpus " << name << " / case " << lbl;
+            EXPECT_EQ(got, want) << "corpus " << name << " / case " << lbl
+                                 << " [" << ev << "]";
         }
         ++n;
     }
-    std::cout << "[corpus] " << name << ": ran " << n << " cases\n";
+    std::cout << "[corpus] " << ev << " " << name << ": ran " << n << " cases\n";
 }
 
 std::vector<fs::path> discover_corpus_dirs() {
@@ -147,6 +169,21 @@ TEST_F(CorpusTest, AllCorpusEntries) {
     ASSERT_FALSE(dirs.empty())
         << "no corpus entries found under " << ZOMBIE_CORPUS_DIR;
     for (const auto& dir : dirs) {
-        run_corpus_dir(dir);
+        run_corpus_dir(dir, EvaluatorType::LISP, /*reference=*/true);
+    }
+}
+
+// The native JIT (CoreIR -> asmjit, bytecode fallback) must reproduce every
+// non-gap corpus result the tree-walk reference produces. Skipped when asmjit is
+// disabled or the host is not supported.
+TEST_F(CorpusTest, NativeMatchesExpected) {
+    if (!zombie::native::NativeCompilerBackend::available()) {
+        GTEST_SKIP() << "native backend unavailable (asmjit disabled or non-x86-64)";
+    }
+    auto dirs = discover_corpus_dirs();
+    ASSERT_FALSE(dirs.empty())
+        << "no corpus entries found under " << ZOMBIE_CORPUS_DIR;
+    for (const auto& dir : dirs) {
+        run_corpus_dir(dir, EvaluatorType::NATIVE, /*reference=*/false);
     }
 }
