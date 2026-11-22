@@ -1,0 +1,60 @@
+{
+  "smoke": {
+    "lisp": {
+      "passed": 14,
+      "error": 1
+    },
+    "bytecode": {
+      "passed": 13,
+      "crashed": 1,
+      "error": 1
+    },
+    "coreir": {
+      "passed": 11,
+      "timeout": 1,
+      "error": 3
+    },
+    "toyvm": {
+      "passed": 14,
+      "error": 1
+    }
+  },
+  "one-iteration": {
+    "lisp": {
+      "passed": 10,
+      "error": 20,
+      "timeout": 27
+    },
+    "bytecode": {
+      "passed": 12,
+      "error": 20,
+      "timeout": 21,
+      "crashed": 3,
+      "incorrect": 1
+    },
+    "coreir": {
+      "passed": 7,
+      "error": 30,
+      "timeout": 20
+    },
+    "toyvm": {
+      "passed": 10,
+      "error": 20,
+      "timeout": 27
+    }
+  },
+  "original-string": {
+    "lisp": {
+      "error": 1
+    },
+    "bytecode": {
+      "error": 1
+    },
+    "coreir": {
+      "error": 1
+    },
+    "toyvm": {
+      "error": 1
+    }
+  }
+}

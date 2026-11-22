@@ -1,0 +1,410 @@
+ZombieScheme: missing items and fixes identified by the R7RS benchmarks
+=====================================================================
+
+Status: OPEN backlog, not a list of fixes already made.
+Branch: performance-testing (no asmjit).
+Evaluator baseline: f7ab3a29ee8ddf81807f2bba95e43afd0bab6f09.
+Benchmark suite: 85f6acdc4cc4e2b857f307ba56bd0ba931dcccd1.
+
+Scope and evidence
+------------------
+This report turns the feasibility results into actionable work. Existing benchmark
+logs remain unchanged. followup-probes.json records additional, small checks made
+while preparing this report; probes/ contains selected ready-to-run Scheme files.
+No evaluator, runtime, expander, or compiler was changed for this investigation.
+
+Baseline conditions: Release build, separate processes, regular-file stdin, 1 GiB
+address-space cap. Smoke: 15 reduced cases per evaluator, 5s process budget.
+One-iteration: 57 original-size cases per evaluator, one repetition, 3s budget.
+Original-string: unchanged upstream repetition count, 10s budget. The runner-only
+clock adapter was enabled; missing time support would otherwise block the suite.
+
+One-iteration first-reported outcomes (228 jobs total):
+  39 passed
+  52 missing library imports
+  18 unbound file procedures
+  12 CoreIR conditional-inlining errors
+   4 out-of-range integer-literal read failures in compiler
+   4 Division by zero failures in pi
+   3 bytecode crashes/aborts
+   1 incorrect bytecode result in conform
+  95 timeouts
+
+These are FIRST failures, not independent complete coverage. Fixing an import can
+expose another problem in that same benchmark. A timeout establishes only that the
+process budget was exceeded; it does not establish nontermination or a wrong answer.
+
+Priority map
+------------
+ID       Priority  Area                         Evidence/status
+ZB-001   P0        Bytecode ctak/fibc            Confirmed SIGSEGV; root cause unknown
+ZB-002   P0        Bytecode tak                 Confirmed pure-virtual abort; cause unknown
+ZB-003   P0        Bytecode conform             Confirmed incorrect answer
+ZB-004   P1        CoreIR conditional splicing  Confirmed unsupported lowering path
+ZB-005   P1        Standard library namespaces  Confirmed missing registrations
+ZB-006   P1        File procedures              Confirmed declared-but-unbound procedures
+ZB-007   P1        Exact integer range / pi     Confirmed range limit and separate pi failure
+ZB-008   P1        Repeated string allocation   Confirmed budget failure; cause not established
+ZB-009   P1        Production time library      Confirmed missing; benchmark adapter only
+ZB-010   P1        Stream reader / read errors  Confirmed transport and error-propagation gaps
+ZB-011   P2        Output flushing              Source-confirmed no-op; not a scored failure
+ZB-012   P2        Slow / unresolved workloads  Budget-limited; profile before changing semantics
+
+P0 means crashes or incorrect output should be resolved before trusting performance
+comparisons. P1 covers compatibility and diagnostics needed for broader coverage.
+P2 covers remaining implementation/profiling work; it is not a claim of correctness.
+
+ZB-001 — Bytecode continuation-test segfaults
+-------------------------------------------
+Observed:
+  smoke/ctak-bytecode: SIGSEGV at input 1,12,6,0,1.
+  one-iteration/ctak-bytecode: SIGSEGV at the original 32,16,8 problem size.
+  one-iteration/fibc-bytecode: SIGSEGV at input n=30.
+  Reduced ctak passes on lisp, coreir, and toyvm. Reduced fibc passes everywhere.
+
+Evidence:
+  smoke/logs/ctak-bytecode-1.stdout and .stderr
+  one-iteration/logs/ctak-bytecode-1.* and fibc-bytecode-1.*
+
+Starting points (inspection targets, not a confirmed root cause):
+  ZombieBytecode/core_instructions.h:1151 — CallCCInsn::execute
+  ZombieBytecode/core_instructions.h:1041 — CallInsn::execute
+  ZombieBytecode/bytecode_vm.cpp:340 — capture_continuation
+  ZombieBytecode/bytecode_vm.cpp:348 — restore_continuation
+  ZombieRuntime/continuation.cpp:81 — continuation GC tracing
+
+Next work:
+  Capture an ASan/UBSan trace and reduce the failing program. Inspect references to
+  execution contexts, frame storage, saved stacks, argument lists, and GC roots
+  across continuation capture/restore. Do not conclude that this is only a call/cc
+  design limitation or that the historical GC fixes already resolve it.
+
+Done when:
+  Reduced and original-size ctak/fibc produce upstream-correct answers with adequate
+  budgets, under sanitizers and forced collection. Add the reduced case as a
+  regression and retain existing reentrant-continuation/dynamic-wind checks.
+
+Reproduce:
+  python3 benchmarks/run_r7rs.py --suite /mnt/c/work/r7rs-benchmarks --profile smoke --benchmarks ctak --evaluators bytecode --timeout 5 --output /tmp/zb001-ctak-new
+
+ZB-002 — Bytecode tak aborts through a pure virtual call
+------------------------------------------------------
+Observed:
+  one-iteration/tak-bytecode exits with SIGABRT and:
+    pure virtual method called
+    terminate called without an active exception
+  Reduced tak passes. This benchmark does not require continuations, so it should
+  not be grouped automatically with ZB-001.
+
+Evidence: one-iteration/logs/tak-bytecode-1.stderr and results.json.
+Starting points:
+  ZombieBytecode/core_instructions.h:1097 — TailCallInsn::execute
+  ZombieBytecode/bytecode_vm.cpp — frame execution and trace_references
+  GarbageCollector/gc_manager.cpp and mark_sweep_strategy.cpp — collection/lifetimes
+
+Next work:
+  Obtain a stack trace at __cxa_pure_virtual and sanitizer diagnostics. Check object
+  lifetimes, stale frame references, roots during allocation, and collection under
+  deep recursion. A pure-virtual symptom alone does not identify the bad object.
+  Treat this as a current open failure, separate from historical fixed GC issues.
+
+Done when:
+  The original-size tak case finishes correctly under a suitable budget; repeated
+  and forced-GC runs and a reduced lifetime regression pass without diagnostics.
+
+Reproduce:
+  python3 benchmarks/run_r7rs.py --suite /mnt/c/work/r7rs-benchmarks --profile one-iteration --benchmarks tak --evaluators bytecode --timeout 10 --output /tmp/zb002-tak-new
+
+ZB-003 — Bytecode conform returns an incorrect graph result
+---------------------------------------------------------
+Observed:
+  one-iteration/conform-bytecode completes quickly but emits INCORRECT.
+  Actual: ("a" "any" "none"). The expected upstream list is much larger and is
+  preserved in one-iteration/inputs/conform.input.
+  The other evaluators did NOT all establish a reference answer in this run:
+  lisp/toyvm timed out, and CoreIR failed during lowering.
+
+Evidence: one-iteration/logs/conform-bytecode-1.stdout.
+Starting points:
+  /mnt/c/work/r7rs-benchmarks/src/conform.scm:459 — run-benchmark; test/make-lattice
+  ZombieBytecode/compiler.cpp and core_instructions.h — calls, bindings, mutation
+
+Next work:
+  Reduce graph construction/reduction until a small program differs from a completed
+  reference run. Trace mutations, closure captures, lexical bindings and returns.
+  The exact faulty opcode or compiler transformation is not established.
+
+Done when:
+  The unmodified predicate accepts bytecode output; a small deterministic regression
+  fails on the old implementation and agrees across all supported evaluators.
+
+Reproduce:
+  python3 benchmarks/run_r7rs.py --suite /mnt/c/work/r7rs-benchmarks --profile one-iteration --benchmarks conform --evaluators bytecode --timeout 10 --output /tmp/zb003-conform-new
+
+ZB-004 — CoreIR cannot splice conditional statement chains
+--------------------------------------------------------
+Observed:
+  Cannot inline stmt chain with If statement (clone not implemented).
+  First failure in 12 larger cases: destruc, puzzle, pnpoly, simplex, cat, tail,
+  conform, earley, matrix, maze, nqueens, quicksort.
+  Reduced N-Queens and quicksort fail the same way.
+
+Confirmed small reproductions (other three evaluators return the expected result):
+  (define x (if #t 1 2)) (write x)                  => 1
+  (define x 0) (set! x (if #t 1 2)) (write x)       => 1
+  (write (begin (if #t 1 2) 3))                    => 3
+  A simple let initializer DOES work:
+  (write (let ((x (if #t 1 2))) (+ x 3)))           => 4
+
+Starting points:
+  ZombieCompilerIR/scheme_to_coreir.cpp:1320 — inline_stmt_chain, explicit throw
+  ZombieCompilerIR/scheme_to_coreir.cpp:333 — splice_tail
+  Existing inline_stmt_chain callers in begin, definition and assignment lowering.
+
+Next work:
+  Extend continuation splicing to both branches, or introduce a safe IR clone/join
+  mechanism. The existing operand-position-if fix does not cover every sequencing,
+  definition and assignment path. Preserve evaluation order, scope, and branch laziness.
+
+Done when:
+  The three probes pass; nested true/false cases and side-effect ordering agree across
+  backends. Rerun all 12 previously blocked cases and record any newly exposed errors.
+
+Reproduce:
+  ./build-release/zombie-scheme --evaluator coreir benchmarks/results/feasibility/probes/coreir-if-define.scm
+
+ZB-005 — Four standard library namespaces are missing
+----------------------------------------------------
+Confirmed first-failure coverage in the larger sweep:
+  (scheme cxr):     28 jobs — deriv, dynamic, peval, scheme, chudnovsky, nboyer, sboyer
+  (scheme inexact): 12 jobs — fft, nucleic, ray
+  (scheme complex):  4 jobs — mbrotZ
+  (scheme char):     8 jobs — parsing, slatex
+
+Starting point: ZombieRuntime/r7rs_stdlib.cpp:264 — bootstrap_standard_libraries
+registers only base, read, write and file. Some relevant primitives already exist in
+primitive groups; missing namespace registration is not proof that every operation
+in these libraries is absent, or that registering aliases alone will be sufficient.
+
+Next work:
+  Implement/register each library with its intended exports. Inventory which exported
+  procedures actually exist and which need implementation. Validate imports and calls;
+  do not register empty libraries merely to bypass import errors.
+
+Done when:
+  Import-only probes and representative operations pass. Every export resolves to
+  usable syntax/procedure as appropriate; rerun the 13 blocked benchmark names.
+
+Reproduce:
+  ./build-release/zombie-scheme benchmarks/results/feasibility/probes/import-inexact.scm
+
+ZB-006 — (scheme file) advertises unbound procedures
+-------------------------------------------------
+Observed first failures: call-with-input-file in 15 larger jobs; file-exists? in 3.
+Affected names include sum1, cat, tail, wc and read1. Other failures can mask these.
+
+Additional probes confirm these are unbound after importing (scheme file):
+  call-with-input-file, call-with-output-file, file-exists?, delete-file.
+  open-input-file DOES resolve to a procedure.
+
+Starting points:
+  ZombieRuntime/r7rs_stdlib.cpp:237 — advertised exports
+  ZombieRuntime/primitives/primitive_io.cpp:455 — installed primitive table
+  ZombieRuntime/library.cpp:154 — library initialization/export handling
+
+Next work:
+  Implement the missing file operations and callback-based open/call/close wrappers.
+  Use exception-safe cleanup. Check all library exports against installed bindings
+  instead of relying on an export declaration as evidence of implementation.
+
+Done when:
+  Procedure probes pass; fixtures exercise actual read/write/existence/deletion and
+  port closure on normal/error exits. File benchmarks run with copied fixtures.
+
+Reproduce:
+  ./build-release/zombie-scheme benchmarks/results/feasibility/probes/file-call-with-input-file.scm
+
+ZB-007 — Exact integer range blocks compiler; investigate pi arithmetic
+----------------------------------------------------------------------
+Confirmed range failure:
+  All compiler runs fail at source line 8491, column 47, containing:
+    (define flonum-sign-bit 9223372036854775808)
+  The number is 2^63, beyond the current signed 64-bit representation. A one-line
+  literal probe independently reports read: invalid number format.
+
+Separate observed failure:
+  All pi jobs report Division by zero. The upstream expected data includes 50-500
+  digit integers. The range limitation is relevant, but the exact instruction that
+  produces the reported zero denominator has NOT been traced.
+
+Starting points:
+  ZombieRuntime/scheme_reader.cpp:520 — std::stoll literal conversion
+  ZombieRuntime/numeric_runtime.cpp:166,190 — fixed-width construction/token parsing
+  ZombieRuntime/numeric_runtime.cpp:262 — unchecked signed integer arithmetic
+
+Next work:
+  Decide/support the exact-integer range required for these benchmarks, including
+  arbitrary precision if full compiler/pi coverage is intended. Check overflow and
+  diagnostics consistently in parsing, arithmetic, rationals, and bytecode paths.
+  Do not substitute inexact values or permit silent wrapping to obtain a score.
+  Trace pi independently; do not claim that a parser change alone resolves it.
+  Check errors while reading its large expected values as well: ZB-010 can allow a
+  read-error object to be treated as ordinary data, obscuring the first actual problem.
+
+Done when:
+  Boundary values and overflow have defined behavior, compiler reads its literal,
+  and supported pi inputs pass their exact expected results. If bignums remain
+  intentionally unsupported, label the affected cases as unsupported rather than
+  presenting them as measured implementation performance.
+
+Reproduce:
+  ./build-release/zombie-scheme benchmarks/results/feasibility/probes/integer-range.scm
+
+ZB-008 — Full string workload exhausts the configured address space
+-----------------------------------------------------------------
+Observed:
+  One iteration at size 500000 passes on all four evaluators. With the exact upstream
+  input (100 repetitions), all four report std::bad_alloc under the 1 GiB cap.
+  This is a confirmed failure under that budget, not proof of a memory leak or that
+  the benchmark can never complete with other settings.
+
+Starting points:
+  GarbageCollector/gc_manager.cpp:26,110 — default threshold / trigger
+  GarbageCollector/mark_sweep_strategy.cpp:23 — byte accounting
+  GarbageCollector/gc_box.h:129,162 — recorded size uses sizeof(T)
+  ZombieRuntime/atom.h — string storage; primitives/primitive_strings.cpp — allocation
+
+Source-based hypothesis to test:
+  Collector accounting records GC object sizes; dynamically allocated string buffers
+  may grow without proportional collection pressure. Conservative retention and
+  temporary roots should also be measured. None is yet established as the cause.
+
+Next work:
+  Profile resident memory, managed/external allocated bytes, collections, retained
+  roots and string capacities over repeated iterations. Compare thresholds and budgets
+  while preserving the input and correctness predicate. Raising the limit alone is
+  not evidence that collection pressure/accounting is correct.
+
+Done when:
+  Repeat runs finish with correct output under a stated memory policy and measured,
+  understood memory growth; add a repeated-allocation regression independent of timing.
+
+Reproduce:
+  python3 benchmarks/run_r7rs.py --suite /mnt/c/work/r7rs-benchmarks --profile original --benchmarks string --evaluators lisp bytecode coreir toyvm --timeout 10 --memory-mb 1024 --output /tmp/zb008-string-new
+
+ZB-009 — Time support exists only in the benchmark adapter
+--------------------------------------------------------
+Observed: (import (scheme time)) fails in a normal engine. The feasibility runs
+explicitly enabled --benchmark-time. This is a missing runtime library, not a
+failure hidden by the benchmark predicate.
+Starting points: ZombieRuntime/r7rs_stdlib.cpp and Scheme-run/Scheme-run.cpp:25.
+
+Next work:
+  Move appropriate clock primitives and exports into the runtime library layer.
+  Preserve a monotonic interval clock and document units, precision, and the chosen
+  wall-time epoch/leap-second semantics. The current secondary host clock is POSIX
+  wall time and should not be described as a complete TAI implementation.
+
+Done when:
+  A normal engine imports (scheme time), the clocks have consistent types/units,
+  and the benchmark no longer needs the opt-in adapter.
+
+ZB-010 — Stream reading depends on transport; read errors become values
+---------------------------------------------------------------------
+Confirmed transport discrepancy for input 50:
+  (define x (read)) (write (list x (exact? x) (equal? x 50)))
+  Regular file: (50 #t #t)
+  Pipe:         (50.0 #f #f)
+The feasibility scores use regular files, matching upstream, and are not affected
+by the discarded pipe trial. This remains a real interactive/stream compatibility gap.
+
+Additional probe:
+  (write (read)) with a regular file containing an unclosed '(' exits zero, printing
+  a read-error object as ordinary data. prim_read does not propagate the read failure.
+
+Starting points:
+  ZombieRuntime/InputPort.cpp:91 — seekable/full-reader vs nonseekable/legacy split
+  ZombieRuntime/InputPort.cpp:184 — legacy numeric/symbol parsing
+  ZombieRuntime/primitives/primitive_io.cpp:193 — prim_read returns error objects
+
+Next work:
+  Use one datum grammar for seekable streams, pipes and interactive input, without
+  slurping an interactive stream until EOF. Preserve unconsumed data. Surface malformed
+  input through the language's error mechanism and retain the read-error classification.
+
+Done when:
+  Exactness, symbols, comments, vectors, dotted/multiline forms and successive reads
+  agree across transports. Malformed data is catchable or causes a nonzero batch
+  failure, rather than a successful value; ordinary strings are not mistaken for errors.
+
+Reproduce:
+  printf '50\n' | ./build-release/zombie-scheme benchmarks/results/feasibility/probes/reader-exactness.scm
+  ./build-release/zombie-scheme benchmarks/results/feasibility/probes/reader-exactness.scm < benchmarks/results/feasibility/probes/reader-exactness.input
+
+ZB-011 — flush-output-port validates the port but does not flush
+--------------------------------------------------------------
+Source-confirmed missing operation, not the identified cause of a scored failure:
+  ZombieRuntime/primitives/primitive_io.cpp:323 returns nil without flushing.
+  ZombieRuntime/OutputPort.h has write operations but no flush operation.
+
+Next work / completion check:
+  Add a real stream flush through the port abstraction, preserve return semantics,
+  and verify data becomes visible before close/process exit. This also makes progress
+  and diagnostics from interrupted benchmark runs more reliable.
+
+ZB-012 — Profile budget-limited cases; do not call them incorrect
+--------------------------------------------------------------
+Observed: 95 larger jobs exceed 3s. Reduced cpstak/CoreIR also exceeds 5s while the
+other reduced backends finish. Expensive recursion, GC stress, equality and complex
+CPS workloads need profiling or larger budgets before correctness can be concluded.
+
+Next work:
+  After the correctness blockers are addressed, rerun selected cases with progressively
+  larger budgets. Separate startup/parsing/expansion/compilation, execution, allocation,
+  and collection costs. For persistent stalls, reduce and trace the program before
+  deciding whether the issue is throughput, nontermination, or another correctness bug.
+
+Done when:
+  Selected original-size cases have either validated answers with adequate budgets,
+  a minimized confirmed defect, or an explicit unsupported-feature designation.
+  Record compiler flags, GC policy, memory limits, repeated measurements and variance
+  before publishing comparable performance scores.
+
+Suggested implementation order
+------------------------------
+1. Reduce and fix ZB-001/002/003; memory safety and correct output precede optimization.
+2. Address ZB-004/005/006 for broad coverage. Add import/export and branch-splicing tests.
+3. Establish integer-range policy and trace pi (ZB-007); profile allocation pressure (ZB-008).
+4. Make time support normal, unify stream reading/error propagation, and implement flush.
+5. Re-run newly unlocked cases, then increase selected budgets and measure full workloads.
+
+Fix verification rules
+----------------------
+- Keep upstream algorithms, expected answers, and correctness predicates unchanged.
+- Test all four evaluators unless a capability is explicitly and intentionally unsupported.
+- Preserve regular-file stdin for the official adapter; test pipes independently as regressions.
+- Prefer small regressions that expose the defect; then rerun the upstream case that found it.
+- Existing missing imports can mask deeper failures. Clearing one first error does not make
+  that entire benchmark green automatically.
+- Keep crash, incorrect, runtime error, unsupported capability, timeout and resource-limit
+  outcomes distinct. Do not replace missing functionality with success stubs.
+- Run sanitizer reproductions outside the harness's virtual-address-space cap: sanitizer
+  runtimes reserve large virtual ranges. Use an external time bound and copied fixtures.
+
+Reading the evidence / reproducing
+---------------------------------
+All paths above are relative to the ZombieScheme repository unless noted. Evidence
+paths without a repository prefix are relative to benchmarks/results/feasibility/.
+Use a NEW --output directory for every adapter command. The script returns nonzero
+when a job fails, which is expected for an open issue. It copies data fixtures and
+prevents the benchmark checkout from being modified.
+
+Small probes use the existing Release runner and require no time shim. Full benchmark
+commands use the adapter, which enables the clock shim and records metadata/logs.
+For sanitizer investigation, build the batch target with ASan/UBSan and run the saved
+program/input directly with --benchmark-time, instead of imposing the normal 1 GiB
+virtual-address-space limit.
+
+The existing AUDIT.md contains other historical findings and open items; this report
+is the benchmark-driven subset plus directly checked related implementation gaps.
+Do not interpret it as a complete language-conformance audit or as fixes already made.

@@ -1,5 +1,25 @@
 # ZombieScheme — Code Audit (missing / unimplemented / outstanding)
 
+### R7RS benchmark fix backlog (open, performance-testing branch)
+
+The non-asmjit feasibility run has a [prioritized missing-items report](benchmarks/results/feasibility/missing-items.txt),
+with stable issue IDs ZB-001 through ZB-012, source locations, reproduction commands,
+and completion checks. The report separates confirmed failures from suspected causes
+and time/resource limits. [Small probe results](benchmarks/results/feasibility/followup-probes.json)
+use the same executable as the original feasibility run.
+
+- **P0:** bytecode `ctak`/`fibc` segfaults, a separate `tak` pure-virtual abort,
+  and incorrect output from `conform`.
+- **P1:** CoreIR conditional splicing; missing standard library namespaces and file
+  procedures; integer range and `pi` failures; repeated-string memory pressure;
+  runtime time support; stream-reader consistency and read-error propagation.
+- **P2:** the no-op `flush-output-port` and profiling of budget-limited workloads.
+
+These are open findings. The benchmark time adapter is a workaround; no evaluator
+fixes are claimed here. Historical fixed GC/continuation entries below do not establish
+the cause of the newly observed crashes.
+
+
 ### TODO — CoreIR mishandles some zero-arg primitive calls (2026-11-18, open)
 Found by differential probe. Calling certain builtins with **zero arguments**
 fails only on `--coreir` (fine on tree-walk / bytecode / toy VM), in two distinct

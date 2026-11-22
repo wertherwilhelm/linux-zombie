@@ -1,0 +1,232 @@
+benchmark,evaluator,profile,repeat,status,benchmark_name,benchmark_seconds,process_seconds,returncode,detail
+browse,lisp,one-iteration,1,passed,browse:1,1.82134,2.2331773420009995,0,
+browse,bytecode,one-iteration,1,passed,browse:1,0.471233,0.646223611998721,0,
+browse,coreir,one-iteration,1,passed,browse:1,2.21441,2.63625656899967,0,
+browse,toyvm,one-iteration,1,passed,browse:1,1.37375,1.6682512209954439,0,
+deriv,lisp,one-iteration,1,error,,,0.009913210000377148,1,/tmp/zombie-r7rs-one-iteration-file/programs/deriv-lisp.scm: Cannot find library (scheme cxr)
+deriv,bytecode,one-iteration,1,error,,,0.015515425002377015,1,/tmp/zombie-r7rs-one-iteration-file/programs/deriv-bytecode.scm: Cannot find library (scheme cxr)
+deriv,coreir,one-iteration,1,error,,,0.02376454400655348,1,/tmp/zombie-r7rs-one-iteration-file/programs/deriv-coreir.scm: Cannot find library (scheme cxr)
+deriv,toyvm,one-iteration,1,error,,,0.011570871000003535,1,/tmp/zombie-r7rs-one-iteration-file/programs/deriv-toyvm.scm: Cannot find library (scheme cxr)
+destruc,lisp,one-iteration,1,timeout,,,3.017812000995036,,Exceeded 3s wall limit
+destruc,bytecode,one-iteration,1,passed,destruc:600:50:1,2.3069,2.3285136470003636,0,
+destruc,coreir,one-iteration,1,error,,,0.029222063996712677,1,/tmp/zombie-r7rs-one-iteration-file/programs/destruc-coreir.scm: Evaluation error: Cannot inline stmt chain with If statement (clone not implemented)
+destruc,toyvm,one-iteration,1,timeout,,,3.013057486001344,,Exceeded 3s wall limit
+diviter,lisp,one-iteration,1,passed,diviter:1000:1,0.009782,0.035406896997301374,0,
+diviter,bytecode,one-iteration,1,passed,diviter:1000:1,0.005973,0.026352993998443708,0,
+diviter,coreir,one-iteration,1,passed,diviter:1000:1,0.009529,0.050596660999872256,0,
+diviter,toyvm,one-iteration,1,passed,diviter:1000:1,0.00863,0.03122243600228103,0,
+divrec,lisp,one-iteration,1,passed,divrec:1000:1,0.010728,0.03413125200313516,0,
+divrec,bytecode,one-iteration,1,passed,divrec:1000:1,0.005924,0.02393088999815518,0,
+divrec,coreir,one-iteration,1,passed,divrec:1000:1,0.008726,0.04063098099868512,0,
+divrec,toyvm,one-iteration,1,passed,divrec:1000:1,0.008261,0.03005099199799588,0,
+puzzle,lisp,one-iteration,1,timeout,,,3.04992463200324,,Exceeded 3s wall limit
+puzzle,bytecode,one-iteration,1,timeout,,,3.098403887997847,,Exceeded 3s wall limit
+puzzle,coreir,one-iteration,1,error,,,0.028858290999778546,1,/tmp/zombie-r7rs-one-iteration-file/programs/puzzle-coreir.scm: Evaluation error: Cannot inline stmt chain with If statement (clone not implemented)
+puzzle,toyvm,one-iteration,1,timeout,,,3.0305757599999197,,Exceeded 3s wall limit
+triangl,lisp,one-iteration,1,timeout,,,3.0256891199969687,,Exceeded 3s wall limit
+triangl,bytecode,one-iteration,1,timeout,,,3.031070475000888,,Exceeded 3s wall limit
+triangl,coreir,one-iteration,1,timeout,,,3.038260834000539,,Exceeded 3s wall limit
+triangl,toyvm,one-iteration,1,timeout,,,3.0174557830032427,,Exceeded 3s wall limit
+tak,lisp,one-iteration,1,timeout,,,3.01180787699559,,Exceeded 3s wall limit
+tak,bytecode,one-iteration,1,crashed,,,2.1481607710011303,-6,"SIGABRT: pure virtual method called
+terminate called without an active exception"
+tak,coreir,one-iteration,1,timeout,,,3.01303302100132,,Exceeded 3s wall limit
+tak,toyvm,one-iteration,1,timeout,,,3.011893542003236,,Exceeded 3s wall limit
+takl,lisp,one-iteration,1,timeout,,,3.0120729459958966,,Exceeded 3s wall limit
+takl,bytecode,one-iteration,1,timeout,,,3.0120076029998017,,Exceeded 3s wall limit
+takl,coreir,one-iteration,1,timeout,,,3.0116378849998,,Exceeded 3s wall limit
+takl,toyvm,one-iteration,1,timeout,,,3.0115077079972252,,Exceeded 3s wall limit
+ntakl,lisp,one-iteration,1,timeout,,,3.014274328997999,,Exceeded 3s wall limit
+ntakl,bytecode,one-iteration,1,timeout,,,3.015940283999953,,Exceeded 3s wall limit
+ntakl,coreir,one-iteration,1,timeout,,,3.0142792530023144,,Exceeded 3s wall limit
+ntakl,toyvm,one-iteration,1,timeout,,,3.015137254995352,,Exceeded 3s wall limit
+cpstak,lisp,one-iteration,1,timeout,,,3.0147380069975043,,Exceeded 3s wall limit
+cpstak,bytecode,one-iteration,1,timeout,,,3.0126160200015875,,Exceeded 3s wall limit
+cpstak,coreir,one-iteration,1,timeout,,,3.0325472869953956,,Exceeded 3s wall limit
+cpstak,toyvm,one-iteration,1,timeout,,,3.018384547001915,,Exceeded 3s wall limit
+ctak,lisp,one-iteration,1,timeout,,,3.0135743809951236,,Exceeded 3s wall limit
+ctak,bytecode,one-iteration,1,crashed,,,1.0047244789966499,-11,SIGSEGV: Running ctak:32:16:8:1
+ctak,coreir,one-iteration,1,timeout,,,3.015269008996256,,Exceeded 3s wall limit
+ctak,toyvm,one-iteration,1,timeout,,,3.0188394439974218,,Exceeded 3s wall limit
+fib,lisp,one-iteration,1,timeout,,,3.0216869180003414,,Exceeded 3s wall limit
+fib,bytecode,one-iteration,1,timeout,,,3.0163945029999013,,Exceeded 3s wall limit
+fib,coreir,one-iteration,1,timeout,,,3.013313980998646,,Exceeded 3s wall limit
+fib,toyvm,one-iteration,1,timeout,,,3.015734031003376,,Exceeded 3s wall limit
+fibc,lisp,one-iteration,1,timeout,,,3.0112060169994948,,Exceeded 3s wall limit
+fibc,bytecode,one-iteration,1,crashed,,,2.2400831729974016,-11,SIGSEGV: Running fibc:30:1
+fibc,coreir,one-iteration,1,timeout,,,3.0125055460011936,,Exceeded 3s wall limit
+fibc,toyvm,one-iteration,1,timeout,,,3.016341974995157,,Exceeded 3s wall limit
+fibfp,lisp,one-iteration,1,timeout,,,3.0121742010014714,,Exceeded 3s wall limit
+fibfp,bytecode,one-iteration,1,timeout,,,3.0172925340011716,,Exceeded 3s wall limit
+fibfp,coreir,one-iteration,1,timeout,,,3.0133760800017626,,Exceeded 3s wall limit
+fibfp,toyvm,one-iteration,1,timeout,,,3.0129515189983067,,Exceeded 3s wall limit
+sum,lisp,one-iteration,1,passed,sum:10000:1,0.118063,0.1324268899988965,0,
+sum,bytecode,one-iteration,1,passed,sum:10000:1,0.011984,0.029239101997518446,0,
+sum,coreir,one-iteration,1,passed,sum:10000:1,0.027396,0.05796119500155328,0,
+sum,toyvm,one-iteration,1,passed,sum:10000:1,0.090098,0.10398461799923098,0,
+sumfp,lisp,one-iteration,1,timeout,,,3.0135060979955597,,Exceeded 3s wall limit
+sumfp,bytecode,one-iteration,1,timeout,,,3.0126713270001346,,Exceeded 3s wall limit
+sumfp,coreir,one-iteration,1,timeout,,,3.0140923419967294,,Exceeded 3s wall limit
+sumfp,toyvm,one-iteration,1,timeout,,,3.014139693994366,,Exceeded 3s wall limit
+fft,lisp,one-iteration,1,error,,,0.009744533999764826,1,/tmp/zombie-r7rs-one-iteration-file/programs/fft-lisp.scm: Cannot find library (scheme inexact)
+fft,bytecode,one-iteration,1,error,,,0.014545467995048966,1,/tmp/zombie-r7rs-one-iteration-file/programs/fft-bytecode.scm: Cannot find library (scheme inexact)
+fft,coreir,one-iteration,1,error,,,0.024312032001034822,1,/tmp/zombie-r7rs-one-iteration-file/programs/fft-coreir.scm: Cannot find library (scheme inexact)
+fft,toyvm,one-iteration,1,error,,,0.012272781998035498,1,/tmp/zombie-r7rs-one-iteration-file/programs/fft-toyvm.scm: Cannot find library (scheme inexact)
+mbrot,lisp,one-iteration,1,timeout,,,3.0125714680034434,,Exceeded 3s wall limit
+mbrot,bytecode,one-iteration,1,timeout,,,3.0129200800001854,,Exceeded 3s wall limit
+mbrot,coreir,one-iteration,1,timeout,,,3.01277237800241,,Exceeded 3s wall limit
+mbrot,toyvm,one-iteration,1,timeout,,,3.014118971004791,,Exceeded 3s wall limit
+mbrotZ,lisp,one-iteration,1,error,,,0.009396978006407153,1,/tmp/zombie-r7rs-one-iteration-file/programs/mbrotZ-lisp.scm: Cannot find library (scheme complex)
+mbrotZ,bytecode,one-iteration,1,error,,,0.013679249001143035,1,/tmp/zombie-r7rs-one-iteration-file/programs/mbrotZ-bytecode.scm: Cannot find library (scheme complex)
+mbrotZ,coreir,one-iteration,1,error,,,0.02392023499851348,1,/tmp/zombie-r7rs-one-iteration-file/programs/mbrotZ-coreir.scm: Cannot find library (scheme complex)
+mbrotZ,toyvm,one-iteration,1,error,,,0.012151172995800152,1,/tmp/zombie-r7rs-one-iteration-file/programs/mbrotZ-toyvm.scm: Cannot find library (scheme complex)
+nucleic,lisp,one-iteration,1,error,,,0.013855543998943176,1,/tmp/zombie-r7rs-one-iteration-file/programs/nucleic-lisp.scm: Cannot find library (scheme inexact)
+nucleic,bytecode,one-iteration,1,error,,,0.01777078399754828,1,/tmp/zombie-r7rs-one-iteration-file/programs/nucleic-bytecode.scm: Cannot find library (scheme inexact)
+nucleic,coreir,one-iteration,1,error,,,0.027870394005731214,1,/tmp/zombie-r7rs-one-iteration-file/programs/nucleic-coreir.scm: Cannot find library (scheme inexact)
+nucleic,toyvm,one-iteration,1,error,,,0.01816755199979525,1,/tmp/zombie-r7rs-one-iteration-file/programs/nucleic-toyvm.scm: Cannot find library (scheme inexact)
+pi,lisp,one-iteration,1,error,,,0.015767427001264878,1,/tmp/zombie-r7rs-one-iteration-file/programs/pi-lisp.scm: Evaluation error: Division by zero
+pi,bytecode,one-iteration,1,error,,,0.017984878999413922,1,/tmp/zombie-r7rs-one-iteration-file/programs/pi-bytecode.scm: Evaluation error: Division by zero
+pi,coreir,one-iteration,1,error,,,0.04054576699854806,1,/tmp/zombie-r7rs-one-iteration-file/programs/pi-coreir.scm: Evaluation error: Division by zero
+pi,toyvm,one-iteration,1,error,,,0.017720982003083918,1,/tmp/zombie-r7rs-one-iteration-file/programs/pi-toyvm.scm: Evaluation error: Division by zero
+pnpoly,lisp,one-iteration,1,passed,pnpoly:1,0.009425,0.021805476004374214,0,
+pnpoly,bytecode,one-iteration,1,passed,pnpoly:1,0.004641,0.02124964199902024,0,
+pnpoly,coreir,one-iteration,1,error,,,0.02553579599771183,1,/tmp/zombie-r7rs-one-iteration-file/programs/pnpoly-coreir.scm: Evaluation error: Cannot inline stmt chain with If statement (clone not implemented)
+pnpoly,toyvm,one-iteration,1,passed,pnpoly:1,0.007312,0.02148432199464878,0,
+ray,lisp,one-iteration,1,error,,,0.009300615995016415,1,/tmp/zombie-r7rs-one-iteration-file/programs/ray-lisp.scm: Cannot find library (scheme inexact)
+ray,bytecode,one-iteration,1,error,,,0.013970076994155534,1,/tmp/zombie-r7rs-one-iteration-file/programs/ray-bytecode.scm: Cannot find library (scheme inexact)
+ray,coreir,one-iteration,1,error,,,0.02379647800262319,1,/tmp/zombie-r7rs-one-iteration-file/programs/ray-coreir.scm: Cannot find library (scheme inexact)
+ray,toyvm,one-iteration,1,error,,,0.013243813998997211,1,/tmp/zombie-r7rs-one-iteration-file/programs/ray-toyvm.scm: Cannot find library (scheme inexact)
+simplex,lisp,one-iteration,1,passed,simplex:1,0.010427,0.02092380399699323,0,
+simplex,bytecode,one-iteration,1,passed,simplex:1,0.004597,0.023090897004294675,0,
+simplex,coreir,one-iteration,1,error,,,0.060628017999988515,1,/tmp/zombie-r7rs-one-iteration-file/programs/simplex-coreir.scm: Evaluation error: Cannot inline stmt chain with If statement (clone not implemented)
+simplex,toyvm,one-iteration,1,passed,simplex:1,0.007825,0.023957580000569578,0,
+ack,lisp,one-iteration,1,timeout,,,3.0212290470008156,,Exceeded 3s wall limit
+ack,bytecode,one-iteration,1,timeout,,,3.0150401249993593,,Exceeded 3s wall limit
+ack,coreir,one-iteration,1,timeout,,,3.0228029019999667,,Exceeded 3s wall limit
+ack,toyvm,one-iteration,1,timeout,,,3.0814901710036793,,Exceeded 3s wall limit
+array1,lisp,one-iteration,1,timeout,,,3.062120891001541,,Exceeded 3s wall limit
+array1,bytecode,one-iteration,1,timeout,,,3.0176623219958856,,Exceeded 3s wall limit
+array1,coreir,one-iteration,1,timeout,,,3.0297213890007697,,Exceeded 3s wall limit
+array1,toyvm,one-iteration,1,timeout,,,3.0124771789996885,,Exceeded 3s wall limit
+string,lisp,one-iteration,1,passed,string:500000:1,0.022101,0.03534490700258175,0,
+string,bytecode,one-iteration,1,passed,string:500000:1,0.01496,0.03347056000347948,0,
+string,coreir,one-iteration,1,passed,string:500000:1,0.024153,0.055653994997555856,0,
+string,toyvm,one-iteration,1,passed,string:500000:1,0.019462,0.03635417899931781,0,
+sum1,lisp,one-iteration,1,error,,,0.012966599999344908,1,/tmp/zombie-r7rs-one-iteration-file/programs/sum1-lisp.scm: Evaluation error: Unbound variable: call-with-input-file
+sum1,bytecode,one-iteration,1,error,,,0.018642843002453446,1,/tmp/zombie-r7rs-one-iteration-file/programs/sum1-bytecode.scm: Evaluation error: Unbound variable: call-with-input-file
+sum1,coreir,one-iteration,1,error,,,0.03296751000016229,1,/tmp/zombie-r7rs-one-iteration-file/programs/sum1-coreir.scm: Evaluation error: Unbound variable: call-with-input-file
+sum1,toyvm,one-iteration,1,error,,,0.013483934999385383,1,/tmp/zombie-r7rs-one-iteration-file/programs/sum1-toyvm.scm: Evaluation error: Unbound variable: call-with-input-file
+cat,lisp,one-iteration,1,error,,,0.012250097999640275,1,/tmp/zombie-r7rs-one-iteration-file/programs/cat-lisp.scm: Evaluation error: Unbound variable: file-exists?
+cat,bytecode,one-iteration,1,error,,,0.015197225999145303,1,/tmp/zombie-r7rs-one-iteration-file/programs/cat-bytecode.scm: Evaluation error: Unbound variable: file-exists?
+cat,coreir,one-iteration,1,error,,,0.03190167900174856,1,/tmp/zombie-r7rs-one-iteration-file/programs/cat-coreir.scm: Evaluation error: Cannot inline stmt chain with If statement (clone not implemented)
+cat,toyvm,one-iteration,1,error,,,0.012406825997459237,1,/tmp/zombie-r7rs-one-iteration-file/programs/cat-toyvm.scm: Evaluation error: Unbound variable: file-exists?
+tail,lisp,one-iteration,1,error,,,0.009991787999751978,1,/tmp/zombie-r7rs-one-iteration-file/programs/tail-lisp.scm: Evaluation error: Unbound variable: call-with-input-file
+tail,bytecode,one-iteration,1,error,,,0.017294342003879137,1,/tmp/zombie-r7rs-one-iteration-file/programs/tail-bytecode.scm: Evaluation error: Unbound variable: call-with-input-file
+tail,coreir,one-iteration,1,error,,,0.02777991400216706,1,/tmp/zombie-r7rs-one-iteration-file/programs/tail-coreir.scm: Evaluation error: Cannot inline stmt chain with If statement (clone not implemented)
+tail,toyvm,one-iteration,1,error,,,0.014489572997263167,1,/tmp/zombie-r7rs-one-iteration-file/programs/tail-toyvm.scm: Evaluation error: Unbound variable: call-with-input-file
+wc,lisp,one-iteration,1,error,,,0.012050617006025277,1,/tmp/zombie-r7rs-one-iteration-file/programs/wc-lisp.scm: Evaluation error: Unbound variable: call-with-input-file
+wc,bytecode,one-iteration,1,error,,,0.015600658996845596,1,/tmp/zombie-r7rs-one-iteration-file/programs/wc-bytecode.scm: Evaluation error: Unbound variable: call-with-input-file
+wc,coreir,one-iteration,1,error,,,0.03448454599856632,1,/tmp/zombie-r7rs-one-iteration-file/programs/wc-coreir.scm: Evaluation error: Unbound variable: call-with-input-file
+wc,toyvm,one-iteration,1,error,,,0.013168746001610998,1,/tmp/zombie-r7rs-one-iteration-file/programs/wc-toyvm.scm: Evaluation error: Unbound variable: call-with-input-file
+read1,lisp,one-iteration,1,error,,,0.009807532995182555,1,/tmp/zombie-r7rs-one-iteration-file/programs/read1-lisp.scm: Evaluation error: Unbound variable: call-with-input-file
+read1,bytecode,one-iteration,1,error,,,0.01573109000310069,1,/tmp/zombie-r7rs-one-iteration-file/programs/read1-bytecode.scm: Evaluation error: Unbound variable: call-with-input-file
+read1,coreir,one-iteration,1,error,,,0.03325430800032336,1,/tmp/zombie-r7rs-one-iteration-file/programs/read1-coreir.scm: Evaluation error: Unbound variable: call-with-input-file
+read1,toyvm,one-iteration,1,error,,,0.014057455002330244,1,/tmp/zombie-r7rs-one-iteration-file/programs/read1-toyvm.scm: Evaluation error: Unbound variable: call-with-input-file
+compiler,lisp,one-iteration,1,error,,,0.03378390800207853,1,"/tmp/zombie-r7rs-one-iteration-file/programs/compiler-lisp.scm: read: invalid number format at line 8491, column 47"
+compiler,bytecode,one-iteration,1,error,,,0.03671182300604414,1,"/tmp/zombie-r7rs-one-iteration-file/programs/compiler-bytecode.scm: read: invalid number format at line 8491, column 47"
+compiler,coreir,one-iteration,1,error,,,0.05055043500033207,1,"/tmp/zombie-r7rs-one-iteration-file/programs/compiler-coreir.scm: read: invalid number format at line 8491, column 47"
+compiler,toyvm,one-iteration,1,error,,,0.0375031459989259,1,"/tmp/zombie-r7rs-one-iteration-file/programs/compiler-toyvm.scm: read: invalid number format at line 8491, column 47"
+conform,lisp,one-iteration,1,timeout,,,3.0101904309995007,,Exceeded 3s wall limit
+conform,bytecode,one-iteration,1,incorrect,conform:1,,0.044230379004147835,0,"Running conform:1
+ERROR: returned incorrect result: (""a"" ""any"" ""none"")
++!CSVLINE!+ZombieScheme-bytecode,conform:1,INCORRECT"
+conform,coreir,one-iteration,1,error,,,0.03552672099613119,1,/tmp/zombie-r7rs-one-iteration-file/programs/conform-coreir.scm: Evaluation error: Cannot inline stmt chain with If statement (clone not implemented)
+conform,toyvm,one-iteration,1,timeout,,,3.0115754539947375,,Exceeded 3s wall limit
+dynamic,lisp,one-iteration,1,error,,,0.011585084001126233,1,/tmp/zombie-r7rs-one-iteration-file/programs/dynamic-lisp.scm: Cannot find library (scheme cxr)
+dynamic,bytecode,one-iteration,1,error,,,0.016922183996939566,1,/tmp/zombie-r7rs-one-iteration-file/programs/dynamic-bytecode.scm: Cannot find library (scheme cxr)
+dynamic,coreir,one-iteration,1,error,,,0.029033837003225926,1,/tmp/zombie-r7rs-one-iteration-file/programs/dynamic-coreir.scm: Cannot find library (scheme cxr)
+dynamic,toyvm,one-iteration,1,error,,,0.016642902002786286,1,/tmp/zombie-r7rs-one-iteration-file/programs/dynamic-toyvm.scm: Cannot find library (scheme cxr)
+earley,lisp,one-iteration,1,timeout,,,3.0124952679980197,,Exceeded 3s wall limit
+earley,bytecode,one-iteration,1,timeout,,,3.0135199739961536,,Exceeded 3s wall limit
+earley,coreir,one-iteration,1,error,,,0.1178188810008578,1,/tmp/zombie-r7rs-one-iteration-file/programs/earley-coreir.scm: Evaluation error: Cannot inline stmt chain with If statement (clone not implemented)
+earley,toyvm,one-iteration,1,timeout,,,3.0176039630023297,,Exceeded 3s wall limit
+graphs,lisp,one-iteration,1,timeout,,,3.0169028059972334,,Exceeded 3s wall limit
+graphs,bytecode,one-iteration,1,timeout,,,3.018689242002438,,Exceeded 3s wall limit
+graphs,coreir,one-iteration,1,timeout,,,3.013343165999686,,Exceeded 3s wall limit
+graphs,toyvm,one-iteration,1,timeout,,,3.0132791159994667,,Exceeded 3s wall limit
+lattice,lisp,one-iteration,1,timeout,,,3.012046754003677,,Exceeded 3s wall limit
+lattice,bytecode,one-iteration,1,timeout,,,3.0121767110031215,,Exceeded 3s wall limit
+lattice,coreir,one-iteration,1,timeout,,,3.0126770670030965,,Exceeded 3s wall limit
+lattice,toyvm,one-iteration,1,timeout,,,3.013412578002317,,Exceeded 3s wall limit
+matrix,lisp,one-iteration,1,timeout,,,3.0110882020017016,,Exceeded 3s wall limit
+matrix,bytecode,one-iteration,1,passed,matrix:5:5:1,2.04531,2.074850962999335,0,
+matrix,coreir,one-iteration,1,error,,,0.030622341997514013,1,/tmp/zombie-r7rs-one-iteration-file/programs/matrix-coreir.scm: Evaluation error: Cannot inline stmt chain with If statement (clone not implemented)
+matrix,toyvm,one-iteration,1,timeout,,,3.0113652520012693,,Exceeded 3s wall limit
+maze,lisp,one-iteration,1,passed,maze:20:7:1,0.640842,0.6556621819981956,0,
+maze,bytecode,one-iteration,1,passed,maze:20:7:1,0.396388,0.4219189150026068,0,
+maze,coreir,one-iteration,1,error,,,0.02876394600025378,1,/tmp/zombie-r7rs-one-iteration-file/programs/maze-coreir.scm: Evaluation error: Cannot inline stmt chain with If statement (clone not implemented)
+maze,toyvm,one-iteration,1,passed,maze:20:7:1,0.552556,0.5739656430014293,0,
+mazefun,lisp,one-iteration,1,passed,mazefun:11:11:1,1.63299,1.6538325349974912,0,
+mazefun,bytecode,one-iteration,1,passed,mazefun:11:11:1,0.177635,0.1982471289957175,0,
+mazefun,coreir,one-iteration,1,passed,mazefun:11:11:1,1.34971,1.3958941669989144,0,
+mazefun,toyvm,one-iteration,1,passed,mazefun:11:11:1,1.40123,1.424786377006967,0,
+nqueens,lisp,one-iteration,1,timeout,,,3.014163883002766,,Exceeded 3s wall limit
+nqueens,bytecode,one-iteration,1,timeout,,,3.0125636720040347,,Exceeded 3s wall limit
+nqueens,coreir,one-iteration,1,error,,,0.031312774000980426,1,/tmp/zombie-r7rs-one-iteration-file/programs/nqueens-coreir.scm: Evaluation error: Cannot inline stmt chain with If statement (clone not implemented)
+nqueens,toyvm,one-iteration,1,timeout,,,3.011598364006204,,Exceeded 3s wall limit
+paraffins,lisp,one-iteration,1,timeout,,,3.014045158000954,,Exceeded 3s wall limit
+paraffins,bytecode,one-iteration,1,timeout,,,3.0150693699979456,,Exceeded 3s wall limit
+paraffins,coreir,one-iteration,1,timeout,,,3.0143050760016195,,Exceeded 3s wall limit
+paraffins,toyvm,one-iteration,1,timeout,,,3.033758052995836,,Exceeded 3s wall limit
+parsing,lisp,one-iteration,1,error,,,0.011314803996356204,1,/tmp/zombie-r7rs-one-iteration-file/programs/parsing-lisp.scm: Cannot find library (scheme char)
+parsing,bytecode,one-iteration,1,error,,,0.020643194002332166,1,/tmp/zombie-r7rs-one-iteration-file/programs/parsing-bytecode.scm: Cannot find library (scheme char)
+parsing,coreir,one-iteration,1,error,,,0.030570169001293834,1,/tmp/zombie-r7rs-one-iteration-file/programs/parsing-coreir.scm: Cannot find library (scheme char)
+parsing,toyvm,one-iteration,1,error,,,0.017620787999476306,1,/tmp/zombie-r7rs-one-iteration-file/programs/parsing-toyvm.scm: Cannot find library (scheme char)
+peval,lisp,one-iteration,1,error,,,0.011775530001614243,1,/tmp/zombie-r7rs-one-iteration-file/programs/peval-lisp.scm: Cannot find library (scheme cxr)
+peval,bytecode,one-iteration,1,error,,,0.017149202998552937,1,/tmp/zombie-r7rs-one-iteration-file/programs/peval-bytecode.scm: Cannot find library (scheme cxr)
+peval,coreir,one-iteration,1,error,,,0.033163182000862435,1,/tmp/zombie-r7rs-one-iteration-file/programs/peval-coreir.scm: Cannot find library (scheme cxr)
+peval,toyvm,one-iteration,1,error,,,0.017979765994823538,1,/tmp/zombie-r7rs-one-iteration-file/programs/peval-toyvm.scm: Cannot find library (scheme cxr)
+primes,lisp,one-iteration,1,passed,primes:1000:1,0.41736,0.43223768600000767,0,
+primes,bytecode,one-iteration,1,passed,primes:1000:1,0.103949,0.12618209400534397,0,
+primes,coreir,one-iteration,1,passed,primes:1000:1,0.288607,0.327504143002443,0,
+primes,toyvm,one-iteration,1,passed,primes:1000:1,0.316688,0.33261306500207866,0,
+quicksort,lisp,one-iteration,1,timeout,,,3.067906328004028,,Exceeded 3s wall limit
+quicksort,bytecode,one-iteration,1,timeout,,,3.0114712689974112,,Exceeded 3s wall limit
+quicksort,coreir,one-iteration,1,error,,,0.03346621899981983,1,/tmp/zombie-r7rs-one-iteration-file/programs/quicksort-coreir.scm: Evaluation error: Cannot inline stmt chain with If statement (clone not implemented)
+quicksort,toyvm,one-iteration,1,timeout,,,3.0114740220014937,,Exceeded 3s wall limit
+scheme,lisp,one-iteration,1,error,,,0.013723485004447866,1,/tmp/zombie-r7rs-one-iteration-file/programs/scheme-lisp.scm: Cannot find library (scheme cxr)
+scheme,bytecode,one-iteration,1,error,,,0.01918112300336361,1,/tmp/zombie-r7rs-one-iteration-file/programs/scheme-bytecode.scm: Cannot find library (scheme cxr)
+scheme,coreir,one-iteration,1,error,,,0.028830461000325158,1,/tmp/zombie-r7rs-one-iteration-file/programs/scheme-coreir.scm: Cannot find library (scheme cxr)
+scheme,toyvm,one-iteration,1,error,,,0.01571470100316219,1,/tmp/zombie-r7rs-one-iteration-file/programs/scheme-toyvm.scm: Cannot find library (scheme cxr)
+slatex,lisp,one-iteration,1,error,,,0.014197049997164868,1,/tmp/zombie-r7rs-one-iteration-file/programs/slatex-lisp.scm: Cannot find library (scheme char)
+slatex,bytecode,one-iteration,1,error,,,0.018787068001984153,1,/tmp/zombie-r7rs-one-iteration-file/programs/slatex-bytecode.scm: Cannot find library (scheme char)
+slatex,coreir,one-iteration,1,error,,,0.030047364001802634,1,/tmp/zombie-r7rs-one-iteration-file/programs/slatex-coreir.scm: Cannot find library (scheme char)
+slatex,toyvm,one-iteration,1,error,,,0.015236715000355616,1,/tmp/zombie-r7rs-one-iteration-file/programs/slatex-toyvm.scm: Cannot find library (scheme char)
+chudnovsky,lisp,one-iteration,1,error,,,0.00977548700029729,1,/tmp/zombie-r7rs-one-iteration-file/programs/chudnovsky-lisp.scm: Cannot find library (scheme cxr)
+chudnovsky,bytecode,one-iteration,1,error,,,0.018727212998783216,1,/tmp/zombie-r7rs-one-iteration-file/programs/chudnovsky-bytecode.scm: Cannot find library (scheme cxr)
+chudnovsky,coreir,one-iteration,1,error,,,0.028650443004153203,1,/tmp/zombie-r7rs-one-iteration-file/programs/chudnovsky-coreir.scm: Cannot find library (scheme cxr)
+chudnovsky,toyvm,one-iteration,1,error,,,0.015177606997895055,1,/tmp/zombie-r7rs-one-iteration-file/programs/chudnovsky-toyvm.scm: Cannot find library (scheme cxr)
+nboyer,lisp,one-iteration,1,error,,,0.010899635999521706,1,/tmp/zombie-r7rs-one-iteration-file/programs/nboyer-lisp.scm: Cannot find library (scheme cxr)
+nboyer,bytecode,one-iteration,1,error,,,0.019314324999868404,1,/tmp/zombie-r7rs-one-iteration-file/programs/nboyer-bytecode.scm: Cannot find library (scheme cxr)
+nboyer,coreir,one-iteration,1,error,,,0.03235539799788967,1,/tmp/zombie-r7rs-one-iteration-file/programs/nboyer-coreir.scm: Cannot find library (scheme cxr)
+nboyer,toyvm,one-iteration,1,error,,,0.012618756998563185,1,/tmp/zombie-r7rs-one-iteration-file/programs/nboyer-toyvm.scm: Cannot find library (scheme cxr)
+sboyer,lisp,one-iteration,1,error,,,0.015481285001442302,1,/tmp/zombie-r7rs-one-iteration-file/programs/sboyer-lisp.scm: Cannot find library (scheme cxr)
+sboyer,bytecode,one-iteration,1,error,,,0.016337156004738063,1,/tmp/zombie-r7rs-one-iteration-file/programs/sboyer-bytecode.scm: Cannot find library (scheme cxr)
+sboyer,coreir,one-iteration,1,error,,,0.02682367299712496,1,/tmp/zombie-r7rs-one-iteration-file/programs/sboyer-coreir.scm: Cannot find library (scheme cxr)
+sboyer,toyvm,one-iteration,1,error,,,0.012628033000510186,1,/tmp/zombie-r7rs-one-iteration-file/programs/sboyer-toyvm.scm: Cannot find library (scheme cxr)
+gcbench,lisp,one-iteration,1,timeout,,,3.0399507120018825,,Exceeded 3s wall limit
+gcbench,bytecode,one-iteration,1,timeout,,,3.020905352997943,,Exceeded 3s wall limit
+gcbench,coreir,one-iteration,1,timeout,,,3.01828388699505,,Exceeded 3s wall limit
+gcbench,toyvm,one-iteration,1,timeout,,,3.0127696130002732,,Exceeded 3s wall limit
+mperm,lisp,one-iteration,1,timeout,,,3.0112648840004113,,Exceeded 3s wall limit
+mperm,bytecode,one-iteration,1,timeout,,,3.012646842005779,,Exceeded 3s wall limit
+mperm,coreir,one-iteration,1,timeout,,,3.0139496560004773,,Exceeded 3s wall limit
+mperm,toyvm,one-iteration,1,timeout,,,3.041362958996615,,Exceeded 3s wall limit
+equal,lisp,one-iteration,1,timeout,,,3.00768405800045,,Exceeded 3s wall limit
+equal,bytecode,one-iteration,1,timeout,,,3.0126645529962843,,Exceeded 3s wall limit
+equal,coreir,one-iteration,1,timeout,,,3.00798826800019,,Exceeded 3s wall limit
+equal,toyvm,one-iteration,1,timeout,,,3.00866149799549,,Exceeded 3s wall limit
+bv2string,lisp,one-iteration,1,timeout,,,3.0201781389987445,,Exceeded 3s wall limit
+bv2string,bytecode,one-iteration,1,timeout,,,3.0144064240012085,,Exceeded 3s wall limit
+bv2string,coreir,one-iteration,1,timeout,,,3.0245208510023076,,Exceeded 3s wall limit
+bv2string,toyvm,one-iteration,1,timeout,,,3.049628003995167,,Exceeded 3s wall limit

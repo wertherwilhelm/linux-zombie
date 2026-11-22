@@ -1,0 +1,3 @@
+Running primes:1000:1
+Elapsed time: 0.103949 seconds (0.104) for primes:1000:1
++!CSVLINE!+ZombieScheme-bytecode,primes:1000:1,0.103949

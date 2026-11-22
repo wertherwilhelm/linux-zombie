@@ -1,0 +1,20 @@
+{
+  "lisp": {
+    "passed": 14,
+    "error": 1
+  },
+  "bytecode": {
+    "passed": 13,
+    "crashed": 1,
+    "error": 1
+  },
+  "coreir": {
+    "passed": 11,
+    "timeout": 1,
+    "error": 3
+  },
+  "toyvm": {
+    "passed": 14,
+    "error": 1
+  }
+}

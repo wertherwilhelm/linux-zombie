@@ -1,0 +1,50 @@
+[
+  {
+    "benchmark": "string",
+    "evaluator": "lisp",
+    "profile": "original",
+    "repeat": 1,
+    "status": "error",
+    "benchmark_name": "",
+    "benchmark_seconds": "",
+    "process_seconds": 0.7661850169970421,
+    "returncode": 1,
+    "detail": "/tmp/zombie-r7rs-original-string/programs/string-lisp.scm: Evaluation error: std::bad_alloc"
+  },
+  {
+    "benchmark": "string",
+    "evaluator": "bytecode",
+    "profile": "original",
+    "repeat": 1,
+    "status": "error",
+    "benchmark_name": "",
+    "benchmark_seconds": "",
+    "process_seconds": 0.4756667450055829,
+    "returncode": 1,
+    "detail": "/tmp/zombie-r7rs-original-string/programs/string-bytecode.scm: Evaluation error: std::bad_alloc"
+  },
+  {
+    "benchmark": "string",
+    "evaluator": "coreir",
+    "profile": "original",
+    "repeat": 1,
+    "status": "error",
+    "benchmark_name": "",
+    "benchmark_seconds": "",
+    "process_seconds": 0.5479280869985814,
+    "returncode": 1,
+    "detail": "/tmp/zombie-r7rs-original-string/programs/string-coreir.scm: Evaluation error: std::bad_alloc"
+  },
+  {
+    "benchmark": "string",
+    "evaluator": "toyvm",
+    "profile": "original",
+    "repeat": 1,
+    "status": "error",
+    "benchmark_name": "",
+    "benchmark_seconds": "",
+    "process_seconds": 0.5405556830010028,
+    "returncode": 1,
+    "detail": "/tmp/zombie-r7rs-original-string/programs/string-toyvm.scm: Evaluation error: std::bad_alloc"
+  }
+]

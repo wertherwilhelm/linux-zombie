@@ -1,0 +1,105 @@
+ZombieScheme / R7RS benchmarks: first feasibility baseline
+========================================================
+
+Yes: representative upstream programs execute correctly on the current non-JIT evaluators.
+This is a compatibility baseline, not a completed full-workload performance comparison.
+
+Branch: performance-testing
+ZombieScheme base: f7ab3a29ee8ddf81807f2bba95e43afd0bab6f09
+Benchmark suite: 85f6acdc4cc4e2b857f307ba56bd0ba931dcccd1
+Build: Release, g++ 11.4.0, C++20; no asmjit dependency or native evaluator.
+Platform: Linux-6.18.58.1-microsoft-standard-WSL2-x86_64-with-glibc2.35
+Executable SHA-256: 0b2f5b7a67d46e1e4ea4109191a891a285de7a709ce77d742db99cb71f70f42b
+
+Only a batch entry point, a benchmark clock adapter, scripts, and documentation were added.
+Runtime, evaluators, expander, and compiler sources are unchanged from the base commit.
+The benchmark checkout was not modified. Each job used fresh copied fixtures and a fresh process.
+
+Method
+------
+Program source is read from a file. Benchmark data reaches stdin through a regular file,
+matching upstream bench redirection. The upstream algorithms, common.scm, and result
+predicates are unchanged. A successful numeric CSV marker is required for a pass.
+
+This branch lacks (scheme time). --benchmark-time installs a runner-only clock library:
+monotonic microsecond current-jiffy, jiffies-per-second=1000000, and POSIX current-second.
+The latter is a wall-time approximation, not TAI. The upstream primary elapsed interval
+uses monotonic jiffies. No other missing libraries were patched or aliased.
+
+Smoke: reduced problem sizes and one repetition, 5s process wall budget, 1 GiB address-space cap.
+One-iteration: original problem sizes and predicates, repetition count one, 3s budget, 1 GiB cap.
+Original-string: exact upstream string.input (100 repetitions, size 500000), 10s budget, 1 GiB cap.
+Process timing includes startup, parsing, and compilation; benchmark_seconds is the upstream timed region.
+All reported times are single runs. Reduced profiles must not be compared with published full scores.
+
+Results (jobs per evaluator)
+----------------------------
+profile          evaluator     pass  error  incorrect  crash  timeout
+smoke            lisp           14      1          0      0        0
+smoke            bytecode       13      1          0      1        0
+smoke            coreir         11      3          0      0        1
+smoke            toyvm          14      1          0      0        0
+one-iteration    lisp           10     20          0      0       27
+one-iteration    bytecode       12     20          1      3       21
+one-iteration    coreir          7     30          0      0       20
+one-iteration    toyvm          10     20          0      0       27
+original-string  lisp            0      1          0      0        0
+original-string  bytecode        0      1          0      0        0
+original-string  coreir          0      1          0      0        0
+original-string  toyvm           0      1          0      0        0
+
+Smoke passes: 52/60. Original-size one-iteration passes: 39/228.
+Timeout means only that the stated process budget was exceeded, not that the algorithm is incorrect.
+All four original-string runs ended with std::bad_alloc under the 1 GiB cap, before completing.
+
+Concrete blockers
+-----------------
+- Missing library registrations: (scheme inexact), (scheme cxr), (scheme complex), (scheme char).
+- File benchmark failures include unbound file-exists? and call-with-input-file.
+- CoreIR: Cannot inline stmt chain with If statement (clone not implemented), e.g. N-Queens/quicksort.
+- Bytecode: SIGSEGV on ctak (including the reduced case); tak and fibc also crashed in the larger sweep.
+- Bytecode conform produced the upstream INCORRECT marker.
+- pi reported Division by zero on all evaluators at its upstream problem size.
+- Full string repetition count reached the configured memory ceiling; allocation/GC profiling is needed.
+
+Passing original-size programs by evaluator (one repetition):
+lisp: browse, diviter, divrec, sum, pnpoly, simplex, string, maze, mazefun, primes
+bytecode: browse, destruc, diviter, divrec, sum, pnpoly, simplex, string, matrix, maze, mazefun, primes
+coreir: browse, diviter, divrec, sum, string, mazefun, primes
+toyvm: browse, diviter, divrec, sum, pnpoly, simplex, string, maze, mazefun, primes
+
+Selected reduced-input timing (seconds, one run; not full benchmark scores):
+benchmark          lisp        bytecode       coreir        toyvm
+fib                0.197773      0.023288      0.048842      0.162322
+sum                0.011219      0.001244      0.002718      0.009471
+tak                1.281280      0.207338      0.312210      0.507336
+array1             0.023858      0.010394      0.014987      0.020353
+
+Reader transport and validation notes
+-------------------------------------
+An initial adapter trial used a pipe. The current non-seekable InputPort reader returns
+inexact numbers for integer tokens and has a smaller datum grammar. Those trial results
+are excluded. Matching upstream regular-file stdin selects scheme_reader and fixes those
+adapter-induced failures without changing the evaluator. Batch integration checks cover
+both transports. equal.scm hardcodes its repetition count: its input must remain unchanged.
+That exception was revalidated; one-iteration/equal-correction.json records the correction.
+
+Reproduce from the ZombieScheme repository root
+----------------------------------------------
+cmake -S . -B build-release -DCMAKE_BUILD_TYPE=Release -DZOMBIE_BUILD_TESTS=OFF
+cmake --build build-release --target zombie-scheme -j8
+python3 benchmarks/test_batch_runner.py --exe build-release/zombie-scheme
+python3 benchmarks/run_r7rs.py --suite /mnt/c/work/r7rs-benchmarks --profile smoke --evaluators lisp bytecode coreir toyvm --timeout 5 --output /tmp/zombie-smoke-new
+python3 benchmarks/run_r7rs.py --suite /mnt/c/work/r7rs-benchmarks --profile one-iteration --evaluators lisp bytecode coreir toyvm --timeout 3 --output /tmp/zombie-compat-new
+python3 benchmarks/run_r7rs.py --suite /mnt/c/work/r7rs-benchmarks --profile original --benchmarks string --evaluators lisp bytecode coreir toyvm --timeout 10 --output /tmp/zombie-original-new
+
+The script returns nonzero if any case fails. Use a new output directory for each run.
+Per-profile CSV/JSON, metadata, exact inputs, generated programs, and stdout/stderr logs
+are preserved alongside this report. matrix.csv summarizes the 57-name sweep.
+
+Actionable follow-up
+--------------------
+See missing-items.txt for issues ZB-001 through ZB-012: priorities, confirmed evidence,
+source locations, reproduction commands, and completion checks. followup-probes.json
+and followup-metadata.json record the additional small checks, using the same binary.
+These are open findings, not changes to evaluator behavior or claims of completed fixes.

@@ -1,0 +1,3 @@
+Running quicksort:100:1
+Elapsed time: 0.02518 seconds (0.025) for quicksort:100:1
++!CSVLINE!+ZombieScheme-lisp,quicksort:100:1,0.02518

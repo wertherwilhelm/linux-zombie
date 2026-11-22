@@ -1,0 +1,3 @@
+Running nqueens:6:1
+Elapsed time: 0.013432 seconds (0.013) for nqueens:6:1
++!CSVLINE!+ZombieScheme-bytecode,nqueens:6:1,0.013432

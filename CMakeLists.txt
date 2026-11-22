@@ -91,6 +91,10 @@ zombie_glob(REPL_SRCS "${CMAKE_CURRENT_SOURCE_DIR}/REPL-test")
 add_executable(repl ${REPL_SRCS})
 target_link_libraries(repl PRIVATE ZombieLib)
 
+# --- Batch runner (source file and Scheme data on separate streams) -----------
+add_executable(zombie-scheme Scheme-run/Scheme-run.cpp)
+target_link_libraries(zombie-scheme PRIVATE ZombieLib)
+
 # --- Tests (GoogleTest) -----------------------------------------------------
 if(ZOMBIE_BUILD_TESTS)
   include(FetchContent)

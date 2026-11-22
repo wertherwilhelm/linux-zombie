@@ -21,6 +21,7 @@ cmake --build build -j$(nproc)
 Artifacts land in `build/`:
 
 - `build/repl` — the REPL executable
+- `build/zombie-scheme` — quiet batch runner; source file and stdin data are separate
 - `build/LispTest` — the GoogleTest suite
 - `build/lib*.a` — the static libraries
 
@@ -31,6 +32,77 @@ Artifacts land in `build/`:
 ./build/repl --bytecode      # bytecode VM
 ./build/repl --vm            # experimental toy VM
 ```
+
+## Batch execution and external R7RS benchmarks
+
+`zombie-scheme` runs a source file without a REPL banner, prompts, or result echo.
+Scheme output goes to stdout; evaluation/import/read errors go to stderr with a
+nonzero process status. It supports the existing `lisp`, `bytecode`, `coreir`, and
+`toyvm` evaluators. Program arguments after the file are exposed by `(command-line)`.
+
+```bash
+cmake -S . -B build-release -DCMAKE_BUILD_TYPE=Release -DZOMBIE_BUILD_TESTS=OFF
+cmake --build build-release --target zombie-scheme -j8
+./build-release/zombie-scheme --evaluator bytecode program.scm < data.input
+python3 benchmarks/test_batch_runner.py --exe build-release/zombie-scheme
+```
+
+The external suite at `/mnt/c/work/r7rs-benchmarks` can be exercised without
+modifying that checkout or any evaluator:
+
+```bash
+python3 benchmarks/run_r7rs.py \
+  --suite /mnt/c/work/r7rs-benchmarks \
+  --exe build-release/zombie-scheme \
+  --profile smoke --evaluators lisp bytecode coreir toyvm \
+  --timeout 5 --output /tmp/zombie-smoke-new
+
+python3 benchmarks/run_r7rs.py \
+  --suite /mnt/c/work/r7rs-benchmarks \
+  --profile one-iteration --benchmarks all \
+  --evaluators lisp bytecode coreir toyvm \
+  --timeout 3 --output /tmp/zombie-compat-new
+```
+
+The three profiles are deliberately separate:
+
+- `smoke`: 15 explicit, reduced inputs with their expected answers; upstream
+  benchmark algorithms, `common.scm`, and correctness predicates are unchanged.
+- `one-iteration`: all 57 benchmarks listed by upstream, using original problem
+  sizes and expected answers, with only the repetition count changed to one.
+  `equal` already hardcodes one repetition, so its complete input is preserved.
+- `original`: unmodified upstream input, including the full repetition count.
+  Use `--benchmarks NAME ...` to select cases and `--repeats N` for independent
+  process runs. Full input can require substantially longer than the default
+  per-process wall limit; a timeout is not an incorrect result.
+
+Each job uses a fresh process with a configurable address-space limit (default
+1 GiB), copied writable fixtures, and its own output directory. The external
+benchmark checkout stays untouched. Input is redirected from a **regular file**,
+matching upstream's `bench` script. This matters: current `InputPort::read` uses
+`scheme_reader` on seekable streams, but its legacy pipe/interactive path loses
+integer exactness and does not support the same complete datum grammar.
+
+The branch does not provide `(scheme time)`. The adapter explicitly enables
+`--benchmark-time`, a batch-runner-only host clock library. `current-jiffy` uses
+monotonic microseconds and `jiffies-per-second` is 1,000,000. The secondary
+`current-second` is POSIX wall time, not a leap-second-aware TAI clock. This
+adapter changes no evaluator or optimizer and does not supply other missing
+libraries. The upstream benchmark's elapsed interval uses the monotonic clock;
+`process_seconds` separately includes startup, parsing, and compilation.
+
+Results include CSV/JSON, raw stdout/stderr, generated source, exact input data,
+branch/commit/build metadata, and an executable SHA-256. `passed` requires a
+successful process and the upstream numeric CSV marker after its correctness
+predicate; `incorrect`, `error`, `crashed`, `timeout`, and missing results are
+kept distinct. Output directories must be new, so reruns preserve old evidence.
+The script returns nonzero if any job fails. Reduced results are **not comparable
+with published full-workload scores**.
+
+The first run on the asmjit-free `performance-testing` branch is recorded under
+`benchmarks/results/feasibility/`; see its `report.txt` and per-profile results.
+The actionable backlog is in `missing-items.txt`, with source locations, small
+reproductions, priorities, and checks for confirming each fix; `AUDIT.md` links it.
 
 ## Test
 

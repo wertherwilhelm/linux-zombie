@@ -1,0 +1,213 @@
+[
+  {
+    "probe": "if-let",
+    "source": "(write (let ((x (if #t 1 2))) (+ x 3)))",
+    "evaluator": "lisp",
+    "returncode": 0,
+    "stdout": "4",
+    "stderr": ""
+  },
+  {
+    "probe": "if-let",
+    "source": "(write (let ((x (if #t 1 2))) (+ x 3)))",
+    "evaluator": "bytecode",
+    "returncode": 0,
+    "stdout": "4",
+    "stderr": ""
+  },
+  {
+    "probe": "if-let",
+    "source": "(write (let ((x (if #t 1 2))) (+ x 3)))",
+    "evaluator": "coreir",
+    "returncode": 0,
+    "stdout": "4",
+    "stderr": ""
+  },
+  {
+    "probe": "if-let",
+    "source": "(write (let ((x (if #t 1 2))) (+ x 3)))",
+    "evaluator": "toyvm",
+    "returncode": 0,
+    "stdout": "4",
+    "stderr": ""
+  },
+  {
+    "probe": "if-define",
+    "source": "(define x (if #t 1 2)) (write x)",
+    "evaluator": "lisp",
+    "returncode": 0,
+    "stdout": "1",
+    "stderr": ""
+  },
+  {
+    "probe": "if-define",
+    "source": "(define x (if #t 1 2)) (write x)",
+    "evaluator": "bytecode",
+    "returncode": 0,
+    "stdout": "1",
+    "stderr": ""
+  },
+  {
+    "probe": "if-define",
+    "source": "(define x (if #t 1 2)) (write x)",
+    "evaluator": "coreir",
+    "returncode": 1,
+    "stdout": "",
+    "stderr": "case.scm: Evaluation error: Cannot inline stmt chain with If statement (clone not implemented)\n"
+  },
+  {
+    "probe": "if-define",
+    "source": "(define x (if #t 1 2)) (write x)",
+    "evaluator": "toyvm",
+    "returncode": 0,
+    "stdout": "1",
+    "stderr": ""
+  },
+  {
+    "probe": "if-set",
+    "source": "(define x 0) (set! x (if #t 1 2)) (write x)",
+    "evaluator": "lisp",
+    "returncode": 0,
+    "stdout": "1",
+    "stderr": ""
+  },
+  {
+    "probe": "if-set",
+    "source": "(define x 0) (set! x (if #t 1 2)) (write x)",
+    "evaluator": "bytecode",
+    "returncode": 0,
+    "stdout": "1",
+    "stderr": ""
+  },
+  {
+    "probe": "if-set",
+    "source": "(define x 0) (set! x (if #t 1 2)) (write x)",
+    "evaluator": "coreir",
+    "returncode": 1,
+    "stdout": "",
+    "stderr": "case.scm: Evaluation error: Cannot inline stmt chain with If statement (clone not implemented)\n"
+  },
+  {
+    "probe": "if-set",
+    "source": "(define x 0) (set! x (if #t 1 2)) (write x)",
+    "evaluator": "toyvm",
+    "returncode": 0,
+    "stdout": "1",
+    "stderr": ""
+  },
+  {
+    "probe": "if-begin",
+    "source": "(write (begin (if #t 1 2) 3))",
+    "evaluator": "lisp",
+    "returncode": 0,
+    "stdout": "3",
+    "stderr": ""
+  },
+  {
+    "probe": "if-begin",
+    "source": "(write (begin (if #t 1 2) 3))",
+    "evaluator": "bytecode",
+    "returncode": 0,
+    "stdout": "3",
+    "stderr": ""
+  },
+  {
+    "probe": "if-begin",
+    "source": "(write (begin (if #t 1 2) 3))",
+    "evaluator": "coreir",
+    "returncode": 1,
+    "stdout": "",
+    "stderr": "case.scm: Evaluation error: Cannot inline stmt chain with If statement (clone not implemented)\n"
+  },
+  {
+    "probe": "if-begin",
+    "source": "(write (begin (if #t 1 2) 3))",
+    "evaluator": "toyvm",
+    "returncode": 0,
+    "stdout": "3",
+    "stderr": ""
+  },
+  {
+    "probe": "large-integer",
+    "source": "(write 9223372036854775808)",
+    "evaluator": "lisp",
+    "returncode": 1,
+    "stdout": "",
+    "stderr": "case.scm: read: invalid number format at line 1, column 28\n"
+  },
+  {
+    "probe": "file-call-with-input-file",
+    "source": "(import (scheme file)) (write (procedure? call-with-input-file))",
+    "evaluator": "lisp",
+    "returncode": 1,
+    "stdout": "",
+    "stderr": "case.scm: Evaluation error: Unbound variable: call-with-input-file\n"
+  },
+  {
+    "probe": "file-call-with-output-file",
+    "source": "(import (scheme file)) (write (procedure? call-with-output-file))",
+    "evaluator": "lisp",
+    "returncode": 1,
+    "stdout": "",
+    "stderr": "case.scm: Evaluation error: Unbound variable: call-with-output-file\n"
+  },
+  {
+    "probe": "file-file-exists?",
+    "source": "(import (scheme file)) (write (procedure? file-exists?))",
+    "evaluator": "lisp",
+    "returncode": 1,
+    "stdout": "",
+    "stderr": "case.scm: Evaluation error: Unbound variable: file-exists?\n"
+  },
+  {
+    "probe": "file-delete-file",
+    "source": "(import (scheme file)) (write (procedure? delete-file))",
+    "evaluator": "lisp",
+    "returncode": 1,
+    "stdout": "",
+    "stderr": "case.scm: Evaluation error: Unbound variable: delete-file\n"
+  },
+  {
+    "probe": "file-open-input-file",
+    "source": "(import (scheme file)) (write (procedure? open-input-file))",
+    "evaluator": "lisp",
+    "returncode": 0,
+    "stdout": "#t",
+    "stderr": ""
+  },
+  {
+    "probe": "time-library",
+    "source": "(import (scheme time))",
+    "evaluator": "lisp",
+    "returncode": 1,
+    "stdout": "",
+    "stderr": "case.scm: Cannot find library (scheme time)\n"
+  },
+  {
+    "probe": "stdin-pipe",
+    "source": "(define x (read)) (write (list x (exact? x) (equal? x 50)))",
+    "input": "50\n",
+    "evaluator": "lisp",
+    "returncode": 0,
+    "stdout": "(50.0 #f #f)",
+    "stderr": ""
+  },
+  {
+    "probe": "stdin-regular-file",
+    "source": "(define x (read)) (write (list x (exact? x) (equal? x 50)))",
+    "input": "50\n",
+    "evaluator": "lisp",
+    "returncode": 0,
+    "stdout": "(50 #t #t)",
+    "stderr": ""
+  },
+  {
+    "probe": "read-error-propagation",
+    "source": "(write (read))",
+    "input": "(\n",
+    "evaluator": "lisp",
+    "returncode": 0,
+    "stdout": "#<error: read: unexpected end of input (unclosed list) at line 2, column 2 (read-error)>",
+    "stderr": ""
+  }
+]

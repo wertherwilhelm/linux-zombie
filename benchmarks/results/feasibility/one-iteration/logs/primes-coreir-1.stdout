@@ -1,0 +1,3 @@
+Running primes:1000:1
+Elapsed time: 0.288607 seconds (0.289) for primes:1000:1
++!CSVLINE!+ZombieScheme-coreir,primes:1000:1,0.288607

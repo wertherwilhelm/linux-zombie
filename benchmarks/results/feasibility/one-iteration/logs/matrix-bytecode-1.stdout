@@ -1,0 +1,3 @@
+Running matrix:5:5:1
+Elapsed time: 2.04531 seconds (2.045) for matrix:5:5:1
++!CSVLINE!+ZombieScheme-bytecode,matrix:5:5:1,2.04531

@@ -1,0 +1,84 @@
+{
+  "reason": "equal.scm hardcodes a single repetition; its first datum is a problem parameter, not count.",
+  "excluded_initial_records": [
+    {
+      "benchmark": "equal",
+      "evaluator": "lisp",
+      "profile": "one-iteration",
+      "repeat": 1,
+      "status": "timeout",
+      "benchmark_name": "",
+      "benchmark_seconds": "",
+      "process_seconds": 3.0188998719968367,
+      "returncode": null,
+      "detail": "Exceeded 3s wall limit"
+    },
+    {
+      "benchmark": "equal",
+      "evaluator": "bytecode",
+      "profile": "one-iteration",
+      "repeat": 1,
+      "status": "timeout",
+      "benchmark_name": "",
+      "benchmark_seconds": "",
+      "process_seconds": 3.00861441300367,
+      "returncode": null,
+      "detail": "Exceeded 3s wall limit"
+    },
+    {
+      "benchmark": "equal",
+      "evaluator": "coreir",
+      "profile": "one-iteration",
+      "repeat": 1,
+      "status": "timeout",
+      "benchmark_name": "",
+      "benchmark_seconds": "",
+      "process_seconds": 3.0084147229936207,
+      "returncode": null,
+      "detail": "Exceeded 3s wall limit"
+    },
+    {
+      "benchmark": "equal",
+      "evaluator": "toyvm",
+      "profile": "one-iteration",
+      "repeat": 1,
+      "status": "timeout",
+      "benchmark_name": "",
+      "benchmark_seconds": "",
+      "process_seconds": 3.008458169999358,
+      "returncode": null,
+      "detail": "Exceeded 3s wall limit"
+    }
+  ],
+  "excluded_initial_input": "1\n100\n8\n1000\n2000\n5000\n#t\n",
+  "corrected_run_metadata": {
+    "started_utc": "2026-11-22T03:56:08.427572+00:00",
+    "source_commit": "f7ab3a29ee8ddf81807f2bba95e43afd0bab6f09",
+    "source_branch": "performance-testing",
+    "source_status": "M BUILD-linux.md\n M CMakeLists.txt\n?? Scheme-run/\n?? benchmarks/",
+    "suite_commit": "85f6acdc4cc4e2b857f307ba56bd0ba931dcccd1",
+    "suite_status": "",
+    "executable": "/mnt/c/work/linux-zombie/build-release/zombie-scheme",
+    "executable_sha256": "0b2f5b7a67d46e1e4ea4109191a891a285de7a709ce77d742db99cb71f70f42b",
+    "platform": "Linux-6.18.58.1-microsoft-standard-WSL2-x86_64-with-glibc2.35",
+    "machine": "x86_64",
+    "suite": "/mnt/c/work/r7rs-benchmarks",
+    "profile": "one-iteration",
+    "evaluators": [
+      "lisp",
+      "bytecode",
+      "coreir",
+      "toyvm"
+    ],
+    "benchmarks": [
+      "equal"
+    ],
+    "timeout_seconds": 3.0,
+    "memory_mb": 1024,
+    "stdin_transport": "regular file (matches upstream bench redirection)",
+    "repeats": 1,
+    "timing_adapter": "monotonic microseconds; secondary POSIX wall time",
+    "notes": "Reduced profiles are compatibility checks, not comparable to published full-input timings.",
+    "build_type": "Release"
+  }
+}

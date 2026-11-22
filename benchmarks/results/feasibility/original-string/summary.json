@@ -1,0 +1,14 @@
+{
+  "lisp": {
+    "error": 1
+  },
+  "bytecode": {
+    "error": 1
+  },
+  "coreir": {
+    "error": 1
+  },
+  "toyvm": {
+    "error": 1
+  }
+}
