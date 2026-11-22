@@ -5,14 +5,14 @@
  * Wraps the CoreIR lowering + bytecode translation behind the shared
  * IEvaluator interface so it can be selected like any other evaluator
  * (EvaluatorType::COREIR / `--coreir`). Each eval() call lowers the
- * expression to a CoreIR function, translates it to bytecode, and runs it on
- * a persistent BytecodeVM against the shared environment (so top-level
- * `define`s persist across REPL lines, exactly as the bytecode path does).
+ * expression to a CoreIR function, reuses or compiles a bytecode artifact, and
+ * executes it against the shared environment. Top-level definitions persist
+ * across REPL lines, exactly as the direct bytecode path does.
  */
 #pragma once
 
 #include "i_evaluator.h"
-#include "bytecode_vm.h"
+#include "compilation.h"
 
 namespace coreir {
 
@@ -24,9 +24,11 @@ public:
                                   zombie::runtime::Environment* env) override;
     zombie::runtime::Environment* get_environment() override { return env_; }
 
+    zombie::compilation::CompilationPipeline& pipeline() noexcept { return pipeline_; }
+
 private:
     zombie::runtime::Environment* env_;   // shared global environment
-    zombie::bytecode::BytecodeVM vm_;     // persistent backend VM
+    zombie::compilation::CompilationPipeline pipeline_;
 };
 
 } // namespace coreir

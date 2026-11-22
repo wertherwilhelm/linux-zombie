@@ -5,6 +5,8 @@
 #include "toy_vm.h"
 #include "bytecode_vm.h"
 #include "coreir_evaluator.h"
+#include "native_evaluator.h"
+#include "native_compiler.h"
 #include "primitive_base.h"
 #include "primitive.h"  // For Primitive::install_primitives()
 #include "Base.h"
@@ -47,6 +49,10 @@ scheme_engine::scheme_engine(EvaluatorType type, bool use_isolated_gc)
         throw std::runtime_error("Isolated GC not yet supported");
     }
 
+    if (type == EvaluatorType::NATIVE && !zombie::native::NativeCompilerBackend::available()) {
+        throw zombie::compilation::UnsupportedCompilation(
+            "Native evaluator requires an asmjit-enabled x86-64 build");
+    }
     create_runtime_context();
 
     // Create global environment through GC and register as persistent root
@@ -187,6 +193,10 @@ IEvaluator* scheme_engine::create_evaluator(EvaluatorType type) {
         case EvaluatorType::COREIR: {
             coreir::CoreIrEvaluator* ir_eval = new coreir::CoreIrEvaluator(global_env_, false);  // false = no debug
             eval = ir_eval;
+            break;
+        }
+        case EvaluatorType::NATIVE: {
+            eval = new zombie::native::NativeEvaluator(global_env_);
             break;
         }
         default:

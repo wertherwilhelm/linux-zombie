@@ -20,7 +20,9 @@ namespace coreir {
 // ============================================================================
 
 CoreIRToBytecode::CoreIRToBytecode()
-    : stack_depth_(0) {
+    : stack_depth_(0), constant_roots_([this](Tracer& tracer) {
+        for (auto*& value : constants_) tracer.visit_field(value);
+    }) {
 }
 
 // ============================================================================
@@ -284,20 +286,24 @@ void CoreIRToBytecode::compile_expr(const Expr& expr) {
         //   fixed            (a b)      -> (a b)
         //   fixed + rest     (a . rest) -> (a . rest)
         //   all-args variadic           -> rest   (a bare symbol)
-        Object* params_list = lambda.rest.empty()
+        gc_root<Object> params_list(lambda.rest.empty()
             ? nil
-            : static_cast<Object*>(gc_new<a_symbol>(lambda.rest));
+            : static_cast<Object*>(gc_new<a_symbol>(lambda.rest)));
         for (auto it = lambda.params.rbegin(); it != lambda.params.rend(); ++it) {
-            Object* param_sym = gc_new<a_symbol>(*it);
-            params_list = cons(param_sym, params_list);
+            gc_root<Object> param_sym(gc_new<a_symbol>(*it));
+            params_list.reset(cons(param_sym.get(), params_list.get()));
         }
 
-        // Create Closure template (body will be set to bytecode)
-        Closure* tmpl = gc_new<Closure>(params_list, nil, nullptr);
+        // Template and suspended outer constant pool must survive allocations
+        // while recursively compiling the lambda body.
+        gc_root<Closure> tmpl(gc_new<Closure>(params_list.get(), nil, nullptr));
 
         // Save current compilation state
         auto saved_bytecode = bytecode_;
         auto saved_constants = constants_;
+        zombie::compilation::ScopedRootTracer saved_roots([&](Tracer& t) {
+            for (auto*& value : saved_constants) t.visit_field(value);
+        });
         auto saved_local_vars = local_vars_;
         int saved_stack_depth = stack_depth_;
 
@@ -341,7 +347,7 @@ void CoreIRToBytecode::compile_expr(const Expr& expr) {
             throw std::runtime_error("ERROR: Closure template has no bytecode!");
         }
 
-        uint16_t idx = add_constant(tmpl);
+        uint16_t idx = add_constant(tmpl.get());
 
         // DEBUG: Verify it was added correctly
         if (idx >= constants_.size() || constants_[idx] != tmpl) {

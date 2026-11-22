@@ -2,11 +2,11 @@
 
 This is a Linux/CMake port of the original Visual Studio solution
 (`ConsoleApplication2.sln`). It builds the core engine, the REPL, and the
-GoogleTest suite with g++/clang and CMake — no MSBuild, NuGet, or asmjit.
+GoogleTest suite with g++/clang and CMake — no MSBuild or NuGet. The optional native backend uses vendored asmjit.
 
 ## Requirements
 
-- CMake ≥ 3.16
+- CMake ≥ 3.24 (required by the pinned asmjit build)
 - A C++20 compiler (tested with g++ 11.4)
 - Network access on first configure (CMake fetches GoogleTest via FetchContent;
   a system/`find_package(GTest)` install is used instead when present)
@@ -29,8 +29,75 @@ Artifacts land in `build/`:
 ```bash
 ./build/repl                 # tree-walk interpreter (default)
 ./build/repl --bytecode      # bytecode VM
+./build/repl --native        # CoreIR -> cached native JIT; bytecode for unsupported IR
 ./build/repl --vm            # experimental toy VM
 ```
+
+## Compilation components and native evaluation
+
+The frontend and backend have separate jobs:
+
+```text
+Scheme -> Expander (macros/desugaring) -> SchemeToCoreirLowering -> CoreIR
+                                                               |
+                                                CompilationPipeline / LRU cache
+                                                    |                      |
+                                            bytecode compiler       asmjit compiler
+                                                    |                      |
+                                               BytecodeVM          native entry point
+```
+
+`ZombieCompilerIR/compilation.h` is the common contract. `ICompilerBackend`
+accepts a CoreIR function and an `OutputKind`, then returns an owned
+`CompiledArtifact`. Executable artifacts implement `ExecutableCode`; compilation
+and execution remain separate operations. `BytecodeCompilerBackend` adapts the
+existing translator. The CoreIR evaluator now uses that pipeline too; the direct
+bytecode evaluator, toy VM, and tree walker retain their existing interfaces.
+
+`ZombieNative/` supplies `NativeCompilerBackend` and `NativeEvaluator`, selected
+through `EvaluatorType::NATIVE` or `repl --native`. The initial host x86-64 backend
+emits real machine code for CoreIR sequencing, branches, literals, local slots,
+and global reads/writes. Primitive steps call the existing boxed runtime through
+`NativePrimitive`, preserving numeric tower and arity behavior rather than
+introducing an unboxed numeric representation in this first slice. Supported
+primitive names are listed in `native_compiler.cpp`.
+
+Native closure creation, general calls, multiple values, native tail calls, and
+native loop compilation remain future increments. By default, an unsupported
+unit is compiled entirely to bytecode **before any execution begins**, keeping
+the Scheme prelude and existing functions usable. A loop using unsupported calls
+runs on the bytecode backend; it is not yet a native hot-loop/tiering JIT.
+`NativeEvaluator(env, UnsupportedPolicy::Error)` disables fallback for compiler
+work. Runtime errors never retry on another backend. Artifact `output_kind()`,
+pipeline statistics, and `last_fallback_reason()` make fallback inspectable.
+
+The per-evaluator cache defaults to 128 units with LRU eviction. It caches code,
+not results: side effects execute on every call and global values are read at
+runtime. Expansion and lowering run before cache lookup; the key encodes the
+resulting IR exactly, including scalar types and floating-point bits, so macro
+redefinitions are reflected. Units with non-scalar literals (including quoted
+lists/strings) bypass caching to preserve literal identity and mutation behavior.
+A capacity of zero disables retention; `clear_cache()` releases cached ownership.
+Shared artifacts pin active code through eviction. Collector roots cover compiled
+constant pools and native temporary slots; no managed object address is embedded
+in machine code. Artifacts must be destroyed before their collector. Pipelines,
+artifacts, and environments currently assume single-threaded use.
+
+`OutputKind::NativeObject` reserves a compilation output boundary for future AOT
+work. It explicitly reports unsupported today: asmjit is a code emitter, and
+writing a portable object/executable still needs a symbol, relocation, object
+writer, runtime ABI, and linker component. `supports()` distinguishes implemented
+outputs. No binary-file generation is claimed by this first increment.
+
+Build with `-DZOMBIE_ENABLE_ASMJIT=OFF` to exclude asmjit; other evaluators still
+build and `--native` reports a clear startup error. Native tests skip when the
+backend is disabled or the host is not x86-64. The dependency is vendored and
+pinned in `third_party/README.md`; no asmjit download is needed at configure time.
+
+Next components can build on the same boundary: a callable/closure ABI, native
+function compilation and tail calls, hotness/tiering policy, optional unboxed
+specialization, then native object emission/linking. Each can be tested against
+the existing bytecode artifacts independently of frontend expansion/lowering.
 
 ## Test
 
@@ -57,10 +124,12 @@ Result: **1269 / 1269 pass.**
 ```
 GarbageCollector
   └─ ZombieRuntime
-       └─ ZombieBytecode  ⇄  ZombieCompilerIR   (mutually dependent)
-            └─ ZombieLib        (embedding facade)
-                 ├─ repl        (REPL-test/)
-                 └─ LispTest    (GoogleTest, optional)
+       └─ ZombieBytecode
+            └─ ZombieCompilerIR  (lowering, compilation interfaces, bytecode backend)
+                 └─ ZombieNative (asmjit backend and evaluator)
+                      └─ ZombieLib (embedding facade)
+                           ├─ repl     (REPL-test/)
+                           └─ LispTest (GoogleTest, optional)
 MemoryManagement/   interface headers only (no compiled sources)
 stdlib/, test-libs/ runtime Scheme data read relative to the working dir
 ```

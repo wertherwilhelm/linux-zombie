@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.16)
+cmake_minimum_required(VERSION 3.24)
 project(ZombieScheme LANGUAGES CXX)
 
 # ---------------------------------------------------------------------------
@@ -24,6 +24,7 @@ if(NOT CMAKE_BUILD_TYPE)
 endif()
 
 option(ZOMBIE_BUILD_TESTS "Build the LispTest GoogleTest suite" ON)
+option(ZOMBIE_ENABLE_ASMJIT "Build the asmjit native compilation backend" ON)
 
 # The original code uses quoted cross-project includes such as
 # "gc_manager.h", "scheme_engine.h", "../ZombieBytecode/bytecode_opcodes.h".
@@ -35,6 +36,7 @@ set(ZOMBIE_INCLUDE_DIRS
   ${CMAKE_CURRENT_SOURCE_DIR}
   ${CMAKE_CURRENT_SOURCE_DIR}/ZombieRuntime
   ${CMAKE_CURRENT_SOURCE_DIR}/ZombieBytecode
+  ${CMAKE_CURRENT_SOURCE_DIR}/ZombieNative
   ${CMAKE_CURRENT_SOURCE_DIR}/ZombieCompilerIR
   ${CMAKE_CURRENT_SOURCE_DIR}/ZombieLib
   ${CMAKE_CURRENT_SOURCE_DIR}/GarbageCollector
@@ -80,11 +82,25 @@ target_include_directories(ZombieCompilerIR PUBLIC ${ZOMBIE_INCLUDE_DIRS})
 # cycle is gone.
 target_link_libraries(ZombieCompilerIR PUBLIC ZombieBytecode)
 
+# --- Native backend (CoreIR -> asmjit host code) ------------------------------
+zombie_glob(NATIVE_SRCS "${CMAKE_CURRENT_SOURCE_DIR}/ZombieNative")
+add_library(ZombieNative STATIC ${NATIVE_SRCS})
+target_include_directories(ZombieNative PUBLIC ${ZOMBIE_INCLUDE_DIRS})
+target_link_libraries(ZombieNative PUBLIC ZombieCompilerIR)
+target_compile_definitions(ZombieNative PUBLIC
+  ZOMBIE_ENABLE_ASMJIT=$<BOOL:${ZOMBIE_ENABLE_ASMJIT}>)
+if(ZOMBIE_ENABLE_ASMJIT)
+  set(ASMJIT_STATIC ON CACHE BOOL "" FORCE)
+  set(ASMJIT_TEST OFF CACHE BOOL "" FORCE)
+  add_subdirectory(third_party/asmjit EXCLUDE_FROM_ALL)
+  target_link_libraries(ZombieNative PRIVATE asmjit::asmjit)
+endif()
+
 # --- ZombieLib (embedding facade) ------------------------------------------
 zombie_glob(ZOMBIELIB_SRCS "${CMAKE_CURRENT_SOURCE_DIR}/ZombieLib")
 add_library(ZombieLib STATIC ${ZOMBIELIB_SRCS})
 target_include_directories(ZombieLib PUBLIC ${ZOMBIE_INCLUDE_DIRS})
-target_link_libraries(ZombieLib PUBLIC ZombieCompilerIR)
+target_link_libraries(ZombieLib PUBLIC ZombieNative)
 
 # --- REPL executable --------------------------------------------------------
 zombie_glob(REPL_SRCS "${CMAKE_CURRENT_SOURCE_DIR}/REPL-test")
