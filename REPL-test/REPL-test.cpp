@@ -1,4 +1,4 @@
-﻿// REPL-test.cpp : This file contains the 'main' function. Program execution begins and ends there.
+// REPL-test.cpp : This file contains the 'main' function. Program execution begins and ends there.
 //
 
 #include <iostream>
@@ -7,6 +7,12 @@
 #include <memory>
 
 #include "repl_core.hpp"
+#include "repl_terminal.hpp"
+#ifdef _WIN32
+#include <io.h>
+#else
+#include <unistd.h>
+#endif
 #include "repl_smart_edit.hpp"
 #include "scheme_engine.h"
 #include "SimpleDebugger.h"
@@ -48,12 +54,15 @@ int main(int argc, char** argv) {
     // Parse command-line arguments
     EvaluatorType eval_type = EvaluatorType::LISP;  // Default to Lisp
     bool show_help = false;
+    bool plain = false;
     bool enable_debugger = false;
     ReplConfig cfg;
 
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
-        if (arg == "--vm" || arg == "-v") {
+        if (arg == "--plain") {
+            plain = true;
+        } else if (arg == "--vm" || arg == "-v") {
             eval_type = EvaluatorType::TOY_VM;
         } else if (arg == "--Lisp" || arg == "-l") {
             eval_type = EvaluatorType::LISP;
@@ -72,13 +81,14 @@ int main(int argc, char** argv) {
         auto meta_prefix = primary_meta_prefix(cfg);
         auto meta_prefix_list = format_meta_prefixes(cfg);
         std::cout << "Zombie Scheme REPL v0.0.1\n";
-        std::cout << "Usage: REPL-test [options]\n";
+        std::cout << "Usage: repl [options]\n";
         std::cout << "\nOptions:\n";
         std::cout << "  -l, --Lisp       Use traditional Lisp evaluator (default)\n";
         std::cout << "  -v, --vm         Use toy VM evaluator (experimental)\n";
         std::cout << "  -b, --bytecode   Use bytecode compiler/VM evaluator\n";
         std::cout << "  -c, --coreir     Use CoreIR -> bytecode pipeline evaluator\n";
         std::cout << "  -d, --debug      Enable debugger (requires --bytecode)\n";
+        std::cout << "      --plain      Disable terminal editing (also automatic for pipes)\n";
         std::cout << "  -h, --help       Show this help message\n";
         std::cout << "\nExit commands:\n";
         std::cout << "  quit             Exit the REPL\n";
@@ -138,20 +148,45 @@ int main(int argc, char** argv) {
         }
     }
 
+    auto* live_engine = engine.get();
     ReplSession repl(std::move(engine), cfg);
     repl.add_input_plugin(std::make_unique<LispSmartEditPlugin>());
 
-    emit_events(repl.start());
-
+#ifdef _WIN32
+    bool interactive = !plain && _isatty(_fileno(stdin)) && _isatty(_fileno(stdout));
+#else
+    bool interactive = !plain && isatty(STDIN_FILENO) && isatty(STDOUT_FILENO);
+#endif
+    std::unique_ptr<ReplTerminal> terminal;
+    if (interactive) {
+        terminal = std::make_unique<ReplTerminal>(*live_engine);
+        std::cout << "Tab: complete | Ctrl-R: history | Ctrl-C: cancel | Ctrl-D: exit | :help\n";
+    }
+    std::string prompt = cfg.prompt;
     std::string line;
-    while (std::getline(std::cin, line)) {
-        auto ev = repl.submit_line(line);
-
-        // crude exit: if prompt event is empty after :quit
+    for (;;) {
+        if (terminal) {
+            bool cancelled = false;
+            if (!terminal->read(prompt, line, cancelled)) break;
+            if (cancelled) {
+                repl.clear_buffer();
+                prompt = cfg.prompt;
+                continue;
+            }
+        } else {
+            std::cout << prompt << std::flush;
+            if (!std::getline(std::cin, line)) break;
+        }
+        auto events = repl.submit_line(line);
         bool exiting = false;
-        for (auto& e : ev) if (e.kind == ReplEvent::Kind::Prompt && e.text.empty()) exiting = true;
-
-        emit_events(ev);
+        for (const auto& event : events) {
+            if (event.kind == ReplEvent::Kind::Prompt) {
+                prompt = event.text;
+                if (prompt.empty()) exiting = true;
+            } else {
+                emit_events({event});
+            }
+        }
         if (exiting) break;
     }
     return 0;

@@ -14,6 +14,8 @@
 #pragma once
 
 #include "Base.h"
+#include <string>
+#include <vector>
 
 namespace zombie { namespace runtime {
 
@@ -177,6 +179,9 @@ public:
 
     /** @brief Outer scope (null for the global environment). */
     Environment* parent() const { return m_parent; }
+
+    // Copies binding names for editor completion without exposing GC-managed objects.
+    std::vector<std::string> binding_names() const;
 
     /**
      * @brief Trace all bindings and parent for garbage collection
