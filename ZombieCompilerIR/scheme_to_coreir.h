@@ -106,9 +106,6 @@ private:
     // Helper: Mark tail calls in a statement (mutates the statement tree)
     void mark_tail_calls(Stmt* stmt);
 
-    // Helper: Extract result variable name from a Stmt chain (finds the Return statement)
-    std::string extract_result_var(Stmt* stmt);
-
     // Helper: the atom produced by a lowered chain (its terminal Return's value —
     // a Var bound by the preceding Lets, or a Lit). Use this (not makeVar of a
     // fresh name) when threading a complex sub-expression's value into a parent,

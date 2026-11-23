@@ -11,6 +11,9 @@
 
 namespace coreir {
 
+// Deep-clone helpers for lowered IR subtrees (defined near the end of this file).
+static std::unique_ptr<Stmt> clone_stmt(const Stmt& s);
+
 // ============================================================================
 // Constructor
 // ============================================================================
@@ -54,7 +57,7 @@ bool SchemeToCoreirLowering::is_atomic(Object* expr) {
     // Numbers are atomic
     if (expr->get_type() == static_cast<int>(Type::INT) || expr->get_type() == static_cast<int>(Type::LONG) ||
         expr->get_type() == static_cast<int>(Type::DOUBLE) || expr->get_type() == static_cast<int>(Type::RATIONAL) ||
-        expr->get_type() == static_cast<int>(Type::BIGNUM)) {
+        expr->get_type() == static_cast<int>(Type::BIGNUM) || expr->get_type() == static_cast<int>(Type::COMPLEX)) {
         return true;
     }
 
@@ -168,7 +171,8 @@ TypeHint SchemeToCoreirLowering::infer_type(Object* obj) {
     if (obj->get_type() == static_cast<int>(Type::BIGNUM)) {
         return TypeHint::INT;  // an exact integer, just wider than a fixnum
     }
-    if (obj->get_type() == static_cast<int>(Type::DOUBLE) || obj->get_type() == static_cast<int>(Type::RATIONAL)) {
+    if (obj->get_type() == static_cast<int>(Type::DOUBLE) || obj->get_type() == static_cast<int>(Type::RATIONAL) ||
+        obj->get_type() == static_cast<int>(Type::COMPLEX)) {
         return TypeHint::NUM;
     }
 
@@ -218,7 +222,7 @@ Atom SchemeToCoreirLowering::lower_to_atom(Object* scheme_expr,
             scheme_expr->get_type() == static_cast<int>(Type::INT) || scheme_expr->get_type() == static_cast<int>(Type::LONG) ||
             scheme_expr->get_type() == static_cast<int>(Type::DOUBLE) || scheme_expr->get_type() == static_cast<int>(Type::STRING) ||
             scheme_expr->get_type() == static_cast<int>(Type::CHAR) || scheme_expr->get_type() == static_cast<int>(Type::RATIONAL) ||
-            scheme_expr->get_type() == static_cast<int>(Type::BIGNUM)) {
+            scheme_expr->get_type() == static_cast<int>(Type::BIGNUM) || scheme_expr->get_type() == static_cast<int>(Type::COMPLEX)) {
             // Infer type and create literal with type hint
             TypeHint hint = infer_type(scheme_expr);
             return Atom::makeLit(scheme_expr, hint);
@@ -512,35 +516,25 @@ std::unique_ptr<Expr> SchemeToCoreirLowering::lower_call(Object* func, Object* a
 std::unique_ptr<Stmt> SchemeToCoreirLowering::lower_if(Object* cond,
                                                          Object* then_expr,
                                                          Object* else_expr) {
-    // Normalize condition to atom
-    Atom cond_atom;
-    std::unique_ptr<Stmt> cond_stmts = nullptr;
+    // Build the If given a condition atom. Re-lowers the branches on each call so
+    // that a branching condition (an `if`/`cond` test that is itself an `if`) gets a
+    // fresh, correctly-bound copy spliced into each of its tails.
+    auto build_if = [this, then_expr, else_expr](Atom cond_atom) -> std::unique_ptr<Stmt> {
+        auto then_stmt = lower_expr(then_expr);
+        auto else_stmt = else_expr ? lower_expr(else_expr)
+                                   : Stmt::makeReturn(Atom::makeLit(nil, TypeHint::VOID));
+        return Stmt::makeIf(cond_atom, std::move(then_stmt), std::move(else_stmt));
+    };
 
     if (is_atomic(cond)) {
-        cond_atom = atomic_to_atom(cond);
-    } else {
-        // Complex condition: lower to statement chain and extract result
-        cond_stmts = lower_expr(cond);
-        std::string result_var = extract_result_var(cond_stmts.get());
-        cond_atom = Atom::makeVar(result_var);
+        return build_if(atomic_to_atom(cond));
     }
 
-    // Lower then and else branches
-    auto then_stmt = lower_expr(then_expr);
-    auto else_stmt = else_expr ? lower_expr(else_expr)
-                               : Stmt::makeReturn(Atom::makeLit(nil, TypeHint::VOID));
-
-    // Create the If statement
-    auto if_stmt = Stmt::makeIf(std::move(cond_atom),
-                                 std::move(then_stmt),
-                                 std::move(else_stmt));
-
-    // If we had a complex condition, inline its statement chain before the If
-    if (cond_stmts) {
-        return inline_stmt_chain(std::move(cond_stmts), std::move(if_stmt));
-    }
-
-    return if_stmt;
+    // Complex condition: lower to a statement chain and thread the If into each tail
+    // via splice_tail. (The old path used extract_result_var, which fabricated an
+    // unbound temp when the condition lowered to an If, yielding "Unbound variable".)
+    auto cond_stmts = lower_expr(cond);
+    return splice_tail(std::move(cond_stmts), build_if);
 }
 
 // ============================================================================
@@ -648,40 +642,28 @@ std::unique_ptr<Stmt> SchemeToCoreirLowering::lower_cond(Object* clauses) {
         }
     }
 
-    // Regular clause: (test expr ...)
-    // Atomic tests (#t, symbols, (quote X)) become the cond atom directly; complex
-    // tests lower to a statement chain whose result var is the atom. (Previously an
-    // atomic test went through extract_result_var, which returned "" -> empty var.)
-    Atom cond_atom;
-    std::unique_ptr<Stmt> test_stmt = nullptr;
+    // Regular clause: (test expr ...). Build the clause's If given the test's value
+    // atom; re-lowered per call so a branching test (a test that is itself an `if`)
+    // gets a fresh, correctly-bound copy in each of its tails. (The old path used
+    // extract_result_var, which fabricated an unbound temp for an If/literal test.)
+    auto build_if = [this, actions, rest_clauses](Atom cond_atom) -> std::unique_ptr<Stmt> {
+        std::unique_ptr<Stmt> then_branch;
+        if (is_nil(actions)) {
+            then_branch = Stmt::makeReturn(cond_atom);
+        } else if (is_nil(cdr(actions))) {
+            then_branch = lower_expr(car(actions));
+        } else {
+            then_branch = lower_begin(actions);
+        }
+        auto else_branch = lower_cond(rest_clauses);
+        return Stmt::makeIf(cond_atom, std::move(then_branch), std::move(else_branch));
+    };
+
     if (is_atomic(test)) {
-        cond_atom = atomic_to_atom(test);
-    } else {
-        test_stmt = lower_expr(test);
-        cond_atom = Atom::makeVar(extract_result_var(test_stmt.get()));
+        return build_if(atomic_to_atom(test));
     }
-
-    // Lower actions (multiple expressions = begin)
-    std::unique_ptr<Stmt> then_branch;
-    if (is_nil(actions)) {
-        // No actions - return the test's own value
-        then_branch = Stmt::makeReturn(cond_atom);
-    } else if (is_nil(cdr(actions))) {
-        // Single action
-        then_branch = lower_expr(car(actions));
-    } else {
-        // Multiple actions - wrap in begin
-        then_branch = lower_begin(actions);
-    }
-
-    // Rest of clauses form the else branch
-    auto else_branch = lower_cond(rest_clauses);
-
-    auto if_stmt = Stmt::makeIf(cond_atom, std::move(then_branch), std::move(else_branch));
-    if (test_stmt) {
-        return inline_stmt_chain(std::move(test_stmt), std::move(if_stmt));
-    }
-    return if_stmt;
+    auto test_stmt = lower_expr(test);
+    return splice_tail(std::move(test_stmt), build_if);
 }
 
 // ============================================================================
@@ -722,20 +704,19 @@ std::unique_ptr<Stmt> SchemeToCoreirLowering::lower_let_star(Object* bindings, O
         auto val_expr_node = lower_expr_to_expr(val_expr);
         return Stmt::makeLet(var_name, std::move(val_expr_node), std::move(rest_stmt));
     } else {
-        // Complex expression - lower to statement chain
+        // Complex expression: lower to a statement chain and bind var to its value in
+        // every tail via splice_tail. (The old path used extract_result_var, which
+        // fabricated an unbound temp when the value lowered to an If.) The rest of the
+        // let* is spliced into each tail; it is a unique_ptr, so it is moved into the
+        // last tail and cloned for the others.
         auto val_stmts = lower_expr(val_expr);
-
-        // Extract result variable (this works because lower_expr returns Return <var>  for non-atomic)
-        std::string result_var = extract_result_var(val_stmts.get());
-
-        // Create binding that copies the result
-        auto copy_expr = std::make_unique<Expr>(
-            Expr::makePrim("+", {Atom::makeVar(result_var), Atom::makeLit(numeric::make_integer(0))})
-        );
-        auto binding = Stmt::makeLet(var_name, std::move(copy_expr), std::move(rest_stmt));
-
-        // Inline the value computation before the binding
-        return inline_stmt_chain(std::move(val_stmts), std::move(binding));
+        auto rest_shared = std::shared_ptr<Stmt>(std::move(rest_stmt));
+        return splice_tail(std::move(val_stmts), [this, var_name, rest_shared](Atom v) {
+            auto copy_expr = std::make_unique<Expr>(
+                Expr::makePrim("+", {v, Atom::makeLit(numeric::make_integer(0))})
+            );
+            return Stmt::makeLet(var_name, std::move(copy_expr), clone_stmt(*rest_shared));
+        });
     }
 }
 
@@ -834,39 +815,18 @@ std::unique_ptr<Stmt> SchemeToCoreirLowering::lower_set(Object* var, Object* val
 
     std::string var_name = get_symbol_name(var);
 
-    // Lower the value expression
+    // Lower the value expression, then perform the SetGlobal in every tail of its
+    // statement chain via splice_tail. This handles a branching value (an `if`/`cond`
+    // in value position) correctly: each branch does its own SetGlobal with its own
+    // value. (The old path used extract_result_var, which fabricated an unbound temp
+    // for an If — the set never saw the value.)
     auto value_stmts = lower_expr(value);
-
-    // Extract value atom from result
-    Atom value_atom;
-    std::unique_ptr<Stmt> prep_stmt = nullptr;
-
-    if (value_stmts->isReturn()) {
-        auto& ret = value_stmts->asReturn();
-        value_atom = ret.value;
-    } else {
-        // Complex expression - need to extract result
-        std::string result_var = extract_result_var(value_stmts.get());
-        value_atom = Atom::makeVar(result_var);
-        prep_stmt = std::move(value_stmts);
-    }
-
-    // Create SetGlobal expression
-    auto set_global = std::make_unique<Expr>(
-        Expr::makeSetGlobal(var_name, value_atom)
-    );
-
-    // Bind to temp and return it (set! returns unspecified, we return nil-like result)
-    std::string temp = gen_temp();
-    auto ret = Stmt::makeReturn(Atom::makeVar(temp));
-    auto set_stmt = Stmt::makeLet(temp, std::move(set_global), std::move(ret));
-
-    // Chain value evaluation before the set (if needed)
-    if (prep_stmt) {
-        return inline_stmt_chain(std::move(prep_stmt), std::move(set_stmt));
-    } else {
-        return set_stmt;
-    }
+    return splice_tail(std::move(value_stmts), [this, var_name](Atom v) {
+        auto set_global = std::make_unique<Expr>(Expr::makeSetGlobal(var_name, v));
+        std::string temp = gen_temp();
+        return Stmt::makeLet(temp, std::move(set_global),
+                             Stmt::makeReturn(Atom::makeVar(temp)));
+    });
 }
 
 // ============================================================================
@@ -981,48 +941,19 @@ std::unique_ptr<Stmt> SchemeToCoreirLowering::lower_expr(Object* scheme_expr) {
                 std::string var_name = get_symbol_name(first_arg);
                 Object* value_expr = car(cdr(rest));
 
-                // Lower the value expression
+                // Lower the value expression, then do the SetGlobal in every tail of
+                // its statement chain via splice_tail. A branching value (an `if`/`cond`
+                // in value position) binds the variable in each branch with that
+                // branch's value. R7RS: the value of a define is unspecified (VOID).
+                // (The old path used extract_result_var, which fabricated an unbound
+                // temp for an If — the define bound an unbound/promise placeholder.)
                 auto value_stmts = lower_expr(value_expr);
-
-                // Check if value_stmts is just "Return Lit(val)"
-                // If so, we need to wrap it in a Let
-                Atom value_atom;
-                std::unique_ptr<Stmt> prep_stmt = nullptr;
-
-                if (value_stmts->isReturn()) {
-                    auto& ret = value_stmts->asReturn();
-                    if (ret.value.isLit()) {
-                        // Atomic literal - use directly
-                        value_atom = ret.value;
-                    } else {
-                        // Variable - use it
-                        value_atom = ret.value;
-                    }
-                } else {
-                    // Complex expression - need to extract result
-                    std::string result_var = extract_result_var(value_stmts.get());
-                    value_atom = Atom::makeVar(result_var);
-                    prep_stmt = std::move(value_stmts);
-                }
-
-                // Create SetGlobal expression
-                auto set_global = std::make_unique<Expr>(
-                    Expr::makeSetGlobal(var_name, value_atom)
-                );
-
-                // Execute the SetGlobal (bind to a temp to force evaluation),
-                // then return the unspecified value. R7RS: the value of a define
-                // is unspecified (nil/VOID here, matching the tree-walk).
-                std::string temp = gen_temp();
-                auto ret = Stmt::makeReturn(Atom::makeLit(nil, TypeHint::VOID));
-                auto set_stmt = Stmt::makeLet(temp, std::move(set_global), std::move(ret));
-
-                // Chain value evaluation before the set (if needed)
-                if (prep_stmt) {
-                    return inline_stmt_chain(std::move(prep_stmt), std::move(set_stmt));
-                } else {
-                    return set_stmt;
-                }
+                return splice_tail(std::move(value_stmts), [this, var_name](Atom v) {
+                    auto set_global = std::make_unique<Expr>(Expr::makeSetGlobal(var_name, v));
+                    std::string temp = gen_temp();
+                    return Stmt::makeLet(temp, std::move(set_global),
+                                         Stmt::makeReturn(Atom::makeLit(nil, TypeHint::VOID)));
+                });
             }
             else if (first_arg->pair()) {
                 // Function definition: (define (name params...) body...)
@@ -1067,40 +998,32 @@ std::unique_ptr<Stmt> SchemeToCoreirLowering::lower_expr(Object* scheme_expr) {
         }
     }
 
-    // General function call - need to normalize function and arguments
-    // Step 1: Normalize function if needed
-    Atom func_atom;
-    std::unique_ptr<Stmt> func_stmts = nullptr;
-
-    if (is_atomic(first)) {
-        if (first->get_type() == static_cast<int>(Type::SYMBOL)) {
-            func_atom = Atom::makeVar(get_symbol_name(first));
-        } else {
-            func_atom = Atom::makeLit(first);
-        }
-    } else {
-        // Complex function expression (like lambda) - normalize it
-        func_stmts = lower_expr(first);
-        std::string result_var = extract_result_var(func_stmts.get());
-        func_atom = Atom::makeVar(result_var);
-    }
-
-    // Step 2: ANF-lower the arguments (tolerating `if` in operand position).
-    std::unique_ptr<Stmt> stmt = lower_operands(rest, {},
-        [this, func_atom](std::vector<Atom> atoms) {
+    // General function call - normalize the function, then ANF-lower the arguments
+    // and emit the call in a continuation. Factoring the arg-lowering into `build`
+    // lets a branching function expression (an `if`/`cond` in operator position) run
+    // the whole call independently in each branch via splice_tail. (The old path used
+    // extract_result_var on the function chain, fabricating an unbound temp for an If.)
+    auto build = [this, rest](Atom func_atom) -> std::unique_ptr<Stmt> {
+        return lower_operands(rest, {}, [this, func_atom](std::vector<Atom> atoms) {
             auto call_expr = std::make_unique<Expr>(
                 Expr::makeCall(func_atom, std::move(atoms)));
             std::string temp = gen_temp();
             return Stmt::makeLet(temp, std::move(call_expr),
                                  Stmt::makeReturn(Atom::makeVar(temp)));
         });
+    };
 
-    // Step 3: Chain the function-evaluation statements before the call.
-    if (func_stmts) {
-        stmt = inline_stmt_chain(std::move(func_stmts), std::move(stmt));
+    if (is_atomic(first)) {
+        if (first->get_type() == static_cast<int>(Type::SYMBOL)) {
+            return build(Atom::makeVar(get_symbol_name(first)));
+        }
+        return build(Atom::makeLit(first));
     }
 
-    return stmt;
+    // Complex function expression (like a lambda or a conditional): lower it and
+    // thread the call into each tail.
+    auto func_stmts = lower_expr(first);
+    return splice_tail(std::move(func_stmts), build);
 }
 
 // ============================================================================
@@ -1280,33 +1203,10 @@ std::unique_ptr<CoreIRFunction> SchemeToCoreirLowering::lower_expression_to_func
 // Helper Functions for Statement Chaining
 // ============================================================================
 
-std::string SchemeToCoreirLowering::extract_result_var(Stmt* stmt) {
-    // Walk the Stmt chain to find the Return statement
-    // The result variable is in the Return's Atom
-
-    if (std::holds_alternative<Stmt::Return>(stmt->data)) {
-        auto& ret = std::get<Stmt::Return>(stmt->data);
-        if (std::holds_alternative<Atom::Var>(ret.value.data)) {
-            return std::get<Atom::Var>(ret.value.data).name;
-        } else {
-            // Return has a literal, need to bind it to a temp
-            std::string temp = gen_temp();
-            return temp;
-        }
-    } else if (std::holds_alternative<Stmt::Let>(stmt->data)) {
-        auto& let = std::get<Stmt::Let>(stmt->data);
-        return extract_result_var(let.next.get());
-    } else if (std::holds_alternative<Stmt::If>(stmt->data)) {
-        // For If statements used as values, we need to create a result variable
-        // that will be assigned in both branches
-        // This is handled by converting the If to use phi-style result binding
-        // For now, we generate a temp variable name that the If will write to
-        std::string result_var = gen_temp();
-        return result_var;
-    }
-
-    throw std::runtime_error("Unexpected statement type in extract_result_var");
-}
+// (extract_result_var was removed: it fabricated a fresh temp for an If/literal tail
+//  that nothing ever bound, so an `if`/`cond` used as a value yielded "Unbound
+//  variable: $tmpN". All value-position lowering now threads a continuation through
+//  every tail via splice_tail, which carries the real per-branch value atom.)
 
 Atom SchemeToCoreirLowering::terminal_atom(Stmt* stmt) {
     // Walk Lets to the terminal Return and return its atom directly. For a
