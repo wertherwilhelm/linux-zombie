@@ -1,5 +1,33 @@
 # ZombieScheme — Code Audit (missing / unimplemented / outstanding)
 
+### R7RS-benchmark gap sweep (2026-11-23) — current gaps + what's fixed
+The `benchmarks/run.sh` harness (zombie-scheme runner over the ecraven suite) is a
+gap-finder alongside the corpus. Re-run on master; FIXED this pass:
+- **Missing library registrations** (deriv et al.): added (scheme cxr / inexact /
+  complex) — procs existed, only registration missing. deriv passes all 4.
+- **CoreIR inline-If** ("Cannot inline stmt chain with If"): inline_stmt_chain now
+  deep-clones the continuation into both If branches; `if` in operand / non-tail
+  position lowers on --coreir. pnpoly/conform/destruc/fft/ray/mbrotZ advance past it.
+- P0 crashes from the stale feasibility matrix are GONE (tak/ctak/fibc no longer
+  crash — fixed by the Stage-5 VM loop merge + GC work; now timeout).
+
+OUTSTANDING gaps (benchmark → root cause), by theme:
+- **Bignums — BIGGEST error cluster (pi, chudnovsky `wrong`, compiler `read:
+  invalid number format`).** No arbitrary-precision integers: `(expt 10 19)`
+  overflows int64; the reader rejects 20-digit literals. A major numeric subsystem
+  (reader + printer + full numeric tower + comparison). ZB-007.
+- **File I/O (cat, ray): `Unbound variable: file-exists?`.** (scheme file) exports
+  file-exists?/delete-file/open-*-file/call-with-*-file but they are NOT implemented
+  (library initialize does not verify bindings). Needs file-backed ports. ZB-006.
+- **conform — wrong answer on bytecode** (correct on others). Bytecode correctness
+  bug. ZB-003.
+- **mbrotZ --coreir "Expected list expression"; pnpoly --coreir `wrong`.** CoreIR
+  per-construct correctness gaps (complex-number arithmetic patterns).
+- **Timeouts dominate** the non-passing results (ack/array1/browse/fib/tak/… at a
+  few-second budget) — i.e. the evaluators are slow, not wrong. This is the perf
+  track (deferred until the error-gaps are filled). The bytecode VM is the fastest;
+  native is NOT competitive for loops (see native findings below).
+
 ### Native (asmjit) backend — status + findings (2026-11-23)
 Arc of work on the `EvaluatorType::NATIVE` / `--native` backend (CoreIR → asmjit
 host x86-64, bytecode fallback). What landed on master and what was learned:
