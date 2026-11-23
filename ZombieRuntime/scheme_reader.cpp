@@ -5,6 +5,7 @@
 #include "Base.h"
 #include "constants.h"  // For intern_symbol()
 #include "numeric_runtime.h"
+#include "a_bignum.h"
 #include "a_rational.h"
 #include "a_complex.h"
 #include "a_vector.h"
@@ -516,9 +517,16 @@ parse_real:
             double value = std::stod(num_str);
             return gc_new<atom<double>>(value);
         } else {
-            // Parse as integer (exact)
-            int64_t value = std::stoll(num_str);
-            return numeric::make_integer(value);
+            // Parse as integer (exact); promote to a bignum beyond int64 range.
+            try {
+                int64_t value = std::stoll(num_str);
+                return numeric::make_integer(value);
+            } catch (const std::out_of_range&) {
+                std::string digits = (!num_str.empty() && num_str[0] == '+') ? num_str.substr(1) : num_str;
+                zombie::runtime::a_bignum* big = zombie::runtime::a_bignum::from_string(digits, 10);
+                if (!big) return make_error("read: invalid number format");
+                return big->normalized();
+            }
         }
     } catch (const std::exception&) {
         // stod/stoll throw invalid_argument/out_of_range on bad input

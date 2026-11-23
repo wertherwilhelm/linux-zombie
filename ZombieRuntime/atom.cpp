@@ -9,41 +9,44 @@ bool eql(const Object* o1, const Object* o2)
     return false;
 }
 
+// get_type() is a virtual on Object, so dispatch directly — no ValueType cast,
+// and guard null (these are called on arbitrary objects, incl. non-ValueType).
 bool is_int(const Object* o1)
 {
-    return ((ValueType*)o1)->get_type() == static_cast<int>(Type::INT);
+    return o1 && o1->get_type() == static_cast<int>(Type::INT);
 }
 
 bool is_double(const Object* o1)
 {
-    return ((ValueType*)o1)->get_type() == static_cast<int>(Type::DOUBLE);
+    return o1 && o1->get_type() == static_cast<int>(Type::DOUBLE);
 }
 
 bool is_string(const Object* o1)
 {
-    return ((ValueType*)o1)->get_type() == static_cast<int>(Type::STRING);
+    return o1 && o1->get_type() == static_cast<int>(Type::STRING);
 }
 
 bool is_symbol(const Object* o1)
 {
-    return ((ValueType*)o1)->get_type() == static_cast<int>(Type::SYMBOL);
+    return o1 && o1->get_type() == static_cast<int>(Type::SYMBOL);
 }
 
 bool is_char(const Object* o1)
 {
-    return ((ValueType*)o1)->get_type() == static_cast<int>(Type::CHAR);
+    return o1 && o1->get_type() == static_cast<int>(Type::CHAR);
 }
 
 bool is_bool(const Object* o1)
 {
-    return ((ValueType*)o1)->get_type() == static_cast<int>(Type::BOOL);
+    return o1 && o1->get_type() == static_cast<int>(Type::BOOL);
 }
 
 bool is_number(const Object* o1)
 {
     if (!o1) return false;
-    int t = ((ValueType*)o1)->get_type();
+    int t = o1->get_type();
     return t == static_cast<int>(Type::INT) || t == static_cast<int>(Type::LONG) || t == static_cast<int>(Type::DOUBLE) ||
+           t == static_cast<int>(Type::BIGNUM) ||
            t == static_cast<int>(Type::RATIONAL) || t == static_cast<int>(Type::COMPLEX);
 }
 

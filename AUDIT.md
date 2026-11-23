@@ -12,10 +12,13 @@ gap-finder alongside the corpus. Re-run on master; FIXED this pass:
   crash — fixed by the Stage-5 VM loop merge + GC work; now timeout).
 
 OUTSTANDING gaps (benchmark → root cause), by theme:
-- **Bignums — BIGGEST error cluster (pi, chudnovsky `wrong`, compiler `read:
-  invalid number format`).** No arbitrary-precision integers: `(expt 10 19)`
-  overflows int64; the reader rejects 20-digit literals. A major numeric subsystem
-  (reader + printer + full numeric tower + comparison). ZB-007.
+- **Bignums — DONE (2026-11-23, libtommath).** Arbitrary-precision integers via
+  vendored libtommath + a new a_bignum type (Type::BIGNUM): reader promotes
+  over-long literals, overflow of + - * promotes, / quotient remainder modulo
+  compare negate abs expt exact-integer-sqrt and equal?/eqv? are bignum-aware, and
+  results demote back to fixnums when they fit int64. pi + chudnovsky now PASS on
+  all four evaluators; compiler gets past the literal + (scheme char) (now a perf
+  timeout + a separate bytecode "too few arguments" bug). (Was ZB-007.)
 - **File I/O (cat, ray): `Unbound variable: file-exists?`.** (scheme file) exports
   file-exists?/delete-file/open-*-file/call-with-*-file but they are NOT implemented
   (library initialize does not verify bindings). Needs file-backed ports. ZB-006.

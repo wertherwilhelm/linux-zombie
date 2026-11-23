@@ -225,6 +225,7 @@ Object* Lisp::eval_atom(Object* x, Environment*env) {
     }
     // Numbers are self-evaluating (includes rationals and complex)
     if (is_double(x) || x->get_type() == static_cast<int>(Type::INT) || x->get_type() == static_cast<int>(Type::LONG) ||
+        x->get_type() == static_cast<int>(Type::BIGNUM) ||
         x->get_type() == static_cast<int>(Type::RATIONAL) || x->get_type() == static_cast<int>(Type::COMPLEX)) {
         return x;
     } else if (is_char(x)) {

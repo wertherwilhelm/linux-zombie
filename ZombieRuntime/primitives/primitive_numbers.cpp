@@ -6,6 +6,7 @@
 #include "../numeric_runtime.h"
 #include "../a_complex.h"
 #include "../a_rational.h"
+#include "../a_bignum.h"
 #include "../../GarbageCollector/gc_ptr.h"
 #include <cmath>
 #include <limits>
@@ -508,10 +509,25 @@ Object* prim_exact_integer_sqrt(IEvaluator*, Object* a, Environment*) {
     Object* x = arg1(a);
     if (!x || x->is_nil()) return error("exact-integer-sqrt: requires one argument");
     if (!numeric::is_integer_value(x)) return error("exact-integer-sqrt: argument must be an exact non-negative integer");
+    // Arbitrary-precision path: isqrt via libtommath, remainder r = x - s*s.
+    if (zombie::runtime::is_bignum(x)) {
+        const zombie::runtime::a_bignum* bx = zombie::runtime::as_bignum(x);
+        if (mp_isneg(bx->value())) return error("exact-integer-sqrt: argument must be non-negative");
+        gc_root<zombie::runtime::a_bignum> s(gc_new<zombie::runtime::a_bignum>());
+        if (mp_sqrt(bx->value(), s->value()) != MP_OKAY) return error("exact-integer-sqrt: failed");
+        gc_root<zombie::runtime::a_bignum> sq(gc_new<zombie::runtime::a_bignum>());
+        gc_root<zombie::runtime::a_bignum> r(gc_new<zombie::runtime::a_bignum>());
+        mp_mul(s->value(), s->value(), sq->value());
+        mp_sub(bx->value(), sq->value(), r->value());
+        return gc_new<ValuesObject>(cons(s->normalized(), cons(r->normalized(), nil)));
+    }
     double val = num(x);
     if (val < 0) return error("exact-integer-sqrt: argument must be non-negative");
-    int s = (int)std::floor(std::sqrt(val));
-    int r = (int)val - (s * s);
+    long long s = (long long)std::floor(std::sqrt(val));
+    // Correct for double-rounding near perfect squares.
+    while ((s + 1) * (s + 1) <= (long long)val) ++s;
+    while (s * s > (long long)val) --s;
+    long long r = (long long)val - (s * s);
     // R7RS: returns TWO values (s and r).
     return gc_new<ValuesObject>(cons(numeric::make_integer(s), cons(numeric::make_integer(r), nil)));
 }

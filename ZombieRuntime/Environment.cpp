@@ -81,20 +81,13 @@ std::vector<std::string> Environment::binding_names() const {
 
 Object* Environment::lookup(std::string symbol)
 {
-    return lookup(gc_new<a_string>(symbol));
-}
-    
-Object* Environment::lookup(Object * symbol)
-{
+    // Lookup is by name, so compare the string directly rather than allocating a
+    // throwaway a_string per call (a hot path; see LookupDoesNotAllocateSchemeObjects).
+    const std::string& symbol_name = symbol;
     Object *varList = m_vars;
     Object *valList = m_vals;
-
-    // See if the symbol is bound locally
-    std::string symbol_name = get_name(symbol);
     while (varList != nil)
     {
-        // this has got to be cleaned up.  It should look like the following
-        // if (first(varList) == symbol)
         if (get_name(first(varList)) == symbol_name) {
             return first(valList);
         } else if (get_name(varList) == symbol_name) {
@@ -104,12 +97,17 @@ Object* Environment::lookup(Object * symbol)
             valList = rest(valList);
         }
     }
-    // If not, try to look for the symbol in the parent
     if (m_parent != NULL) {
         return m_parent->lookup(symbol);
     } else {
-        return error("Unbound variable: " + get_name(symbol));
+        return error("Unbound variable: " + symbol_name);
     }
+}
+
+Object* Environment::lookup(Object * symbol)
+{
+    // Delegate to the by-name path (symbols/strings look up by their name).
+    return lookup(get_name(symbol));
 }
 
 bool Environment::number_args_ok(Object *vars, Object *vals) 

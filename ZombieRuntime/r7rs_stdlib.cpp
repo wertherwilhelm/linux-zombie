@@ -315,6 +315,30 @@ void bootstrap_scheme_complex(Environment* base_env) {
 }
 
 // ============================================================================
+// (scheme char) - character + case operations
+// ============================================================================
+
+void bootstrap_scheme_char(Environment* base_env) {
+    auto lib = make_gc_ptr<Library>(LibraryName{"scheme", "char"});
+    for (const char* name : {
+        "char-alphabetic?", "char-numeric?", "char-whitespace?",
+        "char-upper-case?", "char-lower-case?",
+        "char-upcase", "char-downcase", "char-foldcase",
+        "char-ci=?", "char-ci<?", "char-ci>?", "char-ci<=?", "char-ci>=?",
+        "digit-value",
+        "string-upcase", "string-downcase", "string-foldcase",
+        "string-ci=?", "string-ci<?", "string-ci>?", "string-ci<=?", "string-ci>=?"}) {
+        lib->add_export(name);
+    }
+    std::string error;
+    if (!lib->initialize(base_env, error)) {
+        throw std::runtime_error("Failed to initialize (scheme char): " + error);
+    }
+    lib->set_initialized(true);
+    LibraryRegistry::instance().register_library(std::move(lib));
+}
+
+// ============================================================================
 // Bootstrap All Standard Libraries
 // ============================================================================
 
@@ -326,6 +350,7 @@ void bootstrap_standard_libraries(Environment* base_env) {
     bootstrap_scheme_cxr(base_env);
     bootstrap_scheme_inexact(base_env);
     bootstrap_scheme_complex(base_env);
+    bootstrap_scheme_char(base_env);
 }
 
 } // namespace r7rs

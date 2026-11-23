@@ -2,6 +2,7 @@
 #include "numeric_runtime.h"
 #include "a_rational.h"
 #include "a_complex.h"
+#include "a_bignum.h"
 #include "atom.h"
 #include "gc_manager.h"
 #include "gc_ptr.h"
@@ -18,15 +19,16 @@ bool is_number(const Object* obj) {
     if (!obj) return false;
     int t = obj->get_type();
     return t == static_cast<int>(Type::INT) || t == static_cast<int>(Type::LONG) || t == static_cast<int>(Type::DOUBLE) ||
-           t == static_cast<int>(Type::RATIONAL) || t == static_cast<int>(Type::COMPLEX);
+           t == static_cast<int>(Type::RATIONAL) || t == static_cast<int>(Type::BIGNUM) || t == static_cast<int>(Type::COMPLEX);
 }
 
 bool is_exact(const Object* obj) {
     if (!obj) return false;
     int t = obj->get_type();
 
-    // Integers and rationals are exact
-    if (t == static_cast<int>(Type::INT) || t == static_cast<int>(Type::LONG) || t == static_cast<int>(Type::RATIONAL)) {
+    // Integers (incl. bignums) and rationals are exact
+    if (t == static_cast<int>(Type::INT) || t == static_cast<int>(Type::LONG) ||
+        t == static_cast<int>(Type::BIGNUM) || t == static_cast<int>(Type::RATIONAL)) {
         return true;
     }
 
@@ -47,8 +49,9 @@ bool is_integer_value(const Object* obj) {
     if (!obj) return false;
     int t = obj->get_type();
 
-    // Direct integer types
-    if (t == static_cast<int>(Type::INT) || t == static_cast<int>(Type::LONG)) {
+    // Direct integer types (incl. arbitrary-precision)
+    if (t == static_cast<int>(Type::INT) || t == static_cast<int>(Type::LONG) ||
+        t == static_cast<int>(Type::BIGNUM)) {
         return true;
     }
 
@@ -72,9 +75,9 @@ bool is_rational_value(const Object* obj) {
     if (!obj) return false;
     int t = obj->get_type();
 
-    // Exact integers and rationals are rational.
+    // Exact integers (incl. bignums) and rationals are rational.
     if (t == static_cast<int>(Type::INT) || t == static_cast<int>(Type::LONG) ||
-        t == static_cast<int>(Type::RATIONAL)) {
+        t == static_cast<int>(Type::BIGNUM) || t == static_cast<int>(Type::RATIONAL)) {
         return true;
     }
 
@@ -92,7 +95,8 @@ bool is_real_value(const Object* obj) {
     int t = obj->get_type();
 
     // All numbers except complex (or complex with zero imaginary part)
-    if (t == static_cast<int>(Type::INT) || t == static_cast<int>(Type::LONG) || t == static_cast<int>(Type::DOUBLE) || t == static_cast<int>(Type::RATIONAL)) {
+    if (t == static_cast<int>(Type::INT) || t == static_cast<int>(Type::LONG) || t == static_cast<int>(Type::DOUBLE) ||
+        t == static_cast<int>(Type::BIGNUM) || t == static_cast<int>(Type::RATIONAL)) {
         return true;
     }
 
@@ -128,6 +132,8 @@ double to_double(Object* n) {
             const a_rational* r = as_rational(n);
             return r ? r->to_double() : 0.0;
         }
+        case static_cast<int>(Type::BIGNUM):
+            return static_cast<a_bignum*>(n)->to_double();
         case static_cast<int>(Type::COMPLEX): {
             const a_complex* c = as_complex(n);
             if (c && c->is_real()) {
@@ -154,6 +160,8 @@ int64_t to_int64(Object* n) {
             const a_rational* r = as_rational(n);
             return r ? r->to_int64() : 0;
         }
+        case static_cast<int>(Type::BIGNUM):
+            return static_cast<a_bignum*>(n)->to_i64();  // lossy if it exceeds int64
         default:
             return static_cast<int64_t>(to_double(n));
     }
@@ -209,10 +217,19 @@ Object* parse_number_token(const std::string& tok, int radix, int exactness) {
             if (pos != tok.size()) return nullptr;
             val = make_inexact(dv);
         } else {
-            size_t pos = 0;
-            long long n = std::stoll(tok, &pos, radix);
-            if (pos != tok.size()) return nullptr;
-            val = make_integer(n);
+            try {
+                size_t pos = 0;
+                long long n = std::stoll(tok, &pos, radix);
+                if (pos != tok.size()) return nullptr;
+                val = make_integer(n);
+            } catch (const std::out_of_range&) {
+                // Exceeds int64: parse as an arbitrary-precision integer. mp_read_radix
+                // accepts a leading '-'; strip a leading '+' it would reject.
+                std::string digits = (!tok.empty() && tok[0] == '+') ? tok.substr(1) : tok;
+                a_bignum* big = a_bignum::from_string(digits, radix);
+                if (!big) return nullptr;
+                val = big->normalized();
+            }
         }
     } catch (const std::exception&) {
         return nullptr;
@@ -248,6 +265,9 @@ static int promote_type(int a, int b) {
     // Rational is next
     if (a == static_cast<int>(Type::RATIONAL) || b == static_cast<int>(Type::RATIONAL)) return static_cast<int>(Type::RATIONAL);
 
+    // Bignum: an exact integer wider than a fixnum
+    if (a == static_cast<int>(Type::BIGNUM) || b == static_cast<int>(Type::BIGNUM)) return static_cast<int>(Type::BIGNUM);
+
     // Long is larger than int
     if (a == static_cast<int>(Type::LONG) || b == static_cast<int>(Type::LONG)) return static_cast<int>(Type::LONG);
 
@@ -255,20 +275,36 @@ static int promote_type(int a, int b) {
     return static_cast<int>(Type::INT);
 }
 
+// Promote any exact integer (fixnum or bignum) to an a_bignum for wide arithmetic.
+static a_bignum* to_bignum(Object* n) {
+    if (is_bignum(n)) return static_cast<a_bignum*>(n);
+    return gc_new<a_bignum>(to_int64(n));
+}
+
 // ============================================================================
 // Integer Arithmetic (exact)
 // ============================================================================
 
+// Fixnum arithmetic that promotes to a bignum on int64 overflow.
 static Object* add_integers(int64_t a, int64_t b) {
-    return make_integer(a + b);
+    int64_t r;
+    if (!__builtin_add_overflow(a, b, &r)) return make_integer(r);
+    gc_root<a_bignum> ba(gc_new<a_bignum>(a)), bb(gc_new<a_bignum>(b));
+    return a_bignum::add(ba.get(), bb.get());
 }
 
 static Object* sub_integers(int64_t a, int64_t b) {
-    return make_integer(a - b);
+    int64_t r;
+    if (!__builtin_sub_overflow(a, b, &r)) return make_integer(r);
+    gc_root<a_bignum> ba(gc_new<a_bignum>(a)), bb(gc_new<a_bignum>(b));
+    return a_bignum::sub(ba.get(), bb.get());
 }
 
 static Object* mul_integers(int64_t a, int64_t b) {
-    return make_integer(a * b);
+    int64_t r;
+    if (!__builtin_mul_overflow(a, b, &r)) return make_integer(r);
+    gc_root<a_bignum> ba(gc_new<a_bignum>(a)), bb(gc_new<a_bignum>(b));
+    return a_bignum::mul(ba.get(), bb.get());
 }
 
 // ============================================================================
@@ -310,6 +346,11 @@ Object* add(Object* a, Object* b) {
         return a_rational::add(ra.get(), rb.get());
     }
 
+    // Bignum (an operand too wide for a fixnum)
+    if (result_type == static_cast<int>(Type::BIGNUM)) {
+        gc_root<a_bignum> ba(to_bignum(a)), bb(to_bignum(b));
+        return a_bignum::add(ba.get(), bb.get());
+    }
     // Both are integers (int or long)
     return add_integers(to_int64(a), to_int64(b));
 }
@@ -351,6 +392,11 @@ Object* sub(Object* a, Object* b) {
         return a_rational::sub(ra, rb);
     }
 
+    // Bignum (an operand too wide for a fixnum)
+    if (result_type == static_cast<int>(Type::BIGNUM)) {
+        gc_root<a_bignum> ba(to_bignum(a)), bb(to_bignum(b));
+        return a_bignum::sub(ba.get(), bb.get());
+    }
     // Both are integers
     return sub_integers(to_int64(a), to_int64(b));
 }
@@ -397,6 +443,11 @@ Object* mul(Object* a, Object* b) {
         return a_rational::mul(ra, rb);
     }
 
+    // Bignum (an operand too wide for a fixnum)
+    if (result_type == static_cast<int>(Type::BIGNUM)) {
+        gc_root<a_bignum> ba(to_bignum(a)), bb(to_bignum(b));
+        return a_bignum::mul(ba.get(), bb.get());
+    }
     // Both are integers
     return mul_integers(to_int64(a), to_int64(b));
 }
@@ -439,6 +490,17 @@ Object* div(Object* a, Object* b) {
         return make_inexact(to_double(a) / to_double(b));
     }
 
+    // Bignum division: exact when the divisor divides evenly, otherwise fall back
+    // to inexact (exact bignum rationals are not represented yet).
+    if (result_type == static_cast<int>(Type::BIGNUM)) {
+        gc_root<a_bignum> ba(to_bignum(a)), bb(to_bignum(b));
+        if (mp_iszero(bb->value())) throw std::runtime_error("Division by zero");
+        gc_root<a_bignum> rem(gc_new<a_bignum>());
+        mp_div(ba->value(), bb->value(), nullptr, rem->value());
+        if (mp_iszero(rem->value())) return a_bignum::quotient(ba.get(), bb.get());
+        return make_inexact(ba->to_double() / bb->to_double());
+    }
+
     // Handle exact division (returns rational)
     // Convert both to rational and divide
     a_rational* ra = (ta == static_cast<int>(Type::RATIONAL)) ? as_rational(a) :
@@ -468,6 +530,8 @@ Object* negate(Object* n) {
             return make_inexact(-static_cast<atom<double>*>(n)->value());
         case static_cast<int>(Type::RATIONAL):
             return a_rational::negate(as_rational(n));
+        case static_cast<int>(Type::BIGNUM):
+            return a_bignum::neg(static_cast<a_bignum*>(n));
         case static_cast<int>(Type::COMPLEX): {
             const a_complex* c = as_complex(n);
             return make_complex(negate(c->real_part()), negate(c->imag_part()));
@@ -499,6 +563,8 @@ Object* abs_value(Object* n) {
         }
         case static_cast<int>(Type::RATIONAL):
             return a_rational::abs(as_rational(n));
+        case static_cast<int>(Type::BIGNUM):
+            return a_bignum::abs(static_cast<a_bignum*>(n));
         case static_cast<int>(Type::COMPLEX): {
             // For complex, magnitude = sqrt(re² + im²)
             const a_complex* c = as_complex(n);
@@ -540,6 +606,12 @@ int compare(Object* a, Object* b) {
         a_rational* rb = (tb == static_cast<int>(Type::RATIONAL)) ? as_rational(b) :
                          gc_new<a_rational>(to_int64(b), 1);
         return a_rational::compare(ra, rb);
+    }
+
+    // Bignum comparison (an operand too wide for a fixnum)
+    if (result_type == static_cast<int>(Type::BIGNUM)) {
+        gc_root<a_bignum> ba(to_bignum(a)), bb(to_bignum(b));
+        return a_bignum::compare(ba.get(), bb.get());
     }
 
     // Integer comparison
@@ -660,6 +732,10 @@ Object* quotient(Object* a, Object* b) {
     if (!is_integer_value(a) || !is_integer_value(b)) {
         throw std::runtime_error("quotient requires integers");
     }
+    if (is_bignum(a) || is_bignum(b)) {
+        gc_root<a_bignum> ba(to_bignum(a)), bb(to_bignum(b));
+        return a_bignum::quotient(ba.get(), bb.get());
+    }
 
     int64_t ia = to_int64(a);
     int64_t ib = to_int64(b);
@@ -675,6 +751,10 @@ Object* remainder(Object* a, Object* b) {
     if (!is_integer_value(a) || !is_integer_value(b)) {
         throw std::runtime_error("remainder requires integers");
     }
+    if (is_bignum(a) || is_bignum(b)) {
+        gc_root<a_bignum> ba(to_bignum(a)), bb(to_bignum(b));
+        return a_bignum::remainder(ba.get(), bb.get());
+    }
 
     int64_t ia = to_int64(a);
     int64_t ib = to_int64(b);
@@ -689,6 +769,10 @@ Object* remainder(Object* a, Object* b) {
 Object* modulo(Object* a, Object* b) {
     if (!is_integer_value(a) || !is_integer_value(b)) {
         throw std::runtime_error("modulo requires integers");
+    }
+    if (is_bignum(a) || is_bignum(b)) {
+        gc_root<a_bignum> ba(to_bignum(a)), bb(to_bignum(b));
+        return a_bignum::modulo(ba.get(), bb.get());
     }
 
     int64_t ia = to_int64(a);

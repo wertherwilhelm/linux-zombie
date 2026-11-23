@@ -56,6 +56,7 @@ enum class Type
     VECTOR,
     BYTEVECTOR,  // R7RS bytevector - array of bytes (0-255)
     RATIONAL,    // Exact rational number (numerator/denominator)
+    BIGNUM,      // Arbitrary-precision exact integer (libtommath mp_int)
     COMPLEX,     // Complex number (real + imaginary parts)
     CPP_OBJECT,  // Wrapped C++ Object pointer (scene graph nodes, etc.)
     EXCEPTION,   // R7RS error-Object (exception with message and irritants)

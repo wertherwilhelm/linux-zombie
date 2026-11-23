@@ -53,7 +53,8 @@ bool SchemeToCoreirLowering::is_atomic(Object* expr) {
 
     // Numbers are atomic
     if (expr->get_type() == static_cast<int>(Type::INT) || expr->get_type() == static_cast<int>(Type::LONG) ||
-        expr->get_type() == static_cast<int>(Type::DOUBLE) || expr->get_type() == static_cast<int>(Type::RATIONAL)) {
+        expr->get_type() == static_cast<int>(Type::DOUBLE) || expr->get_type() == static_cast<int>(Type::RATIONAL) ||
+        expr->get_type() == static_cast<int>(Type::BIGNUM)) {
         return true;
     }
 
@@ -164,6 +165,9 @@ TypeHint SchemeToCoreirLowering::infer_type(Object* obj) {
     if (obj->get_type() == static_cast<int>(Type::INT) || obj->get_type() == static_cast<int>(Type::LONG)) {
         return TypeHint::INT;
     }
+    if (obj->get_type() == static_cast<int>(Type::BIGNUM)) {
+        return TypeHint::INT;  // an exact integer, just wider than a fixnum
+    }
     if (obj->get_type() == static_cast<int>(Type::DOUBLE) || obj->get_type() == static_cast<int>(Type::RATIONAL)) {
         return TypeHint::NUM;
     }
@@ -213,7 +217,8 @@ Atom SchemeToCoreirLowering::lower_to_atom(Object* scheme_expr,
             scheme_expr == t || scheme_expr == false_obj ||
             scheme_expr->get_type() == static_cast<int>(Type::INT) || scheme_expr->get_type() == static_cast<int>(Type::LONG) ||
             scheme_expr->get_type() == static_cast<int>(Type::DOUBLE) || scheme_expr->get_type() == static_cast<int>(Type::STRING) ||
-            scheme_expr->get_type() == static_cast<int>(Type::CHAR) || scheme_expr->get_type() == static_cast<int>(Type::RATIONAL)) {
+            scheme_expr->get_type() == static_cast<int>(Type::CHAR) || scheme_expr->get_type() == static_cast<int>(Type::RATIONAL) ||
+            scheme_expr->get_type() == static_cast<int>(Type::BIGNUM)) {
             // Infer type and create literal with type hint
             TypeHint hint = infer_type(scheme_expr);
             return Atom::makeLit(scheme_expr, hint);

@@ -5,6 +5,7 @@
 #include "gc_ptr.h"
 #include "numeric_runtime.h"
 #include "a_exception.h"
+#include "a_bignum.h"
 #include <stdexcept>
 
 namespace zombie { namespace runtime {
@@ -115,6 +116,11 @@ bool equal(Object *x, Object *y) {
     if (x->get_type() == static_cast<int>(Type::LONG) && y->get_type() == static_cast<int>(Type::LONG)) {
         return ((atom<long long>*)x)->value() == ((atom<long long>*)y)->value();
     }
+    if (x->get_type() == static_cast<int>(Type::BIGNUM) && y->get_type() == static_cast<int>(Type::BIGNUM)) {
+        return zombie::runtime::a_bignum::compare(
+            static_cast<const zombie::runtime::a_bignum*>(x),
+            static_cast<const zombie::runtime::a_bignum*>(y)) == 0;
+    }
 
     // Characters - compare by value
     if (is_char(x) && is_char(y)) {
@@ -176,6 +182,11 @@ bool eqv(Object *x, Object *y) {
     }
     if (x->get_type() == static_cast<int>(Type::LONG) && y->get_type() == static_cast<int>(Type::LONG)) {
         return ((atom<long long>*)x)->value() == ((atom<long long>*)y)->value();
+    }
+    if (x->get_type() == static_cast<int>(Type::BIGNUM) && y->get_type() == static_cast<int>(Type::BIGNUM)) {
+        return zombie::runtime::a_bignum::compare(
+            static_cast<const zombie::runtime::a_bignum*>(x),
+            static_cast<const zombie::runtime::a_bignum*>(y)) == 0;
     }
 
     // Characters - compare by value

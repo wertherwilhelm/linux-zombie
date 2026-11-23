@@ -9,6 +9,7 @@
 namespace zombie { namespace runtime {
     class a_rational;
     class a_complex;
+    class a_bignum;
 } }
 
 // Use types from zombie::runtime namespace
@@ -16,6 +17,7 @@ using zombie::runtime::Object;
 using zombie::runtime::Type;
 using zombie::runtime::a_rational;
 using zombie::runtime::a_complex;
+using zombie::runtime::a_bignum;  // is_bignum / as_bignum resolve via ADL on Object*
 template<typename T> using atom = zombie::runtime::atom<T>;
 
 // ============================================================================
