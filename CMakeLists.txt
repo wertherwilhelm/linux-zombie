@@ -60,11 +60,17 @@ zombie_glob(GC_SRCS "${CMAKE_CURRENT_SOURCE_DIR}/GarbageCollector")
 add_library(GarbageCollector STATIC ${GC_SRCS})
 target_include_directories(GarbageCollector PUBLIC ${ZOMBIE_INCLUDE_DIRS})
 
+# --- libtommath (vendored, public domain): arbitrary-precision integers --------
+file(GLOB TOMMATH_SRCS "${CMAKE_CURRENT_SOURCE_DIR}/third_party/libtommath/*.c")
+add_library(libtommath STATIC ${TOMMATH_SRCS})
+target_include_directories(libtommath PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/third_party/libtommath")
+target_compile_options(libtommath PRIVATE -w)  # vendored source; silence its warnings
+
 # --- ZombieRuntime (includes primitives/ subdirectory) ----------------------
 zombie_glob(RUNTIME_SRCS "${CMAKE_CURRENT_SOURCE_DIR}/ZombieRuntime")
 add_library(ZombieRuntime STATIC ${RUNTIME_SRCS})
 target_include_directories(ZombieRuntime PUBLIC ${ZOMBIE_INCLUDE_DIRS})
-target_link_libraries(ZombieRuntime PUBLIC GarbageCollector)
+target_link_libraries(ZombieRuntime PUBLIC GarbageCollector libtommath)
 
 # --- ZombieBytecode ---------------------------------------------------------
 zombie_glob(BYTECODE_SRCS "${CMAKE_CURRENT_SOURCE_DIR}/ZombieBytecode")
