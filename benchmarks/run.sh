@@ -8,6 +8,10 @@
 set -u
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SUITE="${R7RS_BENCH_SRC:-/mnt/c/work/r7rs-benchmarks/src}"
+# File benchmarks (cat, ray, …) use paths relative to the suite root (inputs/,
+# outputs/); run each program with that as the working directory.
+BENCH_ROOT="$(dirname "$SUITE")"
+mkdir -p "$BENCH_ROOT/outputs" 2>/dev/null || true
 RUNNER="$ROOT/build/zombie-scheme"
 COMMON="$SUITE/common.scm"
 TIMEOUT="${1:-8}"; shift || true
@@ -25,7 +29,7 @@ for name in "${names[@]}"; do
   prog="$(mktemp)"; cat "$src" "$COMMON" > "$prog"; echo '(run-benchmark)' >> "$prog"
   row="$name"
   for ev in "${EVALS[@]}"; do
-    out="$(timeout "$TIMEOUT" "$RUNNER" --benchmark-time --evaluator "$ev" "$prog" < "$input" 2>"$prog.err")"
+    out="$(cd "$BENCH_ROOT" && timeout "$TIMEOUT" "$RUNNER" --benchmark-time --evaluator "$ev" "$prog" < "$input" 2>"$prog.err")"
     code=$?
     if   [ $code -eq 124 ]; then r=timeout
     elif [ $code -ge 128 ]; then r="crash($((code-128)))"

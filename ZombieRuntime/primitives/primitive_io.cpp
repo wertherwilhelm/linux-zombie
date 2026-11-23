@@ -18,6 +18,8 @@
 #include "../../GarbageCollector/gc_ptr.h"
 #include "../a_vector.h"
 #include "../procedure.h"
+#include <filesystem>
+#include <system_error>
 #include <fstream>
 #include <sstream>
 #include <cctype>
@@ -165,6 +167,49 @@ Object* prim_close_output_port(IEvaluator*, Object* a, Environment*) {
     FileOutputPort* file_port = dynamic_cast<FileOutputPort*>(x);
     if (file_port) file_port->close();
     return t;
+}
+// (file-exists? string) / (delete-file string)
+Object* prim_file_existsq(IEvaluator*, Object* a, Environment*) {
+    Object* x = io_x(a);
+    if (!is_string(x)) return error("file-exists?: expected a string filename");
+    std::error_code ec;
+    return std::filesystem::exists(((a_string*)x)->value(), ec)
+        ? static_cast<Object*>(t) : static_cast<Object*>(false_obj);
+}
+Object* prim_delete_file(IEvaluator*, Object* a, Environment*) {
+    Object* x = io_x(a);
+    if (!is_string(x)) return error("delete-file: expected a string filename");
+    std::error_code ec;
+    std::filesystem::remove(((a_string*)x)->value(), ec);
+    return t;  // result unspecified
+}
+// (call-with-input-file string proc) — open, call proc with the port, close, return.
+Object* prim_call_with_input_file(IEvaluator* evaluator, Object* a, Environment* env) {
+    Object* fn = first(a);
+    if (!is_string(fn)) return error("call-with-input-file: expected a string filename");
+    Procedure* proc = dynamic_cast<Procedure*>(first(rest(a)));
+    if (!proc) return error("call-with-input-file: second argument must be a procedure");
+    std::string filename = ((a_string*)fn)->value();
+    FileInputPort* port = gc_new<FileInputPort>(filename);
+    if (!port->open()) return error("call-with-input-file: could not open file: " + filename);
+    gc_root<Object> guard(port);
+    Object* result = proc->apply(evaluator, cons(port, nil), env);
+    port->close();
+    return result;
+}
+// (call-with-output-file string proc) — open, call proc with the port, close, return.
+Object* prim_call_with_output_file(IEvaluator* evaluator, Object* a, Environment* env) {
+    Object* fn = first(a);
+    if (!is_string(fn)) return error("call-with-output-file: expected a string filename");
+    Procedure* proc = dynamic_cast<Procedure*>(first(rest(a)));
+    if (!proc) return error("call-with-output-file: second argument must be a procedure");
+    std::string filename = ((a_string*)fn)->value();
+    FileOutputPort* port = gc_new<FileOutputPort>(filename);
+    if (!port->open()) return error("call-with-output-file: could not open file: " + filename);
+    gc_root<Object> guard(port);
+    Object* result = proc->apply(evaluator, cons(port, nil), env);
+    port->close();
+    return result;
 }
 
 // ---- Character input ----
@@ -465,6 +510,10 @@ void PrimitiveIO::install(zombie::runtime::Environment* env) {
         { "close-input-port", 1, 1, prim_close_input_port },
         { "open-output-file",  1, 1, prim_open_output_file },
         { "close-output-port", 1, 1, prim_close_output_port },
+        { "file-exists?",       1, 1, prim_file_existsq },
+        { "delete-file",        1, 1, prim_delete_file },
+        { "call-with-input-file",  2, 2, prim_call_with_input_file },
+        { "call-with-output-file", 2, 2, prim_call_with_output_file },
         { "read-char",   0, 1, prim_read_char },
         { "peek-char",   0, 1, prim_peek_char },
         { "char-ready?", 0, 1, prim_char_readyq },
