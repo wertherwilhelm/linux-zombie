@@ -1320,6 +1320,37 @@ Atom SchemeToCoreirLowering::terminal_atom(Stmt* stmt) {
     throw std::runtime_error("terminal_atom: if in operand position not supported");
 }
 
+// Deep-clone a lowered IR subtree (Atoms are value types; Expr/Stmt own unique_ptrs).
+// Needed to splice a continuation into both branches of an If.
+static std::unique_ptr<Stmt> clone_stmt(const Stmt& s);
+
+static std::unique_ptr<Expr> clone_expr(const Expr& e) {
+    Expr out;
+    if (e.isPrim()) { auto& p = e.asPrim(); out = Expr::makePrim(p.op, p.args); }
+    else if (e.isCall()) { auto& c = e.asCall(); out = Expr::makeCall(c.func, c.args, TypeHint::UNKNOWN, c.is_tail_call); }
+    else if (e.isGetGlobal()) { out = Expr::makeGetGlobal(e.asGetGlobal().name); }
+    else if (e.isSetGlobal()) { auto& s = e.asSetGlobal(); out = Expr::makeSetGlobal(s.name, s.value); }
+    else if (e.isSetLocal()) { auto& s = e.asSetLocal(); out = Expr::makeSetLocal(s.name, s.value); }
+    else if (e.isLambda()) { auto& l = e.asLambda(); out = Expr::makeLambda(l.params, clone_stmt(*l.body), l.rest); }
+    else if (e.isValues()) { out = Expr::makeValues(e.asValues().values); }
+    else if (e.isCallWithValues()) { auto& c = e.asCallWithValues(); out = Expr::makeCallWithValues(c.producer, c.consumer, c.is_tail_call); }
+    else throw std::runtime_error("clone_expr: unknown expression kind");
+    out.inferred_type = e.inferred_type;
+    return std::make_unique<Expr>(std::move(out));
+}
+
+static std::unique_ptr<Stmt> clone_stmt(const Stmt& s) {
+    if (std::holds_alternative<Stmt::Let>(s.data)) {
+        auto& l = std::get<Stmt::Let>(s.data);
+        return Stmt::makeLet(l.name, clone_expr(*l.expr), clone_stmt(*l.next));
+    }
+    if (std::holds_alternative<Stmt::If>(s.data)) {
+        auto& i = std::get<Stmt::If>(s.data);
+        return Stmt::makeIf(i.cond, clone_stmt(*i.then_branch), clone_stmt(*i.else_branch));
+    }
+    return Stmt::makeReturn(std::get<Stmt::Return>(s.data).value);
+}
+
 std::unique_ptr<Stmt> SchemeToCoreirLowering::inline_stmt_chain(std::unique_ptr<Stmt> chain,
                                                                   std::unique_ptr<Stmt> Continuation) {
     // Replace the Return statement at the end of chain with Continuation
@@ -1338,9 +1369,15 @@ std::unique_ptr<Stmt> SchemeToCoreirLowering::inline_stmt_chain(std::unique_ptr<
 
         return Stmt::makeLet(name, std::move(expr), std::move(inlined_next));
     } else if (std::holds_alternative<Stmt::If>(chain->data)) {
-        // For If, inlining is complex (would need to clone Continuation)
-        // For now, throw an error - this shouldn't happen in current usage
-        throw std::runtime_error("Cannot inline stmt chain with If statement (clone not implemented)");
+        // Both branches of the If terminate in a Return; the continuation must run
+        // after whichever branch executed, so splice a CLONE into one branch and the
+        // original into the other (an `if` used for its value / effect in non-tail
+        // position, e.g. a non-final begin expression that is an if).
+        auto& if_data = std::get<Stmt::If>(chain->data);
+        Atom cond = if_data.cond;
+        auto then_b = inline_stmt_chain(std::move(if_data.then_branch), clone_stmt(*Continuation));
+        auto else_b = inline_stmt_chain(std::move(if_data.else_branch), std::move(Continuation));
+        return Stmt::makeIf(cond, std::move(then_b), std::move(else_b));
     }
 
     throw std::runtime_error("Unexpected statement type in inline_stmt_chain");
