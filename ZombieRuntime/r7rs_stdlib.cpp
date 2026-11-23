@@ -258,6 +258,63 @@ void bootstrap_scheme_file(Environment* base_env) {
 }
 
 // ============================================================================
+// (scheme cxr) - the caar … cddddr compositions
+// ============================================================================
+
+void bootstrap_scheme_cxr(Environment* base_env) {
+    auto lib = make_gc_ptr<Library>(LibraryName{"scheme", "cxr"});
+    for (const char* name : {
+        "caar", "cadr", "cdar", "cddr",
+        "caaar", "caadr", "cadar", "caddr", "cdaar", "cdadr", "cddar", "cdddr",
+        "caaaar", "caaadr", "caadar", "caaddr", "cadaar", "cadadr", "caddar", "cadddr",
+        "cdaaar", "cdaadr", "cdadar", "cdaddr", "cddaar", "cddadr", "cdddar", "cddddr"}) {
+        lib->add_export(name);
+    }
+    std::string error;
+    if (!lib->initialize(base_env, error)) {
+        throw std::runtime_error("Failed to initialize (scheme cxr): " + error);
+    }
+    lib->set_initialized(true);
+    LibraryRegistry::instance().register_library(std::move(lib));
+}
+
+// ============================================================================
+// (scheme inexact) - transcendental functions + inexact predicates
+// ============================================================================
+
+void bootstrap_scheme_inexact(Environment* base_env) {
+    auto lib = make_gc_ptr<Library>(LibraryName{"scheme", "inexact"});
+    for (const char* name : {"exp", "log", "sin", "cos", "tan", "asin", "acos",
+                             "atan", "sqrt", "finite?", "infinite?", "nan?"}) {
+        lib->add_export(name);
+    }
+    std::string error;
+    if (!lib->initialize(base_env, error)) {
+        throw std::runtime_error("Failed to initialize (scheme inexact): " + error);
+    }
+    lib->set_initialized(true);
+    LibraryRegistry::instance().register_library(std::move(lib));
+}
+
+// ============================================================================
+// (scheme complex) - complex-number constructors / accessors
+// ============================================================================
+
+void bootstrap_scheme_complex(Environment* base_env) {
+    auto lib = make_gc_ptr<Library>(LibraryName{"scheme", "complex"});
+    for (const char* name : {"make-rectangular", "make-polar", "real-part",
+                             "imag-part", "magnitude", "angle"}) {
+        lib->add_export(name);
+    }
+    std::string error;
+    if (!lib->initialize(base_env, error)) {
+        throw std::runtime_error("Failed to initialize (scheme complex): " + error);
+    }
+    lib->set_initialized(true);
+    LibraryRegistry::instance().register_library(std::move(lib));
+}
+
+// ============================================================================
 // Bootstrap All Standard Libraries
 // ============================================================================
 
@@ -266,6 +323,9 @@ void bootstrap_standard_libraries(Environment* base_env) {
     bootstrap_scheme_read(base_env);
     bootstrap_scheme_write(base_env);
     bootstrap_scheme_file(base_env);
+    bootstrap_scheme_cxr(base_env);
+    bootstrap_scheme_inexact(base_env);
+    bootstrap_scheme_complex(base_env);
 }
 
 } // namespace r7rs
